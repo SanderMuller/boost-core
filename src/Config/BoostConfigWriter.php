@@ -31,6 +31,24 @@ use SanderMuller\BoostCore\Enums\Agent;
  *
  * If a method isn't already in the chain, it's inserted between the static
  * `BoostConfig::configure()` and the rest of the chain.
+ *
+ * ## Known limitations
+ *
+ * **Comments are not preserved.** PHP-Parser's `Standard` pretty-printer
+ * strips non-attached comments. A header docblock above the `return`
+ * statement, inline comments inside the chain, or comments above the
+ * `use` imports will be silently removed on the next `boost:install` or
+ * `boost:scan`. Commit `boost.php` before running interactive commands
+ * so the loss surfaces as a diff in version control.
+ *
+ * **Formatting may change.** Pretty-printing applies its own style (quote
+ * conventions, indentation, trailing commas). Re-running against a file
+ * not originally produced by this writer will yield a noisy diff even
+ * when semantics are unchanged.
+ *
+ * Format-preserving printing (php-parser's `printFormatPreserving` mode)
+ * is a future improvement. For v1.0 this is straight parse → modify →
+ * pretty-print, and the deviations are accepted.
  */
 final class BoostConfigWriter
 {

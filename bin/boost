@@ -1,0 +1,21 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+(function (): void {
+    $autoloadCandidates = [
+        __DIR__ . '/../vendor/autoload.php',
+        __DIR__ . '/../../../autoload.php',
+    ];
+
+    foreach ($autoloadCandidates as $candidate) {
+        if (file_exists($candidate)) {
+            require $candidate;
+            break;
+        }
+    }
+
+    $app = new \Symfony\Component\Console\Application('boost', '0.1.0-dev');
+    $app->run();
+})();

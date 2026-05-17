@@ -29,9 +29,9 @@ use function Laravel\Prompts\multiselect;
 final class InstallCommand extends BaseCommand
 {
     public function __construct(
-        private readonly BoostConfigLoader $loader = new BoostConfigLoader,
-        private readonly BoostConfigWriter $writer = new BoostConfigWriter,
-        private readonly FirstPartyPrefixes $firstParty = new FirstPartyPrefixes,
+        private readonly BoostConfigLoader $loader = new BoostConfigLoader(),
+        private readonly BoostConfigWriter $writer = new BoostConfigWriter(),
+        private readonly FirstPartyPrefixes $firstParty = new FirstPartyPrefixes(),
     ) {
         parent::__construct();
     }
@@ -62,7 +62,7 @@ final class InstallCommand extends BaseCommand
         }
 
         $projectRoot = rtrim($projectRoot, '/');
-        $configPath = $projectRoot.'/boost.php';
+        $configPath = $projectRoot . '/boost.php';
 
         try {
             $config = $this->loader->load($projectRoot);

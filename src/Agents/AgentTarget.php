@@ -46,7 +46,7 @@ abstract class AgentTarget
 
         foreach ($skills as $skill) {
             $writes[] = new PendingWrite(
-                relativePath: $this->skillsDirectoryRelative().'/'.$this->skillFilename($skill->name),
+                relativePath: $this->skillsDirectoryRelative() . '/' . $this->skillFilename($skill->name),
                 content: $this->formatSkillContent($skill),
             );
         }
@@ -64,12 +64,12 @@ abstract class AgentTarget
 
     public function skillFilename(string $skillName): string
     {
-        return $skillName.'.md';
+        return $skillName . '.md';
     }
 
     public function formatSkillContent(Skill $skill): string
     {
-        return $this->renderFrontmatter($skill->frontmatter).$skill->body;
+        return $this->renderFrontmatter($skill->frontmatter) . $skill->body;
     }
 
     /**
@@ -81,7 +81,7 @@ abstract class AgentTarget
     {
         $bodies = array_map(static fn (Guideline $g): string => rtrim($g->body, "\n"), $guidelines);
 
-        return implode("\n\n---\n\n", $bodies)."\n";
+        return implode("\n\n---\n\n", $bodies) . "\n";
     }
 
     /**
@@ -93,6 +93,6 @@ abstract class AgentTarget
             return '';
         }
 
-        return "---\n".Yaml::dump($frontmatter, inline: 4, indent: 2).'---'."\n\n";
+        return "---\n" . Yaml::dump($frontmatter, inline: 4, indent: 2) . '---' . "\n\n";
     }
 }

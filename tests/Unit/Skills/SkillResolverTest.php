@@ -10,7 +10,7 @@ use SanderMuller\BoostCore\Skills\SkillResolver;
 
 function fixtureSkillLoader(): SkillLoader
 {
-    return new SkillLoader(new FrontmatterParser);
+    return new SkillLoader(new FrontmatterParser());
 }
 
 /**
@@ -20,7 +20,7 @@ function loadFixture(string $subdir, ?string $vendor = null): array
 {
     /** @var list<Skill> $skills */
     $skills = [];
-    foreach (fixtureSkillLoader()->load(__DIR__.'/../../Fixtures/skills/'.$subdir, $vendor) as $skill) {
+    foreach (fixtureSkillLoader()->load(__DIR__ . '/../../Fixtures/skills/' . $subdir, $vendor) as $skill) {
         $skills[] = $skill;
     }
 
@@ -42,7 +42,7 @@ function findSkill(array $skills, string $name): Skill
 }
 
 it('returns host skills when no vendors are provided', function (): void {
-    $resolver = new SkillResolver;
+    $resolver = new SkillResolver();
     $resolved = $resolver->resolve(loadFixture('host', null), []);
 
     $names = array_map(fn (Skill $s): string => $s->name, $resolved);
@@ -50,7 +50,7 @@ it('returns host skills when no vendors are provided', function (): void {
 });
 
 it('host always wins over vendor on collision', function (): void {
-    $resolver = new SkillResolver;
+    $resolver = new SkillResolver();
     $resolved = $resolver->resolve(
         loadFixture('host', null),
         ['test/vendor-a' => loadFixture('vendor-a', 'test/vendor-a')],
@@ -62,7 +62,7 @@ it('host always wins over vendor on collision', function (): void {
 });
 
 it('includes vendor skills that have no host equivalent', function (): void {
-    $resolver = new SkillResolver;
+    $resolver = new SkillResolver();
     $resolved = $resolver->resolve(
         loadFixture('host', null),
         ['test/vendor-a' => loadFixture('vendor-a', 'test/vendor-a')],
@@ -73,7 +73,7 @@ it('includes vendor skills that have no host equivalent', function (): void {
 });
 
 it('throws on vendor-vs-vendor collision without --force', function (): void {
-    $resolver = new SkillResolver;
+    $resolver = new SkillResolver();
     $resolver->resolve(
         [],
         [
@@ -84,7 +84,7 @@ it('throws on vendor-vs-vendor collision without --force', function (): void {
 })->throws(CollidingSkillsException::class, 'colliding');
 
 it('captures both vendors in the collision exception', function (): void {
-    $resolver = new SkillResolver;
+    $resolver = new SkillResolver();
 
     try {
         $resolver->resolve(
@@ -102,7 +102,7 @@ it('captures both vendors in the collision exception', function (): void {
 });
 
 it('with --force, vendor declaration order wins silently', function (): void {
-    $resolver = new SkillResolver;
+    $resolver = new SkillResolver();
     $resolved = $resolver->resolve(
         [],
         [
@@ -120,7 +120,7 @@ it('with --force, vendor declaration order wins silently', function (): void {
 it('host overrides ALL vendors silently, even multiple ones', function (): void {
     // Same skill name in host + 2 vendors. Host wins, no collision exception fires
     // because vendor-vs-vendor never compete when host already claimed the name.
-    $resolver = new SkillResolver;
+    $resolver = new SkillResolver();
 
     $vendorBSkill = new Skill(
         name: 'shared-name',

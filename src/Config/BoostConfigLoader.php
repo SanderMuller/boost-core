@@ -24,7 +24,7 @@ final class BoostConfigLoader
     public function load(string $projectRoot, ?string $configFile = null): BoostConfig
     {
         $projectRoot = rtrim($projectRoot, '/');
-        $path = $configFile ?? $projectRoot.'/boost.php';
+        $path = $configFile ?? $projectRoot . '/boost.php';
 
         if (! is_file($path)) {
             throw new BoostConfigNotFoundException($path);

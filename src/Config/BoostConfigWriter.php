@@ -35,7 +35,7 @@ use SanderMuller\BoostCore\Enums\Agent;
 final class BoostConfigWriter
 {
     public function __construct(
-        private readonly Standard $printer = new Standard,
+        private readonly Standard $printer = new Standard(),
     ) {}
 
     /**
@@ -57,18 +57,18 @@ final class BoostConfigWriter
 
         $source = (string) file_get_contents($configPath);
 
-        $parser = (new ParserFactory)->createForNewestSupportedVersion();
+        $parser = (new ParserFactory())->createForNewestSupportedVersion();
         try {
             $stmts = $parser->parse($source);
         } catch (Error $e) {
-            throw new BoostConfigWriteException($configPath, 'parse error: '.$e->getMessage());
+            throw new BoostConfigWriteException($configPath, 'parse error: ' . $e->getMessage());
         }
 
         if ($stmts === null) {
             throw new BoostConfigWriteException($configPath, 'parser returned no statements.');
         }
 
-        $return = (new NodeFinder)->findFirstInstanceOf($stmts, Return_::class);
+        $return = (new NodeFinder())->findFirstInstanceOf($stmts, Return_::class);
         if (! $return instanceof Return_) {
             throw new BoostConfigWriteException($configPath, 'no `return` statement found.');
         }

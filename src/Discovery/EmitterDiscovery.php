@@ -40,7 +40,7 @@ final class EmitterDiscovery
                 continue;
             }
 
-            $composerJson = $this->packages->path($vendorName).'/composer.json';
+            $composerJson = $this->packages->path($vendorName) . '/composer.json';
             if (! is_file($composerJson)) {
                 continue;
             }
@@ -124,7 +124,7 @@ final class EmitterDiscovery
         }
 
         try {
-            $instance = new $fqcn;
+            $instance = new $fqcn();
         } catch (Throwable) {
             return null;
         }

@@ -51,7 +51,7 @@ final class InitCommand extends BaseCommand
         }
 
         $force = (bool) $input->getOption('force');
-        $target = rtrim($projectRoot, '/').'/boost.php';
+        $target = rtrim($projectRoot, '/') . '/boost.php';
 
         if (is_file($target) && ! $force) {
             $io->error(sprintf(

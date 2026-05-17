@@ -21,12 +21,12 @@ final class BoostCoreCommandProvider implements CommandProvider
     public function getCommands(): array
     {
         return [
-            new InitCommand,
-            new InstallCommand,
-            new ScanCommand,
-            new SyncCommand,
-            new DoctorCommand,
-            new NewCommand,
+            new InitCommand(),
+            new InstallCommand(),
+            new ScanCommand(),
+            new SyncCommand(),
+            new DoctorCommand(),
+            new NewCommand(),
         ];
     }
 }

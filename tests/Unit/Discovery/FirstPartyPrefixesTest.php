@@ -5,7 +5,7 @@ declare(strict_types=1);
 use SanderMuller\BoostCore\Discovery\FirstPartyPrefixes;
 
 beforeEach(function (): void {
-    $this->prefixes = new FirstPartyPrefixes;
+    $this->prefixes = new FirstPartyPrefixes();
 });
 
 it('matches `boost-*` packages', function (): void {

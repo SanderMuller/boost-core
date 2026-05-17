@@ -10,7 +10,7 @@ it('loads the composer plugin entry class', function (): void {
 });
 
 it('plugin advertises a command provider capability', function (): void {
-    $plugin = new BoostCorePlugin;
+    $plugin = new BoostCorePlugin();
     $capabilities = $plugin->getCapabilities();
 
     expect($capabilities)->toHaveKey(CommandProvider::class);

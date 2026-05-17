@@ -9,11 +9,11 @@ use SanderMuller\BoostCore\Enums\Agent;
 
 function configFixture(string $name): string
 {
-    return __DIR__.'/../../Fixtures/config/'.$name;
+    return __DIR__ . '/../../Fixtures/config/' . $name;
 }
 
 it('loads a fully-configured boost.php fixture', function (): void {
-    $config = (new BoostConfigLoader)->load(
+    $config = (new BoostConfigLoader())->load(
         '/fake/project',
         configFixture('valid-boost.php'),
     );
@@ -26,7 +26,7 @@ it('loads a fully-configured boost.php fixture', function (): void {
 });
 
 it('loads a minimal boost.php with all defaults applied', function (): void {
-    $config = (new BoostConfigLoader)->load(
+    $config = (new BoostConfigLoader())->load(
         '/fake/project',
         configFixture('minimal-boost.php'),
     );
@@ -39,17 +39,17 @@ it('loads a minimal boost.php with all defaults applied', function (): void {
 });
 
 it('throws when boost.php does not exist', function (): void {
-    (new BoostConfigLoader)->load(
+    (new BoostConfigLoader())->load(
         '/fake/project',
-        '/nonexistent/'.bin2hex(random_bytes(4)).'/boost.php',
+        '/nonexistent/' . bin2hex(random_bytes(4)) . '/boost.php',
     );
 })->throws(BoostConfigNotFoundException::class);
 
 it('reports the expected path in the not-found exception', function (): void {
-    $missing = '/nonexistent/'.bin2hex(random_bytes(4)).'/boost.php';
+    $missing = '/nonexistent/' . bin2hex(random_bytes(4)) . '/boost.php';
 
     try {
-        (new BoostConfigLoader)->load('/fake/project', $missing);
+        (new BoostConfigLoader())->load('/fake/project', $missing);
         throw new RuntimeException('Expected BoostConfigNotFoundException');
     } catch (BoostConfigNotFoundException $e) {
         expect($e->expectedPath)->toBe($missing);
@@ -57,7 +57,7 @@ it('reports the expected path in the not-found exception', function (): void {
 });
 
 it('throws when boost.php returns the wrong type', function (): void {
-    (new BoostConfigLoader)->load(
+    (new BoostConfigLoader())->load(
         '/fake/project',
         configFixture('wrong-return.php'),
     );
@@ -65,5 +65,5 @@ it('throws when boost.php returns the wrong type', function (): void {
 
 it('defaults `load($root)` to looking at $root/boost.php', function (): void {
     // No fixture exists at /fake/project/boost.php — should hit the not-found path.
-    (new BoostConfigLoader)->load('/fake/project');
+    (new BoostConfigLoader())->load('/fake/project');
 })->throws(BoostConfigNotFoundException::class, '/fake/project/boost.php');

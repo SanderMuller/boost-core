@@ -78,8 +78,8 @@ final class BoostConfigBuilder
         return new BoostConfig(
             agents: $this->agents,
             allowedVendors: $this->allowedVendors,
-            skillsPath: $this->skillsPath ?? $projectRoot.'/.ai/skills',
-            guidelinesPath: $this->guidelinesPath ?? $projectRoot.'/.ai/guidelines',
+            skillsPath: $this->skillsPath ?? $projectRoot . '/.ai/skills',
+            guidelinesPath: $this->guidelinesPath ?? $projectRoot . '/.ai/guidelines',
             disabledEmitters: $this->disabledEmitters,
         );
     }

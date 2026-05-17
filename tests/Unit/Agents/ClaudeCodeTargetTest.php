@@ -18,7 +18,7 @@ function makeSkill(string $name, array $frontmatter, string $body): Skill
         description: null,
         frontmatter: $frontmatter,
         body: $body,
-        sourcePath: '/fake/'.$name.'.md',
+        sourcePath: '/fake/' . $name . '.md',
         sourceVendor: null,
     );
 }
@@ -30,13 +30,13 @@ function makeGuideline(string $name, string $body): Guideline
         description: null,
         frontmatter: [],
         body: $body,
-        sourcePath: '/fake/'.$name.'.md',
+        sourcePath: '/fake/' . $name . '.md',
         sourceVendor: null,
     );
 }
 
 it('reports the Claude Code agent and conventional paths', function (): void {
-    $target = new ClaudeCodeTarget;
+    $target = new ClaudeCodeTarget();
 
     expect($target->agent())->toBe(Agent::CLAUDE_CODE);
     expect($target->skillsDirectoryRelative())->toBe('.claude/skills');
@@ -44,7 +44,7 @@ it('reports the Claude Code agent and conventional paths', function (): void {
 });
 
 it('plans one PendingWrite per skill, named `{name}.md` under skills dir', function (): void {
-    $target = new ClaudeCodeTarget;
+    $target = new ClaudeCodeTarget();
     $writes = $target->plan(
         skills: [
             makeSkill('foo', ['name' => 'foo'], '# Foo'),
@@ -60,7 +60,7 @@ it('plans one PendingWrite per skill, named `{name}.md` under skills dir', funct
 });
 
 it('embeds frontmatter at the top of each skill file', function (): void {
-    $target = new ClaudeCodeTarget;
+    $target = new ClaudeCodeTarget();
     $writes = $target->plan(
         skills: [makeSkill('foo', ['name' => 'foo', 'description' => 'A foo skill.'], 'Body content.')],
         guidelines: [],
@@ -73,7 +73,7 @@ it('embeds frontmatter at the top of each skill file', function (): void {
 });
 
 it('omits the frontmatter block when frontmatter is empty', function (): void {
-    $target = new ClaudeCodeTarget;
+    $target = new ClaudeCodeTarget();
     $writes = $target->plan(
         skills: [makeSkill('foo', [], 'Just body.')],
         guidelines: [],
@@ -83,7 +83,7 @@ it('omits the frontmatter block when frontmatter is empty', function (): void {
 });
 
 it('plans a guidelines write at CLAUDE.md when guidelines are present', function (): void {
-    $target = new ClaudeCodeTarget;
+    $target = new ClaudeCodeTarget();
     $writes = $target->plan(
         skills: [],
         guidelines: [
@@ -100,7 +100,7 @@ it('plans a guidelines write at CLAUDE.md when guidelines are present', function
 });
 
 it('omits the guidelines write when no guidelines are provided', function (): void {
-    $target = new ClaudeCodeTarget;
+    $target = new ClaudeCodeTarget();
     $writes = $target->plan(
         skills: [makeSkill('foo', [], 'body')],
         guidelines: [],
@@ -111,7 +111,7 @@ it('omits the guidelines write when no guidelines are provided', function (): vo
 });
 
 it('handles both skills and guidelines in a single plan', function (): void {
-    $target = new ClaudeCodeTarget;
+    $target = new ClaudeCodeTarget();
     $writes = $target->plan(
         skills: [makeSkill('foo', [], 'F')],
         guidelines: [makeGuideline('g', 'G')],

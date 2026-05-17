@@ -13,9 +13,9 @@ use SanderMuller\BoostCore\Tests\Fixtures\Emitters\SkippingEmitter;
  */
 function fixtureVendor(array $composerJson): string
 {
-    $dir = sys_get_temp_dir().'/boost-emitter-disc-'.bin2hex(random_bytes(6));
+    $dir = sys_get_temp_dir() . '/boost-emitter-disc-' . bin2hex(random_bytes(6));
     mkdir($dir, 0o755, recursive: true);
-    file_put_contents($dir.'/composer.json', json_encode($composerJson, JSON_THROW_ON_ERROR));
+    file_put_contents($dir . '/composer.json', json_encode($composerJson, JSON_THROW_ON_ERROR));
 
     return $dir;
 }
@@ -42,7 +42,7 @@ it('discovers emitters from allowlisted vendors', function (): void {
         expect($discovered[0]->fqcn)->toBe(DummyEmitter::class);
         expect($discovered[0]->emitter)->toBeInstanceOf(DummyEmitter::class);
     } finally {
-        @unlink($vendorDir.'/composer.json');
+        @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);
     }
 });
@@ -63,7 +63,7 @@ it('skips non-allowlisted vendors even if they declare emitters', function (): v
 
         expect($discovered)->toBe([]);
     } finally {
-        @unlink($vendorDir.'/composer.json');
+        @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);
     }
 });
@@ -83,7 +83,7 @@ it('silently skips emitters whose class does not autoload', function (): void {
 
         expect($discovered)->toBe([]);
     } finally {
-        @unlink($vendorDir.'/composer.json');
+        @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);
     }
 });
@@ -107,7 +107,7 @@ it('discovers multiple emitters in one vendor', function (): void {
 
         expect($discovered)->toHaveCount(2);
     } finally {
-        @unlink($vendorDir.'/composer.json');
+        @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);
     }
 });
@@ -127,7 +127,7 @@ it('handles vendors with no emitters section gracefully', function (): void {
 
         expect($discovered)->toBe([]);
     } finally {
-        @unlink($vendorDir.'/composer.json');
+        @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);
     }
 });

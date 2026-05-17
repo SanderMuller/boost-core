@@ -1,3 +1,10 @@
+* text=auto eol=lf
+
+*.css diff=css
+*.html diff=html
+*.md diff=markdown
+*.php diff=php
+
 # >>> package-boost (managed) >>>
 .agents/                export-ignore
 .ai/                    export-ignore

@@ -9,15 +9,15 @@ use SanderMuller\BoostCore\Sync\PackageInfo;
 
 function fixturePath(string $name): string
 {
-    return __DIR__.'/../../Fixtures/vendor-packages/'.$name;
+    return __DIR__ . '/../../Fixtures/vendor-packages/' . $name;
 }
 
 function packagesFromFixtures(string ...$names): InstalledPackages
 {
     $packages = [];
     foreach ($names as $name) {
-        $packages['test-fixture/'.$name] = new PackageInfo(
-            'test-fixture/'.$name,
+        $packages['test-fixture/' . $name] = new PackageInfo(
+            'test-fixture/' . $name,
             '1.0.0',
             fixturePath($name),
         );

@@ -38,7 +38,7 @@ final readonly class BoostConfig
 
     public static function configure(): BoostConfigBuilder
     {
-        return new BoostConfigBuilder;
+        return new BoostConfigBuilder();
     }
 
     public function hasAgent(Agent $agent): bool

@@ -51,7 +51,7 @@ final class DoctorCommand extends BaseCommand
             return self::FAILURE;
         }
 
-        $io->success(sprintf('boost.php at %s parses cleanly.', $projectRoot.'/boost.php'));
+        $io->success(sprintf('boost.php at %s parses cleanly.', $projectRoot . '/boost.php'));
 
         $this->reportAgents($io, $config);
         $this->reportSourcePaths($io, $config);
@@ -75,13 +75,13 @@ final class DoctorCommand extends BaseCommand
     private function loadConfig(SymfonyStyle $io, string $projectRoot): ?BoostConfig
     {
         try {
-            return (new BoostConfigLoader)->load($projectRoot);
+            return (new BoostConfigLoader())->load($projectRoot);
         } catch (BoostConfigNotFoundException $e) {
             $io->error($e->getMessage());
 
             return null;
         } catch (Throwable $e) {
-            $io->error('boost.php failed to load: '.$e->getMessage());
+            $io->error('boost.php failed to load: ' . $e->getMessage());
 
             return null;
         }
@@ -158,7 +158,7 @@ final class DoctorCommand extends BaseCommand
         try {
             $result = SyncEngine::default()->sync($projectRoot, checkOnly: true);
         } catch (Throwable $e) {
-            $io->warning('Could not check drift: '.$e->getMessage());
+            $io->warning('Could not check drift: ' . $e->getMessage());
 
             return;
         }

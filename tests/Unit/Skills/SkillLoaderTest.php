@@ -8,7 +8,7 @@ use SanderMuller\BoostCore\Skills\SkillLoader;
 
 function loader(): SkillLoader
 {
-    return new SkillLoader(new FrontmatterParser);
+    return new SkillLoader(new FrontmatterParser());
 }
 
 /**
@@ -18,7 +18,7 @@ function skillsFromFixture(string $subdir, ?string $vendor = null): array
 {
     /** @var list<Skill> $skills */
     $skills = [];
-    foreach (loader()->load(__DIR__.'/../../Fixtures/skills/'.$subdir, $vendor) as $skill) {
+    foreach (loader()->load(__DIR__ . '/../../Fixtures/skills/' . $subdir, $vendor) as $skill) {
         $skills[] = $skill;
     }
 
@@ -68,7 +68,7 @@ it('derives name from filename when frontmatter omits it', function (): void {
 });
 
 it('returns empty iterable for missing directories', function (): void {
-    $skills = iterator_to_array(loader()->load('/nonexistent/path/'.bin2hex(random_bytes(4))));
+    $skills = iterator_to_array(loader()->load('/nonexistent/path/' . bin2hex(random_bytes(4))));
 
     expect($skills)->toBeEmpty();
 });

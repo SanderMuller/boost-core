@@ -11,8 +11,8 @@ return BoostConfig::configure()
         'doctrine/orm',
         'symfony/symfony',
     ])
-    ->withSkillsPath(__DIR__.'/custom-skills')
-    ->withGuidelinesPath(__DIR__.'/custom-guidelines')
+    ->withSkillsPath(__DIR__ . '/custom-skills')
+    ->withGuidelinesPath(__DIR__ . '/custom-guidelines')
     ->withDisabledEmitters([
         'Acme\\SomeEmitter',
     ]);

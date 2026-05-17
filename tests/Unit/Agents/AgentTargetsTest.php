@@ -21,15 +21,15 @@ use SanderMuller\BoostCore\Skills\Skill;
 function allTargets(): array
 {
     return [
-        [new ClaudeCodeTarget, Agent::CLAUDE_CODE, '.claude/skills', 'CLAUDE.md'],
-        [new CursorTarget, Agent::CURSOR, '.cursor/skills', 'AGENTS.md'],
-        [new CopilotTarget, Agent::COPILOT, '.github/skills', '.github/copilot-instructions.md'],
-        [new CodexTarget, Agent::CODEX, '.agents/skills', 'AGENTS.md'],
-        [new GeminiTarget, Agent::GEMINI, '.gemini/skills', 'GEMINI.md'],
-        [new JunieTarget, Agent::JUNIE, '.junie/skills', 'AGENTS.md'],
-        [new KiroTarget, Agent::KIRO, '.kiro/skills', 'AGENTS.md'],
-        [new OpenCodeTarget, Agent::OPENCODE, '.opencode/skills', 'AGENTS.md'],
-        [new AmpTarget, Agent::AMP, '.amp/skills', 'AGENTS.md'],
+        [new ClaudeCodeTarget(), Agent::CLAUDE_CODE, '.claude/skills', 'CLAUDE.md'],
+        [new CursorTarget(), Agent::CURSOR, '.cursor/skills', 'AGENTS.md'],
+        [new CopilotTarget(), Agent::COPILOT, '.github/skills', '.github/copilot-instructions.md'],
+        [new CodexTarget(), Agent::CODEX, '.agents/skills', 'AGENTS.md'],
+        [new GeminiTarget(), Agent::GEMINI, '.gemini/skills', 'GEMINI.md'],
+        [new JunieTarget(), Agent::JUNIE, '.junie/skills', 'AGENTS.md'],
+        [new KiroTarget(), Agent::KIRO, '.kiro/skills', 'AGENTS.md'],
+        [new OpenCodeTarget(), Agent::OPENCODE, '.opencode/skills', 'AGENTS.md'],
+        [new AmpTarget(), Agent::AMP, '.amp/skills', 'AGENTS.md'],
     ];
 }
 
@@ -65,6 +65,6 @@ it('every target plans at least one skill file when given one skill', function (
         $writes = $target->plan([$skill], []);
 
         expect($writes)->toHaveCount(1);
-        expect($writes[0]->relativePath)->toBe($skillsDir.'/foo.md');
+        expect($writes[0]->relativePath)->toBe($skillsDir . '/foo.md');
     }
 });

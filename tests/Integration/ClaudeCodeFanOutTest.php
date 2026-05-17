@@ -13,7 +13,7 @@ use SanderMuller\BoostCore\Sync\WriteAction;
 
 function makeTempProject(): string
 {
-    $root = sys_get_temp_dir().'/boost-core-int-'.bin2hex(random_bytes(8));
+    $root = sys_get_temp_dir() . '/boost-core-int-' . bin2hex(random_bytes(8));
     mkdir($root, 0o755, recursive: true);
 
     return $root;
@@ -38,7 +38,7 @@ function rmTreeIntegration(string $path): array
         if ($entry === '.' || $entry === '..') {
             continue;
         }
-        $full = $path.'/'.$entry;
+        $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             $deleted = [...$deleted, ...rmTreeIntegration($full)];
         } else {
@@ -55,10 +55,10 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
     $root = makeTempProject();
     try {
         // Load skills from the host fixture
-        $loader = new SkillLoader(new FrontmatterParser);
+        $loader = new SkillLoader(new FrontmatterParser());
         /** @var list<Skill> $skills */
         $skills = [];
-        foreach ($loader->load(__DIR__.'/../Fixtures/skills/host', null) as $skill) {
+        foreach ($loader->load(__DIR__ . '/../Fixtures/skills/host', null) as $skill) {
             $skills[] = $skill;
         }
 
@@ -73,8 +73,8 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
             ),
         ];
 
-        $target = new ClaudeCodeTarget;
-        $writer = new FileWriter;
+        $target = new ClaudeCodeTarget();
+        $writer = new FileWriter();
 
         $planned = $target->plan($skills, $guidelines);
         $results = array_map(fn (PendingWrite $p) => $writer->write($root, $p), $planned);
@@ -86,17 +86,17 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
         }
 
         // Verify expected files exist
-        expect(file_exists($root.'/.claude/skills/host-skill.md'))->toBeTrue();
-        expect(file_exists($root.'/.claude/skills/shared-name.md'))->toBeTrue();
-        expect(file_exists($root.'/CLAUDE.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/host-skill.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/shared-name.md'))->toBeTrue();
+        expect(file_exists($root . '/CLAUDE.md'))->toBeTrue();
 
         // Skill content has frontmatter + body
-        $hostSkillContent = file_get_contents($root.'/.claude/skills/host-skill.md');
+        $hostSkillContent = file_get_contents($root . '/.claude/skills/host-skill.md');
         expect($hostSkillContent)->toContain('name: host-skill');
         expect($hostSkillContent)->toContain('# Host skill');
 
         // Guidelines file has the body
-        $claudeMd = file_get_contents($root.'/CLAUDE.md');
+        $claudeMd = file_get_contents($root . '/CLAUDE.md');
         expect($claudeMd)->toContain('# Conventions');
         expect($claudeMd)->toContain('strict types');
     } finally {
@@ -107,15 +107,15 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
 it('second run with same content reports `unchanged`', function (): void {
     $root = makeTempProject();
     try {
-        $loader = new SkillLoader(new FrontmatterParser);
+        $loader = new SkillLoader(new FrontmatterParser());
         /** @var list<Skill> $skills */
         $skills = [];
-        foreach ($loader->load(__DIR__.'/../Fixtures/skills/host', null) as $skill) {
+        foreach ($loader->load(__DIR__ . '/../Fixtures/skills/host', null) as $skill) {
             $skills[] = $skill;
         }
 
-        $target = new ClaudeCodeTarget;
-        $writer = new FileWriter;
+        $target = new ClaudeCodeTarget();
+        $writer = new FileWriter();
 
         $planned = $target->plan($skills, []);
 

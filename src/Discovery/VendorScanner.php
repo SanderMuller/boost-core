@@ -43,7 +43,7 @@ final class VendorScanner
 
     private function scanPackage(PackageInfo $package): ?DiscoveredVendor
     {
-        $composerJson = $package->installPath.'/composer.json';
+        $composerJson = $package->installPath . '/composer.json';
         if (! is_file($composerJson)) {
             return null;
         }
@@ -107,7 +107,7 @@ final class VendorScanner
 
     private function resolveIfDir(string $installPath, string $relative): ?string
     {
-        $abs = $installPath.'/'.ltrim($relative, '/');
+        $abs = $installPath . '/' . ltrim($relative, '/');
 
         return is_dir($abs) ? $abs : null;
     }

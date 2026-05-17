@@ -21,8 +21,8 @@ return RectorConfig::configure()
         containerCacheDirectory: './.cache/rectorContainer',
     )
     ->withPaths([
-        __DIR__.'/src',
-        __DIR__.'/tests',
+        __DIR__ . '/src',
+        __DIR__ . '/tests',
     ])
     ->withPreparedSets(
         deadCode: true,

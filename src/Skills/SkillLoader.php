@@ -29,7 +29,7 @@ final class SkillLoader
             return;
         }
 
-        $finder = (new Finder)
+        $finder = (new Finder())
             ->files()
             ->in($directory)
             ->name('*.md')

@@ -12,7 +12,7 @@ use SanderMuller\BoostCore\Tests\Fixtures\Emitters\ThrowingEmitter;
 
 function makeEmitterProject(): string
 {
-    $root = sys_get_temp_dir().'/boost-emit-pipeline-'.bin2hex(random_bytes(8));
+    $root = sys_get_temp_dir() . '/boost-emit-pipeline-' . bin2hex(random_bytes(8));
     mkdir($root, 0o755, recursive: true);
 
     return $root;
@@ -31,7 +31,7 @@ function rmTreeEmit(string $path): void
         if ($entry === '.' || $entry === '..') {
             continue;
         }
-        $full = $path.'/'.$entry;
+        $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             rmTreeEmit($full);
         } else {
@@ -44,7 +44,7 @@ function rmTreeEmit(string $path): void
 function fakeVendorWithEmitter(string $vendorName, string $emitterClass, string $vendorDir): InstalledPackages
 {
     mkdir($vendorDir, 0o755, recursive: true);
-    file_put_contents($vendorDir.'/composer.json', json_encode([
+    file_put_contents($vendorDir . '/composer.json', json_encode([
         'name' => $vendorName,
         'extra' => ['boost' => ['emitters' => [$emitterClass]]],
     ]));
@@ -57,7 +57,7 @@ function fakeVendorWithEmitter(string $vendorName, string $emitterClass, string 
 function writeBoostPhpForEmitter(string $root, string $vendor): void
 {
     file_put_contents(
-        $root.'/boost.php',
+        $root . '/boost.php',
         "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\n\nreturn BoostConfig::configure()\n    ->withAllowedVendors([\"{$vendor}\"]);\n",
     );
 }
@@ -68,7 +68,7 @@ it('runs a discovered emitter and writes its file', function (): void {
         $packages = fakeVendorWithEmitter(
             'test/dummy-pkg',
             DummyEmitter::class,
-            $root.'/vendor/test/dummy-pkg',
+            $root . '/vendor/test/dummy-pkg',
         );
 
         writeBoostPhpForEmitter($root, 'test/dummy-pkg');
@@ -79,7 +79,7 @@ it('runs a discovered emitter and writes its file', function (): void {
         expect($result->emitters[0]->action)->toBe(EmitterAction::WROTE);
         expect($result->emitters[0]->fqcn)->toBe(DummyEmitter::class);
         expect($result->emitters[0]->vendor)->toBe('test/dummy-pkg');
-        expect(file_exists($root.'/.dummy/output.txt'))->toBeTrue();
+        expect(file_exists($root . '/.dummy/output.txt'))->toBeTrue();
     } finally {
         rmTreeEmit($root);
     }
@@ -91,7 +91,7 @@ it('records skipped emitters when emit() returns null', function (): void {
         $packages = fakeVendorWithEmitter(
             'test/skip-pkg',
             SkippingEmitter::class,
-            $root.'/vendor/test/skip-pkg',
+            $root . '/vendor/test/skip-pkg',
         );
 
         writeBoostPhpForEmitter($root, 'test/skip-pkg');
@@ -112,7 +112,7 @@ it('records errored emitters when emit() throws and continues sync', function ()
         $packages = fakeVendorWithEmitter(
             'test/throw-pkg',
             ThrowingEmitter::class,
-            $root.'/vendor/test/throw-pkg',
+            $root . '/vendor/test/throw-pkg',
         );
 
         writeBoostPhpForEmitter($root, 'test/throw-pkg');
@@ -134,12 +134,12 @@ it('records disabled emitters when withDisabledEmitters lists them', function ()
         $packages = fakeVendorWithEmitter(
             'test/dummy-pkg',
             DummyEmitter::class,
-            $root.'/vendor/test/dummy-pkg',
+            $root . '/vendor/test/dummy-pkg',
         );
 
         // Override boost.php to disable the emitter.
         file_put_contents(
-            $root.'/boost.php',
+            $root . '/boost.php',
             sprintf(
                 "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\n\nreturn BoostConfig::configure()\n    ->withAllowedVendors([\"test/dummy-pkg\"])\n    ->withDisabledEmitters([\"%s\"]);\n",
                 str_replace('\\', '\\\\', DummyEmitter::class),
@@ -150,7 +150,7 @@ it('records disabled emitters when withDisabledEmitters lists them', function ()
 
         expect($result->emitters)->toHaveCount(1);
         expect($result->emitters[0]->action)->toBe(EmitterAction::DISABLED);
-        expect(file_exists($root.'/.dummy/output.txt'))->toBeFalse();
+        expect(file_exists($root . '/.dummy/output.txt'))->toBeFalse();
     } finally {
         rmTreeEmit($root);
     }
@@ -162,7 +162,7 @@ it('reports would-write for emitters in check mode', function (): void {
         $packages = fakeVendorWithEmitter(
             'test/dummy-pkg',
             DummyEmitter::class,
-            $root.'/vendor/test/dummy-pkg',
+            $root . '/vendor/test/dummy-pkg',
         );
 
         writeBoostPhpForEmitter($root, 'test/dummy-pkg');
@@ -172,7 +172,7 @@ it('reports would-write for emitters in check mode', function (): void {
         expect($result->emitters)->toHaveCount(1);
         expect($result->emitters[0]->action)->toBe(EmitterAction::WOULD_WRITE);
         expect($result->hasDrift())->toBeTrue();
-        expect(file_exists($root.'/.dummy/output.txt'))->toBeFalse();
+        expect(file_exists($root . '/.dummy/output.txt'))->toBeFalse();
     } finally {
         rmTreeEmit($root);
     }
@@ -184,19 +184,19 @@ it('emitters from non-allowlisted vendors never run', function (): void {
         $packages = fakeVendorWithEmitter(
             'forbidden/vendor',
             DummyEmitter::class,
-            $root.'/vendor/forbidden/vendor',
+            $root . '/vendor/forbidden/vendor',
         );
 
         // boost.php does NOT allowlist forbidden/vendor
         file_put_contents(
-            $root.'/boost.php',
+            $root . '/boost.php',
             "<?php\ndeclare(strict_types=1);\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nreturn BoostConfig::configure();",
         );
 
         $result = (new SyncEngine([], installedPackages: $packages))->sync($root);
 
         expect($result->emitters)->toBe([]);
-        expect(file_exists($root.'/.dummy/output.txt'))->toBeFalse();
+        expect(file_exists($root . '/.dummy/output.txt'))->toBeFalse();
     } finally {
         rmTreeEmit($root);
     }

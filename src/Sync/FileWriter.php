@@ -68,7 +68,7 @@ final class FileWriter
             }
         }
 
-        return $projectRoot.'/'.ltrim($relative, '/');
+        return $projectRoot . '/' . ltrim($relative, '/');
     }
 
     private function existingContentMatches(string $absolutePath, string $expected): bool
@@ -96,7 +96,7 @@ final class FileWriter
 
     private function atomicWrite(string $absolutePath, string $content): void
     {
-        $temp = $absolutePath.'.boost.'.bin2hex(random_bytes(4)).'.tmp';
+        $temp = $absolutePath . '.boost.' . bin2hex(random_bytes(4)) . '.tmp';
 
         if (file_put_contents($temp, $content) === false) {
             throw new RuntimeException(sprintf('Failed to write temp file "%s".', $temp));

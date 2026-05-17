@@ -60,11 +60,11 @@ final class SyncEngine
      */
     public function __construct(
         private readonly array $agentTargets,
-        private readonly BoostConfigLoader $configLoader = new BoostConfigLoader,
-        private readonly FrontmatterParser $frontmatterParser = new FrontmatterParser,
-        private readonly SkillResolver $skillResolver = new SkillResolver,
-        private readonly GuidelineResolver $guidelineResolver = new GuidelineResolver,
-        private readonly FileWriter $writer = new FileWriter,
+        private readonly BoostConfigLoader $configLoader = new BoostConfigLoader(),
+        private readonly FrontmatterParser $frontmatterParser = new FrontmatterParser(),
+        private readonly SkillResolver $skillResolver = new SkillResolver(),
+        private readonly GuidelineResolver $guidelineResolver = new GuidelineResolver(),
+        private readonly FileWriter $writer = new FileWriter(),
         ?InstalledPackages $installedPackages = null,
     ) {
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -78,15 +78,15 @@ final class SyncEngine
     {
         return new self(
             agentTargets: [
-                new ClaudeCodeTarget,
-                new CursorTarget,
-                new CopilotTarget,
-                new CodexTarget,
-                new GeminiTarget,
-                new JunieTarget,
-                new KiroTarget,
-                new OpenCodeTarget,
-                new AmpTarget,
+                new ClaudeCodeTarget(),
+                new CursorTarget(),
+                new CopilotTarget(),
+                new CodexTarget(),
+                new GeminiTarget(),
+                new JunieTarget(),
+                new KiroTarget(),
+                new OpenCodeTarget(),
+                new AmpTarget(),
             ],
             installedPackages: $installedPackages,
         );

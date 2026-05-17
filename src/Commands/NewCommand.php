@@ -23,7 +23,7 @@ use Throwable;
 final class NewCommand extends BaseCommand
 {
     public function __construct(
-        private readonly BoostConfigLoader $loader = new BoostConfigLoader,
+        private readonly BoostConfigLoader $loader = new BoostConfigLoader(),
     ) {
         parent::__construct();
     }
@@ -109,7 +109,7 @@ final class NewCommand extends BaseCommand
         }
 
         $targetDir = $type === 'skill' ? $config->skillsPath : $config->guidelinesPath;
-        $targetFile = $targetDir.'/'.$name.'.md';
+        $targetFile = $targetDir . '/' . $name . '.md';
 
         if (! is_dir($targetDir) && ! @mkdir($targetDir, 0o755, recursive: true) && ! is_dir($targetDir)) {
             $io->error(sprintf('Failed to create directory: %s', $targetDir));

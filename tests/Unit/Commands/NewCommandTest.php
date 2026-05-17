@@ -8,10 +8,10 @@ use Symfony\Component\Console\Tester\CommandTester;
 
 function newTempDir(): string
 {
-    $dir = sys_get_temp_dir().'/boost-new-'.bin2hex(random_bytes(8));
+    $dir = sys_get_temp_dir() . '/boost-new-' . bin2hex(random_bytes(8));
     mkdir($dir, 0o755, recursive: true);
     file_put_contents(
-        $dir.'/boost.php',
+        $dir . '/boost.php',
         "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nreturn BoostConfig::configure();\n",
     );
 
@@ -31,7 +31,7 @@ function rmTreeNew(string $path): void
         if ($entry === '.' || $entry === '..') {
             continue;
         }
-        $full = $path.'/'.$entry;
+        $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             rmTreeNew($full);
         } else {
@@ -47,8 +47,8 @@ function rmTreeNew(string $path): void
  */
 function runNew(array $args): array
 {
-    $command = new NewCommand;
-    $app = new ComposerApplication;
+    $command = new NewCommand();
+    $app = new ComposerApplication();
     $app->addCommand($command);
 
     $tester = new CommandTester($command);
@@ -68,9 +68,9 @@ it('creates a skill file with frontmatter', function (): void {
         ]);
 
         expect($result['exit'])->toBe(0);
-        expect(file_exists($dir.'/.ai/skills/foo-bar.md'))->toBeTrue();
+        expect(file_exists($dir . '/.ai/skills/foo-bar.md'))->toBeTrue();
 
-        $contents = (string) file_get_contents($dir.'/.ai/skills/foo-bar.md');
+        $contents = (string) file_get_contents($dir . '/.ai/skills/foo-bar.md');
         expect($contents)->toContain('name: foo-bar');
         expect($contents)->toContain('description: A foo-bar skill.');
         expect($contents)->toContain('# foo-bar');
@@ -89,7 +89,7 @@ it('creates a guideline file in the guidelines dir', function (): void {
         ]);
 
         expect($result['exit'])->toBe(0);
-        expect(file_exists($dir.'/.ai/guidelines/conventions.md'))->toBeTrue();
+        expect(file_exists($dir . '/.ai/guidelines/conventions.md'))->toBeTrue();
     } finally {
         rmTreeNew($dir);
     }
@@ -120,7 +120,7 @@ it('overwrites with --force', function (): void {
         ]);
 
         expect($second['exit'])->toBe(0);
-        expect((string) file_get_contents($dir.'/.ai/skills/foo.md'))->toContain('Updated.');
+        expect((string) file_get_contents($dir . '/.ai/skills/foo.md'))->toContain('Updated.');
     } finally {
         rmTreeNew($dir);
     }

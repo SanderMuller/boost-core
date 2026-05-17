@@ -65,7 +65,7 @@ final class SyncCommand extends BaseCommand
 
             return self::FAILURE;
         } catch (Throwable $e) {
-            $io->error('boost:sync failed: '.$e->getMessage());
+            $io->error('boost:sync failed: ' . $e->getMessage());
 
             return self::FAILURE;
         }
@@ -91,7 +91,7 @@ final class SyncCommand extends BaseCommand
 
             foreach ($result->writes as $write) {
                 if ($write->action === WriteAction::WOULD_WRITE) {
-                    $io->writeln('  ~ '.$write->relativePath);
+                    $io->writeln('  ~ ' . $write->relativePath);
                 }
             }
 

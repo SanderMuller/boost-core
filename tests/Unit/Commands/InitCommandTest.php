@@ -13,8 +13,8 @@ use Symfony\Component\Console\Tester\CommandTester;
  */
 function runInit(string $dir, bool $force = false): array
 {
-    $command = new InitCommand;
-    $app = new ComposerApplication;
+    $command = new InitCommand();
+    $app = new ComposerApplication();
     $app->addCommand($command);
 
     $tester = new CommandTester($command);
@@ -29,7 +29,7 @@ function runInit(string $dir, bool $force = false): array
 
 function initTempDir(): string
 {
-    $dir = sys_get_temp_dir().'/boost-init-'.bin2hex(random_bytes(8));
+    $dir = sys_get_temp_dir() . '/boost-init-' . bin2hex(random_bytes(8));
     mkdir($dir, 0o755, recursive: true);
 
     return $dir;
@@ -48,7 +48,7 @@ function rmTreeInit(string $path): void
         if ($entry === '.' || $entry === '..') {
             continue;
         }
-        $full = $path.'/'.$entry;
+        $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             rmTreeInit($full);
         } else {
@@ -64,9 +64,9 @@ it('generates a boost.php at the project root', function (): void {
         $result = runInit($dir);
 
         expect($result['exit'])->toBe(0);
-        expect(file_exists($dir.'/boost.php'))->toBeTrue();
+        expect(file_exists($dir . '/boost.php'))->toBeTrue();
 
-        $contents = (string) file_get_contents($dir.'/boost.php');
+        $contents = (string) file_get_contents($dir . '/boost.php');
         expect($contents)->toContain('BoostConfig::configure()');
         expect($contents)->toContain('withAgents');
         expect($contents)->toContain('withAllowedVendors');
@@ -80,7 +80,7 @@ it('the generated file loads as a valid BoostConfigBuilder', function (): void {
     try {
         runInit($dir);
 
-        $config = (new BoostConfigLoader)->load($dir);
+        $config = (new BoostConfigLoader())->load($dir);
 
         expect($config->agents)->toBe([]);
         expect($config->allowedVendors)->toBe([]);
@@ -93,12 +93,12 @@ it('the generated file loads as a valid BoostConfigBuilder', function (): void {
 it('refuses to overwrite an existing boost.php without --force', function (): void {
     $dir = initTempDir();
     try {
-        file_put_contents($dir.'/boost.php', '<?php // existing content');
+        file_put_contents($dir . '/boost.php', '<?php // existing content');
 
         $result = runInit($dir);
 
         expect($result['exit'])->toBe(1);
-        expect(file_get_contents($dir.'/boost.php'))->toBe('<?php // existing content');
+        expect(file_get_contents($dir . '/boost.php'))->toBe('<?php // existing content');
     } finally {
         rmTreeInit($dir);
     }
@@ -107,12 +107,12 @@ it('refuses to overwrite an existing boost.php without --force', function (): vo
 it('overwrites with --force', function (): void {
     $dir = initTempDir();
     try {
-        file_put_contents($dir.'/boost.php', '<?php // existing content');
+        file_put_contents($dir . '/boost.php', '<?php // existing content');
 
         $result = runInit($dir, force: true);
 
         expect($result['exit'])->toBe(0);
-        expect((string) file_get_contents($dir.'/boost.php'))->toContain('BoostConfig::configure()');
+        expect((string) file_get_contents($dir . '/boost.php'))->toContain('BoostConfig::configure()');
     } finally {
         rmTreeInit($dir);
     }
@@ -123,7 +123,7 @@ it('starter config builder is usable (no syntax errors)', function (): void {
     try {
         runInit($dir);
 
-        $result = require $dir.'/boost.php';
+        $result = require $dir . '/boost.php';
         expect($result)->toBeInstanceOf(BoostConfigBuilder::class);
     } finally {
         rmTreeInit($dir);

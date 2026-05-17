@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
-use Composer\Command\BaseCommand;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
@@ -14,7 +13,6 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\WriteAction;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
@@ -22,19 +20,14 @@ use Throwable;
 /**
  * Aggregated diagnostics for a boost-core install.
  */
-final class DoctorCommand extends BaseCommand
+final class DoctorCommand extends BoostBaseCommand
 {
     protected function configure(): void
     {
         $this
             ->setName('boost:doctor')
-            ->setDescription('Diagnose a boost-core install. Reports config, allowlist, drift, etc.')
-            ->addOption(
-                'working-dir',
-                'd',
-                InputOption::VALUE_REQUIRED,
-                'Project root. Defaults to current working directory.',
-            );
+            ->setDescription('Diagnose a boost-core install. Reports config, allowlist, drift, etc.');
+        $this->addWorkingDirOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -59,17 +52,6 @@ final class DoctorCommand extends BaseCommand
         $this->reportDrift($io, $projectRoot);
 
         return self::SUCCESS;
-    }
-
-    private function resolveProjectRoot(InputInterface $input): string
-    {
-        $workingDir = $input->getOption('working-dir');
-        if (is_string($workingDir)) {
-            return rtrim($workingDir, '/');
-        }
-        $cwd = getcwd();
-
-        return rtrim($cwd === false ? '.' : $cwd, '/');
     }
 
     private function loadConfig(SymfonyStyle $io, string $projectRoot): ?BoostConfig

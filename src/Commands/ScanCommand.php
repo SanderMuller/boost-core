@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
-use Composer\Command\BaseCommand;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
 use SanderMuller\BoostCore\Discovery\FirstPartyPrefixes;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
@@ -26,7 +24,7 @@ use function Laravel\Prompts\multiselect;
  * narrower and intended for the common "new dep, want to allowlist it"
  * workflow.
  */
-final class ScanCommand extends BaseCommand
+final class ScanCommand extends BoostBaseCommand
 {
     public function __construct(
         private readonly BoostConfigLoader $loader = new BoostConfigLoader(),
@@ -40,29 +38,15 @@ final class ScanCommand extends BaseCommand
     {
         $this
             ->setName('boost:scan')
-            ->setDescription('Re-run the vendor allowlist picker. Use after installing new packages that publish skills/guidelines.')
-            ->addOption(
-                'working-dir',
-                'd',
-                InputOption::VALUE_REQUIRED,
-                'Project root. Defaults to current working directory.',
-            );
+            ->setDescription('Re-run the vendor allowlist picker. Use after installing new packages that publish skills/guidelines.');
+        $this->addWorkingDirOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-
-        $workingDir = $input->getOption('working-dir');
-        if (is_string($workingDir)) {
-            $projectRoot = $workingDir;
-        } else {
-            $cwd = getcwd();
-            $projectRoot = $cwd === false ? '.' : $cwd;
-        }
-
-        $projectRoot = rtrim($projectRoot, '/');
-        $configPath = $projectRoot . '/boost.php';
+        $projectRoot = $this->resolveProjectRoot($input);
+        $configPath = $projectRoot.'/boost.php';
 
         try {
             $config = $this->loader->load($projectRoot);

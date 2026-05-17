@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
-use Composer\Command\BaseCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -17,7 +16,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * generated config has empty agents + allowlist — user is expected to
  * run `boost:install` next for the interactive picker.
  */
-final class InitCommand extends BaseCommand
+final class InitCommand extends BoostBaseCommand
 {
     protected function configure(): void
     {
@@ -29,29 +28,17 @@ final class InitCommand extends BaseCommand
                 null,
                 InputOption::VALUE_NONE,
                 'Overwrite an existing boost.php.',
-            )
-            ->addOption(
-                'working-dir',
-                'd',
-                InputOption::VALUE_REQUIRED,
-                'Project root. Defaults to current working directory.',
             );
+        $this->addWorkingDirOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-
-        $workingDir = $input->getOption('working-dir');
-        if (is_string($workingDir)) {
-            $projectRoot = $workingDir;
-        } else {
-            $cwd = getcwd();
-            $projectRoot = $cwd === false ? '.' : $cwd;
-        }
+        $projectRoot = $this->resolveProjectRoot($input);
 
         $force = (bool) $input->getOption('force');
-        $target = rtrim($projectRoot, '/') . '/boost.php';
+        $target = $projectRoot.'/boost.php';
 
         if (is_file($target) && ! $force) {
             $io->error(sprintf(

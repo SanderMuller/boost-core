@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
-use Composer\Command\BaseCommand;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -20,7 +19,7 @@ use Throwable;
  *   composer boost:new skill foo-bar
  *   composer boost:new guideline conventions
  */
-final class NewCommand extends BaseCommand
+final class NewCommand extends BoostBaseCommand
 {
     public function __construct(
         private readonly BoostConfigLoader $loader = new BoostConfigLoader(),
@@ -55,13 +54,8 @@ final class NewCommand extends BaseCommand
                 null,
                 InputOption::VALUE_NONE,
                 'Overwrite existing file.',
-            )
-            ->addOption(
-                'working-dir',
-                'd',
-                InputOption::VALUE_REQUIRED,
-                'Project root. Defaults to current working directory.',
             );
+        $this->addWorkingDirOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -89,16 +83,7 @@ final class NewCommand extends BaseCommand
         }
 
         $force = (bool) $input->getOption('force');
-
-        $workingDir = $input->getOption('working-dir');
-        if (is_string($workingDir)) {
-            $projectRoot = $workingDir;
-        } else {
-            $cwd = getcwd();
-            $projectRoot = $cwd === false ? '.' : $cwd;
-        }
-
-        $projectRoot = rtrim($projectRoot, '/');
+        $projectRoot = $this->resolveProjectRoot($input);
 
         try {
             $config = $this->loader->load($projectRoot);

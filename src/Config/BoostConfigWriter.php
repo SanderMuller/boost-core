@@ -91,25 +91,26 @@ final class BoostConfigWriter
             throw new BoostConfigWriteException($configPath, 'no `return` statement found.');
         }
 
-        // Normalise: if the return is a bare StaticCall, wrap it into a single-link MethodCall chain
-        // so we can extend it uniformly.
+        // A bare `return BoostConfig::configure();` has no MethodCall yet — wrap it
+        // in a synthetic one so the rest of the pipeline can handle a single shape.
         if ($return->expr instanceof StaticCall && $this->isBoostConfigConfigure($return->expr)) {
-            // No methods yet — we'll just add them all as a fresh chain.
-            $chain = $return->expr;
-            $chain = new MethodCall($chain, new Node\Identifier('withAgents'), [new Arg($this->agentsToArray($agents))]);
-            $chain = new MethodCall($chain, new Node\Identifier('withAllowedVendors'), [new Arg($this->stringsToArray($allowedVendors))]);
-            $chain = new MethodCall($chain, new Node\Identifier('withDisabledEmitters'), [new Arg($this->stringsToArray($disabledEmitters))]);
-            $return->expr = $chain;
-        } elseif ($return->expr instanceof MethodCall && $this->chainRootsAtBoostConfigConfigure($return->expr)) {
-            $this->setOrInsert($return, 'withAgents', $this->agentsToArray($agents));
-            $this->setOrInsert($return, 'withAllowedVendors', $this->stringsToArray($allowedVendors));
-            $this->setOrInsert($return, 'withDisabledEmitters', $this->stringsToArray($disabledEmitters));
-        } else {
+            $return->expr = new MethodCall(
+                var: $return->expr,
+                name: new Node\Identifier('withAgents'),
+                args: [new Arg($this->agentsToArray([]))],
+            );
+        }
+
+        if (! $return->expr instanceof MethodCall || ! $this->chainRootsAtBoostConfigConfigure($return->expr)) {
             throw new BoostConfigWriteException(
                 $configPath,
                 'could not locate `return BoostConfig::configure()->...;` shape. Hand-edit and re-run.',
             );
         }
+
+        $this->setOrInsert($return, 'withAgents', $this->agentsToArray($agents));
+        $this->setOrInsert($return, 'withAllowedVendors', $this->stringsToArray($allowedVendors));
+        $this->setOrInsert($return, 'withDisabledEmitters', $this->stringsToArray($disabledEmitters));
 
         $newSource = $this->printer->prettyPrintFile($stmts);
 

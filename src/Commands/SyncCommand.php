@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
-use Composer\Command\BaseCommand;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
 use SanderMuller\BoostCore\Sync\EmitterAction;
 use SanderMuller\BoostCore\Sync\SyncEngine;
@@ -16,7 +15,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
 
-final class SyncCommand extends BaseCommand
+final class SyncCommand extends BoostBaseCommand
 {
     protected function configure(): void
     {
@@ -34,26 +33,14 @@ final class SyncCommand extends BaseCommand
                 null,
                 InputOption::VALUE_NONE,
                 'Resolve vendor-vs-vendor skill collisions silently by declaration order.',
-            )
-            ->addOption(
-                'working-dir',
-                'd',
-                InputOption::VALUE_REQUIRED,
-                'Project root. Defaults to current working directory.',
             );
+        $this->addWorkingDirOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-
-        $workingDir = $input->getOption('working-dir');
-        if (is_string($workingDir)) {
-            $projectRoot = $workingDir;
-        } else {
-            $cwd = getcwd();
-            $projectRoot = $cwd === false ? '.' : $cwd;
-        }
+        $projectRoot = $this->resolveProjectRoot($input);
 
         $checkOnly = (bool) $input->getOption('check');
         $force = (bool) $input->getOption('force');

@@ -40,7 +40,6 @@ final class SkillResolver
                 $name = $skill->name;
 
                 if (isset($resolved[$name]) && $resolved[$name]->isHostAuthored()) {
-                    // Host always wins — silent override.
                     continue;
                 }
 
@@ -55,7 +54,6 @@ final class SkillResolver
                     $resolved[$name] = $skill;
                     $vendorsByName[$name] = [(string) $vendor];
                 } else {
-                    // Already claimed by an earlier vendor; force=true path.
                     $vendorsByName[$name][] = (string) $vendor;
                 }
             }

@@ -92,6 +92,158 @@ final class SyncEngine
         );
     }
 
+    /**
+     * Sync a globally-installed package's own `resources/boost/skills/` into
+     * the user's home directory so the skills activate in every AI session
+     * on the machine. Used primarily by Composer-global tools like
+     * `sandermuller/repo-init`.
+     *
+     * Source: `$packageRoot/resources/boost/skills/`.
+     * Target: `$HOME/.{agent}/skills/<package-suffix>/<skill-name>.md`.
+     * Guidelines (CLAUDE.md, AGENTS.md, etc.) are NOT fanned out in user
+     * scope — they'd pollute the home dir with project-specific instructions.
+     *
+     * No `boost.php` required: the invoking package itself is the source,
+     * all 9 agents are activated by default.
+     */
+    public function syncUser(string $packageRoot, bool $checkOnly = false, ?string $homeRoot = null): UserScopeResult
+    {
+        $packageRoot = rtrim($packageRoot, '/');
+        $home = $homeRoot !== null ? rtrim($homeRoot, '/') : $this->resolveHomeDirectory();
+
+        $composerJson = $packageRoot . '/composer.json';
+        if (! is_file($composerJson)) {
+            return new UserScopeResult(
+                packageName: '',
+                homeRoot: $home,
+                writes: [],
+                errors: [sprintf('composer.json not found at %s', $composerJson)],
+                check: $checkOnly,
+            );
+        }
+
+        $packageName = $this->extractPackageName($composerJson);
+        if ($packageName === null) {
+            return new UserScopeResult(
+                packageName: '',
+                homeRoot: $home,
+                writes: [],
+                errors: [sprintf('Could not read `name` from %s', $composerJson)],
+                check: $checkOnly,
+            );
+        }
+
+        $packageSuffix = $this->packageSuffix($packageName);
+        $skillsDir = $packageRoot . '/resources/boost/skills';
+
+        /** @var list<Skill> $skills */
+        $skills = [];
+        foreach ($this->skillLoader->load($skillsDir, $packageName) as $skill) {
+            $skills[] = $skill;
+        }
+
+        /** @var list<WrittenFile> $writes */
+        $writes = [];
+        /** @var list<string> $errors */
+        $errors = [];
+
+        foreach ($this->agentTargets as $target) {
+            foreach ($target->plan($skills, []) as $pending) {
+                $rewritten = $this->rewriteForUserScope($pending->relativePath, $packageSuffix);
+                if ($rewritten === null) {
+                    continue;
+                }
+                try {
+                    $writes[] = $this->writer->write(
+                        $home,
+                        new PendingWrite($rewritten, $pending->content),
+                        $checkOnly,
+                    );
+                } catch (Throwable $e) {
+                    $errors[] = sprintf(
+                        'Failed to write %s for %s: %s',
+                        $rewritten,
+                        $target->agent()->value,
+                        $e->getMessage(),
+                    );
+                }
+            }
+        }
+
+        return new UserScopeResult(
+            packageName: $packageName,
+            homeRoot: $home,
+            writes: $writes,
+            errors: $errors,
+            check: $checkOnly,
+        );
+    }
+
+    private function resolveHomeDirectory(): string
+    {
+        $home = getenv('HOME');
+        if (is_string($home) && $home !== '') {
+            return rtrim($home, '/');
+        }
+
+        // Windows fallback
+        $userprofile = getenv('USERPROFILE');
+        if (is_string($userprofile) && $userprofile !== '') {
+            return rtrim($userprofile, '/\\');
+        }
+
+        return sys_get_temp_dir();
+    }
+
+    private function extractPackageName(string $composerJsonPath): ?string
+    {
+        $raw = @file_get_contents($composerJsonPath);
+        if ($raw === false) {
+            return null;
+        }
+
+        try {
+            $decoded = json_decode($raw, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+
+        $name = is_array($decoded) ? ($decoded['name'] ?? null) : null;
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
+    private function packageSuffix(string $packageName): string
+    {
+        $slash = strrpos($packageName, '/');
+
+        return $slash === false ? $packageName : substr($packageName, $slash + 1);
+    }
+
+    /**
+     * Inject the package-suffix between `skills/` and the filename so multiple
+     * packages can publish user-scope skills without colliding. Returns null
+     * for paths that aren't under a `skills/` directory (guideline files).
+     *
+     * Examples:
+     *   `.claude/skills/foo.md` + `repo-init` → `.claude/skills/repo-init/foo.md`
+     *   `CLAUDE.md`                             → null
+     *   `.github/copilot-instructions.md`       → null
+     */
+    private function rewriteForUserScope(string $relativePath, string $packageSuffix): ?string
+    {
+        $marker = '/skills/';
+        $pos = strpos($relativePath, $marker);
+        if ($pos === false) {
+            return null;
+        }
+
+        $prefix = substr($relativePath, 0, $pos + strlen($marker));
+        $filename = substr($relativePath, $pos + strlen($marker));
+
+        return $prefix . $packageSuffix . '/' . $filename;
+    }
+
     public function sync(string $projectRoot, bool $checkOnly = false, bool $force = false): SyncResult
     {
         $projectRoot = rtrim($projectRoot, '/');

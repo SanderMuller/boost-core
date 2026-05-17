@@ -8,7 +8,9 @@ use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
+use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
+use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Skills\CollidingSkillsException;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
@@ -23,18 +25,28 @@ use Throwable;
 /**
  * Orchestrates a full boost:sync run.
  *
- * Steps:
- * 1. Load `boost.php` config.
+ * Pipeline:
+ * 1. Load boost.php config.
  * 2. Snapshot installed Composer packages.
  * 3. Walk vendor publishers, filter by allowlist.
- * 4. Load host + allowlisted-vendor skills + guidelines.
- * 5. Resolve collisions (host wins, vendor-vs-vendor strict unless --force).
- * 6. For each agent in the config, plan + write.
- *
- * FileEmitter wiring lands in a subsequent commit. Until then `emit` is a no-op.
+ * 4. Discover FileEmitter classes from allowlisted vendors.
+ * 5. Load host + vendor skills/guidelines.
+ * 6. Resolve collisions (host wins, vendor-vs-vendor strict unless --force).
+ * 7. Run FileEmitters (before fan-out — one-way dependency).
+ * 8. Agent fan-out: skills + guidelines per active agent.
  */
 final class SyncEngine
 {
+    private readonly InstalledPackages $installedPackages;
+
+    private readonly SkillLoader $skillLoader;
+
+    private readonly GuidelineLoader $guidelineLoader;
+
+    private readonly VendorScanner $vendorScanner;
+
+    private readonly EmitterDiscovery $emitterDiscovery;
+
     /**
      * @param  list<AgentTarget>  $agentTargets
      */
@@ -51,20 +63,9 @@ final class SyncEngine
         $this->skillLoader = new SkillLoader($this->frontmatterParser);
         $this->guidelineLoader = new GuidelineLoader($this->frontmatterParser);
         $this->vendorScanner = new VendorScanner($this->installedPackages);
+        $this->emitterDiscovery = new EmitterDiscovery($this->installedPackages);
     }
 
-    private readonly InstalledPackages $installedPackages;
-
-    private readonly SkillLoader $skillLoader;
-
-    private readonly GuidelineLoader $guidelineLoader;
-
-    private readonly VendorScanner $vendorScanner;
-
-    /**
-     * Default wiring with all available AgentTargets. Add more targets here as
-     * they ship (one per agent in `Agent` enum).
-     */
     public static function default(?InstalledPackages $installedPackages = null): self
     {
         return new self(
@@ -87,10 +88,25 @@ final class SyncEngine
             $resolvedSkills = $this->resolveSkills($config, $allowedVendors, $force);
             $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force);
         } catch (CollidingSkillsException $e) {
-            return new SyncResult(writes: [], errors: [$e->getMessage()], check: $checkOnly);
+            return new SyncResult(writes: [], emitters: [], errors: [$e->getMessage()], check: $checkOnly);
         }
 
-        return $this->fanOut($projectRoot, $config, $resolvedSkills, $resolvedGuidelines, $checkOnly);
+        $context = new SyncContext(
+            projectRoot: $projectRoot,
+            packages: $this->installedPackages,
+            config: $config,
+        );
+
+        $emitterResults = $this->runEmitters($projectRoot, $config, $context, $checkOnly);
+
+        return $this->fanOut(
+            $projectRoot,
+            $config,
+            $resolvedSkills,
+            $resolvedGuidelines,
+            $emitterResults,
+            $checkOnly,
+        );
     }
 
     /**
@@ -151,11 +167,131 @@ final class SyncEngine
     }
 
     /**
+     * @return list<EmitterResult>
+     */
+    private function runEmitters(string $projectRoot, BoostConfig $config, SyncContext $context, bool $checkOnly): array
+    {
+        $allowedVendors = $config->allowedVendors;
+        $discovered = $this->emitterDiscovery->discover($allowedVendors);
+
+        /** @var list<EmitterResult> $results */
+        $results = [];
+        /** @var array<string, string> $claimedPaths Path → emitter FQCN, for collision detection. */
+        $claimedPaths = [];
+
+        foreach ($discovered as $emitter) {
+            if ($config->isEmitterDisabled($emitter->fqcn)) {
+                $results[] = new EmitterResult(
+                    fqcn: $emitter->fqcn,
+                    vendor: $emitter->vendor,
+                    action: EmitterAction::DISABLED,
+                    relativePath: null,
+                    reason: 'Disabled via withDisabledEmitters() in boost.php.',
+                );
+
+                continue;
+            }
+
+            $results[] = $this->runOneEmitter($emitter, $context, $projectRoot, $checkOnly, $claimedPaths);
+        }
+
+        return $results;
+    }
+
+    /**
+     * @param  array<string, string>  $claimedPaths
+     */
+    private function runOneEmitter(
+        DiscoveredEmitter $emitter,
+        SyncContext $context,
+        string $projectRoot,
+        bool $checkOnly,
+        array &$claimedPaths,
+    ): EmitterResult {
+        try {
+            $emitted = $emitter->emitter->emit($context);
+        } catch (Throwable $e) {
+            return new EmitterResult(
+                fqcn: $emitter->fqcn,
+                vendor: $emitter->vendor,
+                action: EmitterAction::ERRORED,
+                relativePath: null,
+                reason: $e->getMessage(),
+            );
+        }
+
+        if ($emitted === null) {
+            return new EmitterResult(
+                fqcn: $emitter->fqcn,
+                vendor: $emitter->vendor,
+                action: EmitterAction::SKIPPED,
+                relativePath: null,
+                reason: 'emit() returned null.',
+            );
+        }
+
+        if (isset($claimedPaths[$emitted->relativePath])) {
+            return new EmitterResult(
+                fqcn: $emitter->fqcn,
+                vendor: $emitter->vendor,
+                action: EmitterAction::ERRORED,
+                relativePath: $emitted->relativePath,
+                reason: sprintf(
+                    'Path "%s" already claimed by emitter %s.',
+                    $emitted->relativePath,
+                    $claimedPaths[$emitted->relativePath],
+                ),
+            );
+        }
+        $claimedPaths[$emitted->relativePath] = $emitter->fqcn;
+
+        try {
+            $write = $this->writer->write(
+                $projectRoot,
+                new PendingWrite($emitted->relativePath, $emitted->content),
+                $checkOnly,
+            );
+        } catch (Throwable $e) {
+            return new EmitterResult(
+                fqcn: $emitter->fqcn,
+                vendor: $emitter->vendor,
+                action: EmitterAction::ERRORED,
+                relativePath: $emitted->relativePath,
+                reason: $e->getMessage(),
+            );
+        }
+
+        return new EmitterResult(
+            fqcn: $emitter->fqcn,
+            vendor: $emitter->vendor,
+            action: $this->mapWriteAction($write->action),
+            relativePath: $write->relativePath,
+            reason: null,
+        );
+    }
+
+    private function mapWriteAction(WriteAction $action): EmitterAction
+    {
+        return match ($action) {
+            WriteAction::WROTE => EmitterAction::WROTE,
+            WriteAction::UNCHANGED => EmitterAction::UNCHANGED,
+            WriteAction::WOULD_WRITE => EmitterAction::WOULD_WRITE,
+        };
+    }
+
+    /**
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
+     * @param  list<EmitterResult>  $emitterResults
      */
-    private function fanOut(string $projectRoot, BoostConfig $config, array $skills, array $guidelines, bool $checkOnly): SyncResult
-    {
+    private function fanOut(
+        string $projectRoot,
+        BoostConfig $config,
+        array $skills,
+        array $guidelines,
+        array $emitterResults,
+        bool $checkOnly,
+    ): SyncResult {
         /** @var list<WrittenFile> $writes */
         $writes = [];
         /** @var list<string> $errors */
@@ -180,6 +316,6 @@ final class SyncEngine
             }
         }
 
-        return new SyncResult(writes: $writes, errors: $errors, check: $checkOnly);
+        return new SyncResult(writes: $writes, emitters: $emitterResults, errors: $errors, check: $checkOnly);
     }
 }

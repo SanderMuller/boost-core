@@ -6,6 +6,7 @@ namespace SanderMuller\BoostCore\Commands;
 
 use Composer\Command\BaseCommand;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
+use SanderMuller\BoostCore\Sync\EmitterAction;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Sync\WriteAction;
@@ -99,14 +100,25 @@ final class SyncCommand extends BaseCommand
 
         $wrote = $result->countByAction(WriteAction::WROTE);
         $unchanged = $result->countByAction(WriteAction::UNCHANGED);
+        $emittersWrote = $result->countEmittersByAction(EmitterAction::WROTE);
+        $emittersSkipped = $result->countEmittersByAction(EmitterAction::SKIPPED);
+
+        $emitterSummary = '';
+        if ($result->emitters !== []) {
+            $emitterSummary = sprintf(
+                ' emitters(wrote=%d, skipped=%d)',
+                $emittersWrote,
+                $emittersSkipped,
+            );
+        }
 
         if ($checkOnly) {
-            $io->success(sprintf('No drift. %d file(s) unchanged.', $unchanged));
+            $io->success(sprintf('No drift. %d file(s) unchanged.%s', $unchanged, $emitterSummary));
 
             return self::SUCCESS;
         }
 
-        $io->success(sprintf('Sync done. wrote=%d, unchanged=%d.', $wrote, $unchanged));
+        $io->success(sprintf('Sync done. wrote=%d, unchanged=%d.%s', $wrote, $unchanged, $emitterSummary));
 
         return self::SUCCESS;
     }

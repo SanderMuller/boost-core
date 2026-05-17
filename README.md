@@ -4,8 +4,6 @@
 
 **Status:** Under construction. Not yet usable.
 
-See the design docs in the companion `elements` repo at `internal/boost-architecture-plan.md` for design rationale.
-
 ## Goals
 
 - Author skills and guidelines once in `.ai/`, publish to nine AI agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp).

@@ -46,7 +46,7 @@ final class InstallCommand extends BoostBaseCommand
     {
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
-        $configPath = $projectRoot.'/boost.php';
+        $configPath = $projectRoot . '/boost.php';
 
         try {
             $config = $this->loader->load($projectRoot);

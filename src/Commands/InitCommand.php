@@ -38,7 +38,7 @@ final class InitCommand extends BoostBaseCommand
         $projectRoot = $this->resolveProjectRoot($input);
 
         $force = (bool) $input->getOption('force');
-        $target = $projectRoot.'/boost.php';
+        $target = $projectRoot . '/boost.php';
 
         if (is_file($target) && ! $force) {
             $io->error(sprintf(

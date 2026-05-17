@@ -1,0 +1,70 @@
+<?php
+
+declare(strict_types=1);
+
+use SanderMuller\BoostCore\Agents\AgentTarget;
+use SanderMuller\BoostCore\Agents\AmpTarget;
+use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
+use SanderMuller\BoostCore\Agents\CodexTarget;
+use SanderMuller\BoostCore\Agents\CopilotTarget;
+use SanderMuller\BoostCore\Agents\CursorTarget;
+use SanderMuller\BoostCore\Agents\GeminiTarget;
+use SanderMuller\BoostCore\Agents\JunieTarget;
+use SanderMuller\BoostCore\Agents\KiroTarget;
+use SanderMuller\BoostCore\Agents\OpenCodeTarget;
+use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Skills\Skill;
+
+/**
+ * @return list<array{AgentTarget, Agent, string, string}> [target, agent, skillsDir, guidelinesFile]
+ */
+function allTargets(): array
+{
+    return [
+        [new ClaudeCodeTarget, Agent::CLAUDE_CODE, '.claude/skills', 'CLAUDE.md'],
+        [new CursorTarget, Agent::CURSOR, '.cursor/skills', 'AGENTS.md'],
+        [new CopilotTarget, Agent::COPILOT, '.github/skills', '.github/copilot-instructions.md'],
+        [new CodexTarget, Agent::CODEX, '.agents/skills', 'AGENTS.md'],
+        [new GeminiTarget, Agent::GEMINI, '.gemini/skills', 'GEMINI.md'],
+        [new JunieTarget, Agent::JUNIE, '.junie/skills', 'AGENTS.md'],
+        [new KiroTarget, Agent::KIRO, '.kiro/skills', 'AGENTS.md'],
+        [new OpenCodeTarget, Agent::OPENCODE, '.opencode/skills', 'AGENTS.md'],
+        [new AmpTarget, Agent::AMP, '.amp/skills', 'AGENTS.md'],
+    ];
+}
+
+it('every Agent enum case has a matching AgentTarget', function (): void {
+    $covered = array_map(static fn (array $row): Agent => $row[1], allTargets());
+
+    foreach (Agent::cases() as $agent) {
+        expect(in_array($agent, $covered, true))
+            ->toBeTrue();
+    }
+    expect($covered)->toHaveCount(count(Agent::cases()));
+});
+
+it('each target reports the correct agent + paths', function (): void {
+    foreach (allTargets() as [$target, $agent, $skillsDir, $guidelinesFile]) {
+        expect($target->agent())->toBe($agent);
+        expect($target->skillsDirectoryRelative())->toBe($skillsDir);
+        expect($target->guidelinesFileRelative())->toBe($guidelinesFile);
+    }
+});
+
+it('every target plans at least one skill file when given one skill', function (): void {
+    $skill = new Skill(
+        name: 'foo',
+        description: null,
+        frontmatter: ['name' => 'foo'],
+        body: 'body',
+        sourcePath: '/fake',
+        sourceVendor: null,
+    );
+
+    foreach (allTargets() as [$target, $agent, $skillsDir]) {
+        $writes = $target->plan([$skill], []);
+
+        expect($writes)->toHaveCount(1);
+        expect($writes[0]->relativePath)->toBe($skillsDir.'/foo.md');
+    }
+});

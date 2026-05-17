@@ -5,7 +5,15 @@ declare(strict_types=1);
 namespace SanderMuller\BoostCore\Sync;
 
 use SanderMuller\BoostCore\Agents\AgentTarget;
+use SanderMuller\BoostCore\Agents\AmpTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
+use SanderMuller\BoostCore\Agents\CodexTarget;
+use SanderMuller\BoostCore\Agents\CopilotTarget;
+use SanderMuller\BoostCore\Agents\CursorTarget;
+use SanderMuller\BoostCore\Agents\GeminiTarget;
+use SanderMuller\BoostCore\Agents\JunieTarget;
+use SanderMuller\BoostCore\Agents\KiroTarget;
+use SanderMuller\BoostCore\Agents\OpenCodeTarget;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
@@ -71,7 +79,14 @@ final class SyncEngine
         return new self(
             agentTargets: [
                 new ClaudeCodeTarget,
-                // Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp land in a later commit.
+                new CursorTarget,
+                new CopilotTarget,
+                new CodexTarget,
+                new GeminiTarget,
+                new JunieTarget,
+                new KiroTarget,
+                new OpenCodeTarget,
+                new AmpTarget,
             ],
             installedPackages: $installedPackages,
         );

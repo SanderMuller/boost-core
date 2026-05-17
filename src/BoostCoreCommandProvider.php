@@ -6,6 +6,7 @@ namespace SanderMuller\BoostCore;
 
 use Composer\Command\BaseCommand;
 use Composer\Plugin\Capability\CommandProvider;
+use SanderMuller\BoostCore\Commands\InitCommand;
 use SanderMuller\BoostCore\Commands\SyncCommand;
 
 final class BoostCoreCommandProvider implements CommandProvider
@@ -16,8 +17,9 @@ final class BoostCoreCommandProvider implements CommandProvider
     public function getCommands(): array
     {
         return [
+            new InitCommand,
             new SyncCommand,
-            // boost:init, boost:install, boost:new, boost:doctor, boost:scan land in later commits.
+            // boost:install, boost:scan, boost:doctor, boost:new land in later commits.
         ];
     }
 }

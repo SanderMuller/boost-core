@@ -71,7 +71,10 @@
         "bin/boost"
     ],
     "extra": {
-        "class": "SanderMuller\\BoostCore\\BoostCorePlugin"
+        "class": "SanderMuller\\BoostCore\\BoostCorePlugin",
+        "branch-alias": {
+            "dev-main": "1.x-dev"
+        }
     },
     "scripts": {
         "post-install-cmd": [

@@ -41,4 +41,3 @@ it('starts with empty agents, vendors, and disabled emitters', function (): void
     expect($config->allowedVendors)->toBe([]);
     expect($config->disabledEmitters)->toBe([]);
 });
-

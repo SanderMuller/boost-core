@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore;
 
+use Composer\Command\BaseCommand;
 use Composer\Plugin\Capability\CommandProvider;
-use Symfony\Component\Console\Command\Command;
 
 final class BoostCoreCommandProvider implements CommandProvider
 {
     /**
-     * @return array<int, Command>
+     * @return array<BaseCommand>
      */
     public function getCommands(): array
     {

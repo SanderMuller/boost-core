@@ -1,0 +1,5 @@
+{
+    "name": "test-fixture/with-skills-default",
+    "description": "Fixture: publishes skills at the convention path.",
+    "type": "library"
+}

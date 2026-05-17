@@ -1,0 +1,5 @@
+{
+    "name": "test-fixture/no-boost-content",
+    "description": "Fixture: regular composer package with no boost publishing.",
+    "type": "library"
+}

@@ -1,0 +1,11 @@
+{
+    "name": "test-fixture/with-custom-skills",
+    "description": "Fixture: publishes skills at a non-conventional path via extra.boost.skills.",
+    "type": "library",
+    "extra": {
+        "boost": {
+            "skills": "ai/custom-skills",
+            "guidelines": "ai/custom-guidelines"
+        }
+    }
+}

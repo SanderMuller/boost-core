@@ -1,0 +1,5 @@
+{
+    "name": "test-fixture/guidelines-only",
+    "description": "Fixture: publishes guidelines but no skills.",
+    "type": "library"
+}

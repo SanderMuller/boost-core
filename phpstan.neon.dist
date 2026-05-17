@@ -40,3 +40,16 @@ parameters:
         -
             identifier: trait.unused
             reportUnmatched: false
+        -
+            identifier: method.internalClass
+            path: tests/*
+            reportUnmatched: false
+        # Pest's `$this->foo` in beforeEach binds dynamic properties on the test scope.
+        -
+            identifier: property.notFound
+            path: tests/*
+            reportUnmatched: false
+        -
+            identifier: method.nonObject
+            path: tests/*
+            reportUnmatched: false

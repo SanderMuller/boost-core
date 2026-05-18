@@ -5,19 +5,21 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.2...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.3...HEAD)
 
 ### Fixed
 
 - **`BOOST_SKIP_AUTOSYNC` env var now honored by `Scripts\BoostAutoSync::run` and `::runWithSummary`.** The plugin's `onPostAutoloadDump` hook honored the env var, but the script callbacks shipped in 0.3.1 didn't — so consumers wiring `BoostAutoSync::run` into their own `post-install-cmd` per the documented recommendation lost the escape hatch the env var was supposed to provide. The check now lives in the shared `resolveAndRun` helper so both callables (and any future siblings) inherit it; CI runners + ephemeral Docker installs can disable auto-sync uniformly regardless of which entry point fires.
-
+  
 - **`BoostAutoSync` callbacks now resolve `bin/boost` at the project root as a fallback** when `config.bin-dir/boost` isn't present. Composer only symlinks dependency bins into `vendor/bin/`, never the root package's own bins — so boost-core's own dev tree (and any future package that self-references its own bin) couldn't use `BoostAutoSync::run` for its own `post-install-cmd`. The fallback closes that gap while keeping all the existing guards (`--no-dev`, `BOOST_SKIP_AUTOSYNC`) intact — one callable, both contexts.
+  
 
 ### Internal
 
 - **Self-sync boost-core's own fan-out (item #9).** Composer plugins don't activate in their own dev env, so `BoostCorePlugin::onPostAutoloadDump` never fires for boost-core. 69 fan-out files (per-agent skill symlinks + root guideline files like `AGENTS.md` / `CLAUDE.md` / `GEMINI.md`) were committed to git as a workaround. Now that `BoostAutoSync::run` resolves the root-package bin (see above), `composer.json`'s `post-install-cmd` / `post-update-cmd` use the canonical callable and the 69 files are removed from git. All paths were already gitignored under the managed `# >>> boost (managed) >>>` block; future syncs regenerate them locally without staleness drift.
-
+  
 - **AST round-trip stability tests for `BoostConfigWriter` (item #10).** `BoostConfigWriter` has documented best-effort semantics on formatting (header docblocks stripped, blank-line layout drift). The writer's behavioural contract — parse → write → parse → reload returns identical agents / vendors / disabled-emitters lists — wasn't pinned by any test. Six new cases in `tests/Unit/Config/BoostConfigWriterRoundTripTest.php` pin semantic equivalence (not formatting), including a double-round-trip idempotency case and a case exercising the exact starter-template shape `InstallCommand` emits on first run. Lets a future switch to PHP-Parser's `printFormatPreserving` printer be verified against the same contract without rewriting assertions.
+  
 
 ### Added
 
@@ -68,6 +70,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Note:** `0.1.0` and `0.1.1` ship a broken standalone `bin/boost` for end-user installs (fatal at startup, as above). Use `0.1.2`+ if you invoke `vendor/bin/boost` directly. The `composer boost:*` plugin path is unaffected.
 
+## [0.3.3](https://github.com/sandermuller/boost-core/compare/0.3.2...0.3.3) - 2026-05-18
+
+### Fixed
+
+- **`BoostAutoSync` callbacks now resolve `bin/boost` at the project root as a fallback** when `config.bin-dir/boost` isn't present. Composer only symlinks dependency bins into `vendor/bin/`, never the root package's own bins — so boost-core's own dev tree (and any future package that self-references its own bin) couldn't use `BoostAutoSync::run` for its own `post-install-cmd` without bypassing the documented guards. The fallback closes that gap; both `--no-dev` and `BOOST_SKIP_AUTOSYNC=1` are now honored uniformly whether the callable runs in a consumer project or a self-referencing root package.
+
+### Internal
+
+- **Self-sync boost-core's own fan-out.** Composer plugins don't activate in their own dev env, so `BoostCorePlugin::onPostAutoloadDump` never fires for boost-core itself. The workaround was committing 69 per-agent fan-out files to git, which drifted from `.ai/` sources on every skill change. Now that `BoostAutoSync::run` handles the root-package case (see Fixed above), `composer.json`'s `post-install-cmd` / `post-update-cmd` use the canonical callable and the 69 files are removed from git. All paths were already gitignored under the managed `# >>> boost (managed) >>>` block; future syncs regenerate them locally.
+  
+- **AST round-trip stability tests for `BoostConfigWriter`.** `BoostConfigWriter` has documented best-effort semantics on formatting (header docblocks stripped, blank-line layout may drift). Six new test cases in `tests/Unit/Config/BoostConfigWriterRoundTripTest.php` pin semantic equivalence across `parse → write → parse → reload` cycles — agents, vendors, and disabled-emitters lists must survive identically regardless of formatting drift. Includes a double-round-trip idempotency case and a case exercising the exact starter-template shape `InstallCommand` emits on first run. Lets a future switch to PHP-Parser's `printFormatPreserving` printer be verified against the same contract without rewriting assertions.
+  
+
+### Upgrade notes
+
+`composer require sandermuller/boost-core:^0.3.3` — drop-in, no migration needed. The fallback fix only changes behaviour for packages that wire `BoostAutoSync::run` into their own `composer.json` while also being self-referencing (their own bin lives at the project root, not `vendor/bin/`). Consumer projects depending on boost-core via `vendor/` are unaffected.
+
+**Full changelog:** https://github.com/SanderMuller/boost-core/compare/0.3.2...0.3.3
+
 ## [0.3.2](https://github.com/sandermuller/boost-core/compare/0.3.1...0.3.2) - 2026-05-18
 
 ### Added
@@ -76,10 +97,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   
     ```json
     "scripts": {
-      "post-install-cmd": ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"],
-      "post-update-cmd":  ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"],
-      "sync-ai":          ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::runWithSummary"]
+    "post-install-cmd": ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"],
+    "post-update-cmd":  ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"],
+    "sync-ai":          ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::runWithSummary"]
   }
+  
   
     ```
 
@@ -107,13 +129,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   
     ```json
     "scripts": {
-    "post-install-cmd": [
-        "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
-    ],
-    "post-update-cmd": [
-        "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
-    ]
+  "post-install-cmd": [
+      "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
+  ],
+  "post-update-cmd": [
+      "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
+  ]
   }
+  
   
   
     ```

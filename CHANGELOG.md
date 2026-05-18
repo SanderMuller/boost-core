@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.1.2...HEAD)
 
+### Added
+
+- **`BoostCorePlugin` now auto-syncs user-scope skills in `composer global` context.** When Composer runs under `composer global <cmd>` (detected via `composer->getConfig()->get('home') === cwd` AND `argv` contains `global`), the plugin iterates every globally-installed package, finds those shipping `resources/boost/skills/`, and syncs each into the agents' home-directory skill folders (`~/.claude/skills/{package}/`, etc.) — equivalent to `vendor/bin/boost sync --scope=user` per package. Lets packages like `sandermuller/repo-init` drop their own post-install scripts; installing them via `composer global require` is enough. `BOOST_SKIP_AUTOSYNC=1` bypasses, same as project-scope auto-sync.
+
 ### Fixed
 
 - **Standalone `bin/boost` no longer fatals in end-user (non-dev) installs.** `BoostCoreCommandProvider` implements `Composer\Plugin\Capability\CommandProvider` and `BoostBaseCommand` extended `Composer\Command\BaseCommand` — both classes only exist in vendor/ when `composer/composer` is dev-installed. End users running `vendor/bin/boost` got `Interface "Composer\Plugin\Capability\CommandProvider" not found`. Standalone bin now consumes a new `CommandRegistry` (zero Composer deps) and `BoostBaseCommand` extends `Symfony\Console\Command\Command` directly. Composer plugin path is unchanged.

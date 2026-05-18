@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+use Symfony\Component\Process\Process;
 
 /**
  * @return array{exit: int, output: string}
  */
 function runBin(string $args): array
 {
-    $process = \Symfony\Component\Process\Process::fromShellCommandline(
+    $process = Process::fromShellCommandline(
         'php ' . escapeshellarg(dirname(__DIR__, 2) . '/bin/boost') . ' ' . $args,
     );
     $process->run();

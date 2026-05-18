@@ -2,6 +2,11 @@
 
 > AI agent configuration sync for PHP projects. Author skills and guidelines once in `.ai/`, publish to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). Framework-free PHP, allowlist-based vendor trust, Rector-style explicit commands.
 
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/sandermuller/boost-core.svg?style=flat-square)](https://packagist.org/packages/sandermuller/boost-core)
+[![Tests](https://img.shields.io/github/actions/workflow/status/sandermuller/boost-core/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/sandermuller/boost-core/actions/workflows/run-tests.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/sandermuller/boost-core.svg?style=flat-square)](https://packagist.org/packages/sandermuller/boost-core)
+[![License](https://img.shields.io/packagist/l/sandermuller/boost-core.svg?style=flat-square)](LICENSE)
+
 ## Install
 
 You don't usually install `boost-core` directly — it comes in as a dep of one of the bundle packages that match your role:
@@ -23,7 +28,7 @@ composer require --dev sandermuller/package-boost-laravel
 Direct install for tooling authors who want to ship their own skill bundle:
 
 ```bash
-composer require --dev "sandermuller/boost-core:^1.0@dev"
+composer require --dev sandermuller/boost-core:^0.2
 ```
 
 ## Usage
@@ -62,7 +67,34 @@ Or one-off via env var (useful for CI / ephemeral Docker installs):
 BOOST_SKIP_GITIGNORE=1 composer install
 ```
 
+## Testing
+
+```bash
+composer test
+```
+
+That runs the full Pest suite (unit + integration, including real `composer install` subprocesses for the standalone-bin, plugin-capability, and global-context surfaces). Coverage report via `composer test-coverage`.
+
+## Changelog
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full release history. The GitHub [releases page](https://github.com/sandermuller/boost-core/releases) has per-version notes.
+
 See [`RELEASING.md`](RELEASING.md) for the publish path. The FileEmitter plugin contract is `@experimental` — the shape will change before v1.0 stable.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for development setup, test conventions, and the pre-release gauntlet.
+
+## Security
+
+If you find a security issue, please email `github@scode.nl` rather than filing a public issue. See [`SECURITY.md`](SECURITY.md) for the disclosure policy.
+
+## Credits
+
+- [Sander Muller](https://github.com/sandermuller)
+- [All contributors](https://github.com/sandermuller/boost-core/contributors)
+
+Heavy inspiration from [`laravel/boost`](https://github.com/laravel/boost) — this is its framework-free sibling.
 
 ## License
 

@@ -20,6 +20,13 @@ use Symfony\Component\Yaml\Yaml;
  */
 abstract class AgentTarget
 {
+    /**
+     * Canonical filename inside each `<name>/` skill directory. Centralised
+     * so the same literal isn't hard-coded in both the writer (this class)
+     * and the legacy-prune logic in SyncEngine.
+     */
+    public const string SKILL_FILE = 'SKILL.md';
+
     abstract public function agent(): Agent;
 
     /**
@@ -89,7 +96,7 @@ abstract class AgentTarget
      */
     public function skillRelativePath(Skill $skill): string
     {
-        return $skill->name . '/SKILL.md';
+        return $skill->name . '/' . self::SKILL_FILE;
     }
 
     public function formatSkillContent(Skill $skill): string

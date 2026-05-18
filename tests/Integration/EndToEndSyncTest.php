@@ -152,10 +152,13 @@ it('does NOT prune the legacy flat sibling if the new write fails', function ():
         // FileWriter can't mkdir/write inside it.
         file_put_contents($root . '/.claude/skills/foo', "blocker\n");
 
-        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        // Write failed → the legacy copy MUST still be there. The fix lives in
-        // SyncEngine::fanOut: prune only runs in the success branch of the try.
+        // The blocker MUST have actually caused a write failure — otherwise
+        // a future refactor that silently no-ops on the blocker would still
+        // pass the legacy-preservation assertion below.
+        expect($result->hasErrors())->toBeTrue();
+        // Legacy copy is the only good copy left; pruning it would mean data loss.
         expect(file_exists($root . '/.claude/skills/foo.md'))->toBeTrue();
         expect(file_get_contents($root . '/.claude/skills/foo.md'))->toContain('last good copy');
     } finally {

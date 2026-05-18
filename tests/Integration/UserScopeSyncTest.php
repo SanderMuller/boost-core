@@ -44,6 +44,40 @@ function rmTreeUserScope(string $path): void
     rmdir($path);
 }
 
+it('user-scope sync does NOT prune the legacy sibling if the new write fails', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        file_put_contents(
+            $pkg . '/composer.json',
+            json_encode(['name' => 'test-vendor/sample-tool'], JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $pkg . '/resources/boost/skills/sample-skill.md',
+            "---\nname: sample-skill\n---\nNew body.\n",
+        );
+
+        // Legacy flat sibling + a blocker file at the target dir path so
+        // FileWriter can't mkdir/write the new SKILL.md.
+        mkdir($home . '/.claude/skills/sample-tool', 0o755, recursive: true);
+        file_put_contents($home . '/.claude/skills/sample-tool/sample-skill.md', "last good copy\n");
+        file_put_contents($home . '/.claude/skills/sample-tool/sample-skill', "blocker\n");
+
+        $result = (new SyncEngine([
+            new ClaudeCodeTarget(),
+        ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
+
+        expect($result->hasErrors())->toBeTrue();
+        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))->toBeTrue();
+        expect(file_get_contents($home . '/.claude/skills/sample-tool/sample-skill.md'))->toContain('last good copy');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
 it('user-scope sync prunes a legacy flat `<skill>.md` sibling alongside the new dir', function (): void {
     $dirs = makeUserScopeTempDirs();
     $pkg = $dirs['package'];

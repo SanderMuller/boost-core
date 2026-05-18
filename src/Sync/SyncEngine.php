@@ -155,23 +155,14 @@ final class SyncEngine
                 if ($rewritten === null) {
                     continue;
                 }
-                try {
-                    $writes[] = $this->writer->write(
-                        $home,
-                        new PendingWrite($rewritten, $pending->content),
-                        $checkOnly,
-                    );
-                    if (! $checkOnly) {
-                        $this->pruneLegacyFlatSibling($home, $rewritten);
-                    }
-                } catch (Throwable $e) {
-                    $errors[] = sprintf(
-                        'Failed to write %s for %s: %s',
-                        $rewritten,
-                        $target->agent()->value,
-                        $e->getMessage(),
-                    );
-                }
+                $this->writeAndPrune(
+                    $home,
+                    new PendingWrite($rewritten, $pending->content),
+                    $target,
+                    $checkOnly,
+                    $writes,
+                    $errors,
+                );
             }
         }
 
@@ -521,19 +512,7 @@ final class SyncEngine
             }
 
             foreach ($target->plan($skills, $guidelines) as $pending) {
-                try {
-                    $writes[] = $this->writer->write($projectRoot, $pending, $checkOnly);
-                    if (! $checkOnly) {
-                        $this->pruneLegacyFlatSibling($projectRoot, $pending->relativePath);
-                    }
-                } catch (Throwable $e) {
-                    $errors[] = sprintf(
-                        'Failed to write %s for %s: %s',
-                        $pending->relativePath,
-                        $target->agent()->value,
-                        $e->getMessage(),
-                    );
-                }
+                $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
         }
 
@@ -541,22 +520,50 @@ final class SyncEngine
     }
 
     /**
-     * When we emit `<dir>/<name>/SKILL.md`, delete an obsolete flat sibling
-     * at `<dir>/<name>.md` left behind by a pre-0.2 boost-core run. Scoped
-     * narrowly: only fires when both files coexist for the same skill, so
-     * a user-authored flat file in an unrelated location is never touched.
+     * Write one PendingWrite and, on success, best-effort delete the obsolete
+     * flat sibling left behind by a pre-0.2 boost-core run.
+     *
+     * @param  list<WrittenFile>  $writes  Mutated in place with the WrittenFile on success.
+     * @param  list<string>  $errors  Mutated in place with a formatted message on failure.
      */
-    private function pruneLegacyFlatSibling(string $projectRoot, string $relativePath): void
+    private function writeAndPrune(
+        string $baseDir,
+        PendingWrite $pending,
+        AgentTarget $target,
+        bool $checkOnly,
+        array &$writes,
+        array &$errors,
+    ): void {
+        try {
+            $writes[] = $this->writer->write($baseDir, $pending, $checkOnly);
+            if (! $checkOnly) {
+                $this->pruneLegacyFlatSibling($baseDir, $pending->relativePath);
+            }
+        } catch (Throwable $e) {
+            $errors[] = sprintf(
+                'Failed to write %s for %s: %s',
+                $pending->relativePath,
+                $target->agent()->value,
+                $e->getMessage(),
+            );
+        }
+    }
+
+    /**
+     * For a path ending in `/SKILL.md`, delete the obsolete flat sibling at
+     * `<same-stem>.md` left behind by pre-0.2 boost-core runs. The structural
+     * guard (`str_ends_with /SKILL.md`) is what limits scope — a guideline
+     * file or non-skill output never matches, so unrelated `.md` siblings
+     * are never touched.
+     */
+    private function pruneLegacyFlatSibling(string $baseDir, string $relativePath): void
     {
-        if (! str_ends_with($relativePath, '/SKILL.md')) {
+        $suffix = '/' . AgentTarget::SKILL_FILE;
+        if (! str_ends_with($relativePath, $suffix)) {
             return;
         }
 
-        $legacyRelative = substr($relativePath, 0, -strlen('/SKILL.md')) . '.md';
-        $legacyAbsolute = $projectRoot . '/' . $legacyRelative;
-
-        if (is_file($legacyAbsolute)) {
-            @unlink($legacyAbsolute);
-        }
+        $legacyRelative = substr($relativePath, 0, -strlen($suffix)) . '.md';
+        @unlink($baseDir . '/' . $legacyRelative);
     }
 }

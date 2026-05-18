@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.2.0...HEAD)
 
+### Removed (BREAKING — bump to 0.3.0)
+
+- **`composer boost:init` removed.** The command was a one-shot "write a starter `boost.php` and stop", expected to be followed by `composer boost:install` for the interactive picker. The two-step was friction with no upside — `boost:install` now detects a missing `boost.php` and generates the starter inline before opening the picker. Net usage drops from 3 commands (`init` + `install` + `sync`) to 2 (`install` + `sync`).
+  - **Migration:** anything (CI scripts, docs, hooks) calling `composer boost:init` should call `composer boost:install` instead. The starter generation happens automatically on first run and is a no-op on subsequent runs (existing `boost.php` is loaded, not overwritten).
+  - See [`UPGRADING.md`](UPGRADING.md) for the 0.2 → 0.3 migration steps.
+
 ### Added
 
 - **`BoostCorePlugin` now auto-syncs user-scope skills in `composer global` context.** When Composer runs under `composer global <cmd>` (detected via `composer->getConfig()->get('home') === cwd` AND `argv` contains `global`), the plugin iterates every globally-installed package, finds those shipping `resources/boost/skills/`, and syncs each into the agents' home-directory skill folders (`~/.claude/skills/{package}/`, etc.) — equivalent to `vendor/bin/boost sync --scope=user` per package. Lets packages like `sandermuller/repo-init` drop their own post-install scripts; installing them via `composer global require` is enough. `BOOST_SKIP_AUTOSYNC=1` bypasses, same as project-scope auto-sync.

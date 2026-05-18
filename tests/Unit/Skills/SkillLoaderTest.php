@@ -84,3 +84,10 @@ it('exposes description from frontmatter', function (): void {
 
     expect($hostSkill->description)->toBe('A skill authored in the host project.');
 });
+
+it('silently skips Blade-template skills (e.g. SKILL.blade.php) while loading sibling .md', function (): void {
+    $skills = skillsFromFixture('blade-template');
+
+    expect($skills)->toHaveCount(1);
+    expect($skills[0]->name)->toBe('regular');
+});

@@ -12,7 +12,17 @@ use Symfony\Component\Finder\Finder;
  * Skill name derives from the filename (without `.md` extension). Frontmatter
  * may override via `name:` key — if present and non-empty, that wins.
  *
- * Skip rules: hidden files (`.`-prefixed), non-`.md` extensions.
+ * Skip rules:
+ *  - Hidden files (`.`-prefixed) are skipped.
+ *  - Non-`.md` extensions are skipped.
+ *  - **Blade-template skills** (`*.blade.php`, e.g. `SKILL.blade.php`) are
+ *    silently skipped. These are vendor skills that need host-app
+ *    rendering (typically Laravel — `laravel/mcp`'s `mcp-development`
+ *    skill is the canonical example) before they're usable. boost-core
+ *    is framework-agnostic and can't render Blade, so these skills are
+ *    delivered to the host app via the vendor's own integration path —
+ *    not via boost-core's per-agent fan-out. A vendor wanting the skill
+ *    to propagate via boost-core sync should pre-render to `SKILL.md`.
  */
 final readonly class SkillLoader
 {

@@ -1,5 +1,23 @@
 # Releasing
 
+## Version-stream policy (recorded 2026-05-18)
+
+The `-boost` family stays on the **0.x line** until the planned breaking changes are absorbed. Roadmap:
+
+```
+0.3.x  →  patches + additive features (current)
+0.4.0  →  manifest-based cleanup-on-remove + vendor-namespaced user-scope slugs (paired BREAKING)
+1.0.0  →  FileEmitter shape locked + @experimental tag stripped + stable contract declared
+```
+
+**Branch-alias convention.** Every repo's `extra.branch-alias.dev-main` matches the next planned minor's `<minor>.x-dev`. While shipping 0.3.x patches the alias is `0.3.x-dev`; the moment 0.4.0 is cut the alias bumps to `0.4.x-dev`. Consumers pinning `sandermuller/<pkg>: ^0.3` resolve to tagged 0.3.x releases via Packagist; consumers pinning `^0.3.0@dev` get dev-main via the alias.
+
+**Why not jump to 1.0 now.** Items in the roadmap above are user-visible breaking changes. Cutting 1.0 today forces 2.0 within months when those land — burns the credibility v1 is supposed to signal. Plus the `FileEmitter` contract is still `@experimental`; freezing it before a second consumer has stressed the seam locks in the wrong shape.
+
+**Consumer constraint shape.** Every consumer (`package-boost-php`, `package-boost-laravel`, `project-boost`) pins `sandermuller/boost-core: ^0.3` (NOT `^1.0@dev`). The `^1.0@dev` pattern resolved only via dev-main + the old `1.x-dev` alias and never reached tagged releases — broken-by-design for any consumer trying to pin a stable version.
+
+---
+
 The `-boost` family is four packages with a strict dependency order:
 
 ```

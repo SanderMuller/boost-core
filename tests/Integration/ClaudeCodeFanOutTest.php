@@ -38,6 +38,7 @@ function rmTreeIntegration(string $path): array
         if ($entry === '.') {
             continue;
         }
+
         if ($entry === '..') {
             continue;
         }

@@ -157,6 +157,7 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
             if (! is_string($installPath)) {
                 continue;
             }
+
             if ($installPath === '') {
                 continue;
             }

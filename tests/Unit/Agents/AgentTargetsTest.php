@@ -35,9 +35,9 @@ function allTargets(): array
 
 it('every Agent enum case has a matching AgentTarget', function (): void {
     $covered = array_map(static fn (array $row): Agent => $row[1], allTargets());
-    expect(Agent::cases())->each->toBeIn($covered);
-
-    expect($covered)->toHaveSameSize(Agent::cases());
+    expect(Agent::cases())->each->toBeIn($covered)
+        ->and($covered)
+        ->toHaveSameSize(Agent::cases());
 });
 
 it('each target reports the correct agent + paths', function (): void {

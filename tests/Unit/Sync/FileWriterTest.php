@@ -34,6 +34,7 @@ function rmTree(string $path): array
         if ($entry === '.') {
             continue;
         }
+
         if ($entry === '..') {
             continue;
         }

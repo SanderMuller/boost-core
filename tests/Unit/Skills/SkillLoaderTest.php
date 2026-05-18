@@ -88,6 +88,7 @@ it('exposes description from frontmatter', function (): void {
 it('silently skips Blade-template skills (e.g. SKILL.blade.php) while loading sibling .md', function (): void {
     $skills = skillsFromFixture('blade-template');
 
-    expect($skills)->toHaveCount(1);
-    expect($skills[0]->name)->toBe('regular');
+    expect($skills)->toHaveCount(1)
+        ->and($skills[0]->name)
+        ->toBe('regular');
 });

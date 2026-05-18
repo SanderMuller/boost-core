@@ -46,6 +46,7 @@ function cleanupTestDir(string $path): void
         if ($item === '.') {
             continue;
         }
+
         if ($item === '..') {
             continue;
         }

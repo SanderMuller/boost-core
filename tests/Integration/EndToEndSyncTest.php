@@ -35,6 +35,7 @@ function rmTreeE2E(string $path): array
         if ($entry === '.') {
             continue;
         }
+
         if ($entry === '..') {
             continue;
         }

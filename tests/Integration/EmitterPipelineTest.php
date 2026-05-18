@@ -33,6 +33,7 @@ function rmTreeEmit(string $path): void
         if ($entry === '.') {
             continue;
         }
+
         if ($entry === '..') {
             continue;
         }

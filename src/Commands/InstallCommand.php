@@ -58,6 +58,7 @@ final class InstallCommand extends BoostBaseCommand
 
                 return self::FAILURE;
             }
+
             $io->success(sprintf('Generated starter %s', $configPath));
         }
 

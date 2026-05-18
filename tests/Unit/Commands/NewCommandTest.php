@@ -33,6 +33,7 @@ function rmTreeNew(string $path): void
         if ($entry === '.') {
             continue;
         }
+
         if ($entry === '..') {
             continue;
         }

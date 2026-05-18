@@ -136,7 +136,6 @@ final readonly class SyncEngine
             );
         }
 
-        $packageSuffix = self::packageSuffix($packageName);
         $skillsDir = $packageRoot . '/resources/boost/skills';
 
         /** @var list<Skill> $skills */
@@ -150,9 +149,13 @@ final readonly class SyncEngine
         /** @var list<string> $errors */
         $errors = [];
 
+        if (! $checkOnly) {
+            $this->migrateLegacyBasenameDirs($home, $packageName);
+        }
+
         foreach ($this->agentTargets as $target) {
             foreach ($target->plan($skills, []) as $pending) {
-                $rewritten = $this->rewriteForUserScope($pending->relativePath, $packageSuffix);
+                $rewritten = $this->rewriteForUserScope($pending->relativePath, $packageName);
                 if ($rewritten === null) {
                     continue;
                 }
@@ -211,11 +214,77 @@ final readonly class SyncEngine
         return is_string($name) && $name !== '' ? $name : null;
     }
 
+    /**
+     * Vendor-namespaced slug used as the user-scope path segment under
+     * `~/.{agent}/skills/<suffix>/`.
+     *
+     * `acme/foo` → `acme-foo`. Names without a `/` (rare; non-Composer
+     * packages) pass through unchanged. This shape guarantees no
+     * cross-vendor collisions: `vendor-a/foo` and `vendor-b/foo` get
+     * distinct slugs and coexist cleanly.
+     *
+     * @see packageBasename for the bare-basename form used by the
+     *   rewriteForUserScope dedupe.
+     */
     public static function packageSuffix(string $packageName): string
+    {
+        return str_replace('/', '-', $packageName);
+    }
+
+    /**
+     * Bare basename of a Composer package — the portion after the last `/`.
+     * Used by rewriteForUserScope's dedupe to collapse `<slug>/<basename>/SKILL.md`
+     * to `<slug>/SKILL.md` when the source skill directory is named after
+     * the package itself (common for single-skill tooling distributions).
+     */
+    public static function packageBasename(string $packageName): string
     {
         $slash = strrpos($packageName, '/');
 
         return $slash === false ? $packageName : substr($packageName, $slash + 1);
+    }
+
+    /**
+     * One-time migration from pre-0.4 basename-only user-scope paths to the
+     * 0.4+ vendor-namespaced slugs.
+     *
+     * Pre-0.4: `$home/.{agent}/skills/<basename>/...` (e.g.
+     * `~/.claude/skills/repo-init/...`).
+     * Post-0.4: `$home/.{agent}/skills/<vendor>-<basename>/...` (e.g.
+     * `~/.claude/skills/sandermuller-repo-init/...`).
+     *
+     * For each enabled agent, if the old basename dir exists AND the new
+     * slug dir does NOT, rename. Idempotent: subsequent runs find the old
+     * dir gone and no-op. Safe: skipped when the new dir already exists
+     * (don't overwrite a fresh sync's output with stale data).
+     *
+     * Only fires when `packageBasename != packageSuffix` — packages
+     * without a `vendor/` prefix have identical old + new paths and
+     * never need migration.
+     */
+    private function migrateLegacyBasenameDirs(string $home, string $packageName): void
+    {
+        $basename = self::packageBasename($packageName);
+        $slug = self::packageSuffix($packageName);
+
+        if ($basename === $slug) {
+            return;
+        }
+
+        foreach ($this->agentTargets as $target) {
+            $skillsDir = $home . '/' . $target->skillsDirectoryRelative();
+            $oldPath = $skillsDir . '/' . $basename;
+            $newPath = $skillsDir . '/' . $slug;
+
+            if (! is_dir($oldPath) || is_link($oldPath)) {
+                continue;
+            }
+            if (is_dir($newPath) || is_link($newPath)) {
+                continue;
+            }
+
+            @rename($oldPath, $newPath);
+        }
     }
 
     /**
@@ -232,14 +301,14 @@ final readonly class SyncEngine
      * and packages whose skill name differs from the package basename are
      * unaffected.
      *
-     * Examples:
-     *   `.claude/skills/foo.md` + `repo-init`             → `.claude/skills/repo-init/foo.md`
-     *   `.claude/skills/foo/SKILL.md` + `repo-init`       → `.claude/skills/repo-init/foo/SKILL.md`
-     *   `.claude/skills/repo-init/SKILL.md` + `repo-init` → `.claude/skills/repo-init/SKILL.md`   (deduped)
-     *   `CLAUDE.md`                                       → null
-     *   `.github/copilot-instructions.md`                 → null
+     * Examples (with packageName `acme/repo-init`, slug `acme-repo-init`):
+     *   `.claude/skills/foo.md`                → `.claude/skills/acme-repo-init/foo.md`
+     *   `.claude/skills/foo/SKILL.md`          → `.claude/skills/acme-repo-init/foo/SKILL.md`
+     *   `.claude/skills/repo-init/SKILL.md`    → `.claude/skills/acme-repo-init/SKILL.md`   (deduped: skill basename matches package basename)
+     *   `CLAUDE.md`                            → null
+     *   `.github/copilot-instructions.md`      → null
      */
-    private function rewriteForUserScope(string $relativePath, string $packageSuffix): ?string
+    private function rewriteForUserScope(string $relativePath, string $packageName): ?string
     {
         $marker = '/skills/';
         $pos = strpos($relativePath, $marker);
@@ -250,12 +319,13 @@ final readonly class SyncEngine
         $prefix = substr($relativePath, 0, $pos + strlen($marker));
         $filename = substr($relativePath, $pos + strlen($marker));
 
+        $packageBasename = self::packageBasename($packageName);
         $firstSlash = strpos($filename, '/');
-        if ($firstSlash !== false && substr($filename, 0, $firstSlash) === $packageSuffix) {
+        if ($firstSlash !== false && substr($filename, 0, $firstSlash) === $packageBasename) {
             $filename = substr($filename, $firstSlash + 1);
         }
 
-        return $prefix . $packageSuffix . '/' . $filename;
+        return $prefix . self::packageSuffix($packageName) . '/' . $filename;
     }
 
     public function sync(string $projectRoot, bool $checkOnly = false, bool $force = false): SyncResult

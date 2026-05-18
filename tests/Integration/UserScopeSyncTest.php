@@ -52,6 +52,106 @@ function rmTreeUserScope(string $path): void
     rmdir($path);
 }
 
+it('migrates legacy basename dir to vendor-namespaced slug on first sync (0.3 → 0.4)', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        // Pre-0.4 layout: user has a stale skill committed under
+        // `~/.claude/skills/<basename>/` from an earlier sync of an older
+        // package version. Use a skill name distinct from anything the
+        // current sync produces, so writeAndPrune's flat-sibling cleanup
+        // doesn't intercept the migration assertion.
+        mkdir($home . '/.claude/skills/legacy-tool', 0o755, recursive: true);
+        file_put_contents(
+            $home . '/.claude/skills/legacy-tool/retired-skill.md',
+            "pre-existing legacy content from older sync\n",
+        );
+
+        file_put_contents(
+            $pkg . '/composer.json',
+            json_encode(['name' => 'acme/legacy-tool'], JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $pkg . '/resources/boost/skills/current-skill.md',
+            "---\nname: current-skill\n---\nFresh body.\n",
+        );
+
+        (new SyncEngine([
+            new ClaudeCodeTarget(),
+        ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
+
+        // Old basename dir is gone; new vendor-namespaced slug has the migrated
+        // file + the freshly-synced skill in the canonical post-0.4 location.
+        expect(is_dir($home . '/.claude/skills/legacy-tool'))->toBeFalse('old basename dir should be renamed away')
+            ->and(is_dir($home . '/.claude/skills/acme-legacy-tool'))->toBeTrue('new vendor-namespaced slug dir should exist')
+            ->and(file_exists($home . '/.claude/skills/acme-legacy-tool/retired-skill.md'))->toBeTrue('unrelated legacy file should survive the rename')
+            ->and(file_exists($home . '/.claude/skills/acme-legacy-tool/current-skill/SKILL.md'))->toBeTrue('freshly-synced skill landed at the new slug');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('migration is idempotent — second sync no-ops cleanly', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        mkdir($home . '/.claude/skills/legacy-tool', 0o755, recursive: true);
+        file_put_contents($home . '/.claude/skills/legacy-tool/retired-skill.md', "legacy\n");
+
+        file_put_contents($pkg . '/composer.json', json_encode(['name' => 'acme/legacy-tool'], JSON_THROW_ON_ERROR));
+        file_put_contents($pkg . '/resources/boost/skills/current-skill.md', "---\nname: current-skill\n---\nBody.\n");
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+
+        $engine->syncUser($pkg, homeRoot: $home);
+        $afterFirst = file_get_contents($home . '/.claude/skills/acme-legacy-tool/retired-skill.md');
+
+        // Second sync must not re-migrate or corrupt.
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        expect(is_dir($home . '/.claude/skills/legacy-tool'))->toBeFalse()
+            ->and(file_get_contents($home . '/.claude/skills/acme-legacy-tool/retired-skill.md'))->toBe($afterFirst);
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('migration is safe — does not overwrite an existing new-slug dir', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        // Both old AND new dirs present — partial migration scenario, or
+        // user manually created the new dir. Don't clobber.
+        mkdir($home . '/.claude/skills/legacy-tool', 0o755, recursive: true);
+        file_put_contents($home . '/.claude/skills/legacy-tool/old-content.md', "OLD\n");
+        mkdir($home . '/.claude/skills/acme-legacy-tool', 0o755, recursive: true);
+        file_put_contents($home . '/.claude/skills/acme-legacy-tool/preexisting.md', "NEW\n");
+
+        file_put_contents($pkg . '/composer.json', json_encode(['name' => 'acme/legacy-tool'], JSON_THROW_ON_ERROR));
+        file_put_contents($pkg . '/resources/boost/skills/some-skill.md', "---\nname: some-skill\n---\nBody.\n");
+
+        (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        // Old dir untouched — migration skipped because new dir already existed.
+        expect(is_dir($home . '/.claude/skills/legacy-tool'))->toBeTrue('legacy dir preserved when new dir exists')
+            ->and(file_exists($home . '/.claude/skills/legacy-tool/old-content.md'))->toBeTrue()
+            ->and(file_exists($home . '/.claude/skills/acme-legacy-tool/preexisting.md'))->toBeTrue()
+            ->and(file_exists($home . '/.claude/skills/acme-legacy-tool/some-skill/SKILL.md'))->toBeTrue();
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
 it('user-scope sync does NOT prune the legacy sibling if the new write fails', function (): void {
     $dirs = makeUserScopeTempDirs();
     $pkg = $dirs['package'];
@@ -69,18 +169,18 @@ it('user-scope sync does NOT prune the legacy sibling if the new write fails', f
 
         // Legacy flat sibling + a blocker file at the target dir path so
         // FileWriter can't mkdir/write the new SKILL.md.
-        mkdir($home . '/.claude/skills/sample-tool', 0o755, recursive: true);
-        file_put_contents($home . '/.claude/skills/sample-tool/sample-skill.md', "last good copy\n");
-        file_put_contents($home . '/.claude/skills/sample-tool/sample-skill', "blocker\n");
+        mkdir($home . '/.claude/skills/test-vendor-sample-tool', 0o755, recursive: true);
+        file_put_contents($home . '/.claude/skills/test-vendor-sample-tool/sample-skill.md', "last good copy\n");
+        file_put_contents($home . '/.claude/skills/test-vendor-sample-tool/sample-skill', "blocker\n");
 
         $result = (new SyncEngine([
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
         expect($result->hasErrors())->toBeTrue()
-            ->and(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))
+            ->and(file_exists($home . '/.claude/skills/test-vendor-sample-tool/sample-skill.md'))
             ->toBeTrue()
-            ->and(file_get_contents($home . '/.claude/skills/sample-tool/sample-skill.md'))
+            ->and(file_get_contents($home . '/.claude/skills/test-vendor-sample-tool/sample-skill.md'))
             ->toContain('last good copy');
     } finally {
         rmTreeUserScope($pkg);
@@ -113,8 +213,8 @@ it('user-scope sync does NOT double-nest when the skill dir name matches the pac
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
-        expect(file_exists($home . '/.claude/skills/repo-init/SKILL.md'))->toBeTrue()
-            ->and(file_exists($home . '/.claude/skills/repo-init/repo-init/SKILL.md'))
+        expect(file_exists($home . '/.claude/skills/vendor-repo-init/SKILL.md'))->toBeTrue()
+            ->and(file_exists($home . '/.claude/skills/vendor-repo-init/repo-init/SKILL.md'))
             ->toBeFalse();
     } finally {
         rmTreeUserScope($pkg);
@@ -139,15 +239,15 @@ it('user-scope sync prunes a legacy flat `<skill>.md` sibling alongside the new 
 
         // Pre-existing flat output from an earlier sync — should be deleted
         // when the new `<skill>/SKILL.md` is written successfully.
-        mkdir($home . '/.claude/skills/sample-tool', 0o755, recursive: true);
-        file_put_contents($home . '/.claude/skills/sample-tool/sample-skill.md', "stale\n");
+        mkdir($home . '/.claude/skills/test-vendor-sample-tool', 0o755, recursive: true);
+        file_put_contents($home . '/.claude/skills/test-vendor-sample-tool/sample-skill.md', "stale\n");
 
         (new SyncEngine([
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
-        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md'))->toBeTrue()
-            ->and(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))
+        expect(file_exists($home . '/.claude/skills/test-vendor-sample-tool/sample-skill/SKILL.md'))->toBeTrue()
+            ->and(file_exists($home . '/.claude/skills/test-vendor-sample-tool/sample-skill.md'))
             ->toBeFalse();
     } finally {
         rmTreeUserScope($pkg);
@@ -180,12 +280,12 @@ it('user-scope sync fans skills into ~/.{agent}/skills/<package>/ under HOME', f
             ->toBe('test-vendor/sample-tool')
             ->and($result->homeRoot)
             ->toBe($home)
-            ->and(file_exists($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md'))
+            ->and(file_exists($home . '/.claude/skills/test-vendor-sample-tool/sample-skill/SKILL.md'))
             ->toBeTrue()
-            ->and(file_exists($home . '/.cursor/skills/sample-tool/sample-skill/SKILL.md'))
+            ->and(file_exists($home . '/.cursor/skills/test-vendor-sample-tool/sample-skill/SKILL.md'))
             ->toBeTrue();
 
-        $written = (string) file_get_contents($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md');
+        $written = (string) file_get_contents($home . '/.claude/skills/test-vendor-sample-tool/sample-skill/SKILL.md');
         expect($written)->toContain('Body.')
             ->toContain('name: sample-skill');
     } finally {
@@ -211,7 +311,7 @@ it('user-scope skips guideline files (CLAUDE.md, AGENTS.md) — no home-dir poll
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
-        expect(file_exists($home . '/.claude/skills/pkg/x/SKILL.md'))->toBeTrue()
+        expect(file_exists($home . '/.claude/skills/test-pkg/x/SKILL.md'))->toBeTrue()
             ->and(file_exists($home . '/CLAUDE.md'))
             ->toBeFalse()
             ->and(file_exists($home . '/AGENTS.md'))
@@ -240,7 +340,7 @@ it('user-scope check mode reports drift without writing', function (): void {
         expect($result->hasDrift())->toBeTrue()
             ->and($result->countByAction(WriteAction::WOULD_WRITE))
             ->toBe(1)
-            ->and(file_exists($home . '/.claude/skills/pkg/x.md'))
+            ->and(file_exists($home . '/.claude/skills/test-pkg/x.md'))
             ->toBeFalse();
     } finally {
         rmTreeUserScope($pkg);

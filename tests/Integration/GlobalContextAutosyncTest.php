@@ -71,7 +71,7 @@ it('auto-syncs user-scope skills for global-required packages', function (): voi
             throw new RuntimeException("composer global install failed (exit {$process->getExitCode()}):\n" . $outputStr);
         }
 
-        $expected = $fakeHome . '/.claude/skills/global-skill-pkg/hello/SKILL.md';
+        $expected = $fakeHome . '/.claude/skills/acme-global-skill-pkg/hello/SKILL.md';
 
         expect($expected)
             ->toBeFile()
@@ -143,18 +143,18 @@ it('warns and skips on basename collision in global ctx', function (): void {
             throw new RuntimeException("composer global install failed (exit {$process->getExitCode()}):\n" . $outputStr);
         }
 
-        // Install order isn't pinned; assert exactly one skill landed and
-        // the loser was reported via the documented collision warning.
-        $targetDir = $fakeHome . '/.claude/skills/dup-tool';
-        $hasA = is_file($targetDir . '/from-a/SKILL.md');
-        $hasB = is_file($targetDir . '/from-b/SKILL.md');
+        // Post-0.4 vendor-namespaced slugs: same-basename packages from
+        // different vendors get distinct slugs (`vendor-a-dup-tool` vs
+        // `vendor-b-dup-tool`) and coexist cleanly. The defensive
+        // collision detection in BoostCorePlugin::runGlobalSync is now
+        // unreachable in practice — assert BOTH skills landed at their
+        // own slugged paths.
+        $hasA = is_file($fakeHome . '/.claude/skills/vendor-a-dup-tool/from-a/SKILL.md');
+        $hasB = is_file($fakeHome . '/.claude/skills/vendor-b-dup-tool/from-b/SKILL.md');
 
-        expect($hasA xor $hasB)->toBeTrue(
-            sprintf('expected exactly one of from-a/SKILL.md or from-b/SKILL.md (a=%d b=%d). Output:%s%s', (int) $hasA, (int) $hasB, PHP_EOL, $outputStr),
-        )
-            ->and($outputStr)
-            ->toContain('basename "dup-tool" already claimed')
-            ->toContain('skipping global auto-sync');
+        expect($hasA)->toBeTrue('vendor-a/dup-tool should fan to its vendor-namespaced slug. Output:' . PHP_EOL . $outputStr)
+            ->and($hasB)->toBeTrue('vendor-b/dup-tool should fan to its vendor-namespaced slug. Output:' . PHP_EOL . $outputStr)
+            ->and($outputStr)->not->toContain('skipping global auto-sync');
     } finally {
         cleanupTestDir($base);
     }

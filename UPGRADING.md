@@ -2,6 +2,28 @@
 
 Breaking changes per major/minor bump.
 
+## 0.3 → 0.4
+
+### User-scope skill paths now vendor-namespaced
+
+Pre-0.4, user-scope skills landed at `~/.{agent}/skills/<package-basename>/...` — so `acme/repo-init` and `vendor-b/repo-init` would collide on `~/.{agent}/skills/repo-init/`. The 0.3 line shipped graceful warn-and-skip behaviour for collisions; 0.4 fixes the underlying cause by namespacing paths by the full `vendor/package` slug.
+
+| Was (0.3) | Now (0.4) |
+|---|---|
+| `~/.{agent}/skills/repo-init/...` (from `acme/repo-init`) | `~/.{agent}/skills/acme-repo-init/...` |
+| `~/.{agent}/skills/repo-init/...` (from `vendor-b/repo-init` — would have warn-and-skip-collided in 0.3) | `~/.{agent}/skills/vendor-b-repo-init/...` (now coexists) |
+
+**Migration steps:** none required by hand. The first `syncUser()` invocation against each installed package after the 0.4 bump runs a one-time auto-migration:
+
+1. Detects `~/.{agent}/skills/<old-basename>/` for the package being synced
+2. If the new `~/.{agent}/skills/<vendor>-<basename>/` dir does NOT already exist, renames
+3. Idempotent: subsequent syncs find no old dir and no-op
+4. Safe: if both old and new dirs exist (manually-created new dir, partial migration), skips the rename rather than clobbering
+
+The migration is per-package and triggers naturally as each `composer global require`'d package's plugin / manual `composer boost:sync --scope=user` invocation happens. Packages uninstalled before their migration would have run leave their old basename dirs behind — same as the existing "stale-skills-on-`composer global remove`" known limitation.
+
+**For scripts / docs referencing user-scope paths**: update any hard-coded `~/.{agent}/skills/<basename>/` references to `~/.{agent}/skills/<vendor>-<basename>/`. Boost-core's collision-detection code path stays in place defensively but is unreachable in practice now (different vendors can't collide).
+
 ## 0.2 → 0.3
 
 ### `composer boost:init` removed

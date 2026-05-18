@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.4...HEAD)
 
+### Changed (BREAKING — bump to 0.4.0)
+
+- **User-scope skill paths now namespaced by the full `vendor/package` slug** instead of basename-only. `acme/repo-init` writes to `~/.{agent}/skills/acme-repo-init/...` (was `~/.{agent}/skills/repo-init/...`). Closes the long-standing cross-vendor basename-collision known limitation — two packages from different vendors that happened to share a basename used to fight over the same path and trigger boost-core's warn-and-skip collision detection; now they coexist cleanly with distinct slugs. **Auto-migration** runs on the first `syncUser()` against each installed package post-upgrade: detects `~/.{agent}/skills/<basename>/`, renames to `~/.{agent}/skills/<vendor>-<basename>/`. Idempotent and safe (skipped when new-slug dir already exists). The collision-detection code path stays in place defensively but is unreachable in practice. See [`UPGRADING.md`](UPGRADING.md) for migration details.
+
 ### Fixed
 
 - **`boost sync` no longer chokes on dead symlinks under managed agent skill dirs.** Consumer projects migrating between renamed vendor packages (e.g. `sandermuller/package-boost` → `sandermuller/package-boost-php`) ended up with dangling symlinks under `.{agent}/skills/<old-pkg>/` pointing into the now-uninstalled `vendor/<old-pkg>/` tree. Previous sync runs stumbled over them and required a manual `find -L -type l -delete` to recover. `SyncEngine` now walks each managed agent skills dir at sync time and unlinks dead symlinks before writing fresh state — live symlinks (target exists) are left alone and not recursed into. Same `composer install` → `boost sync` flow now self-heals across vendor renames.

@@ -92,3 +92,14 @@ it('silently skips Blade-template skills (e.g. SKILL.blade.php) while loading si
         ->and($skills[0]->name)
         ->toBe('regular');
 });
+
+it('silently contributes zero skills when a directory has ONLY Blade-template skills (no diagnostic)', function (): void {
+    // Documents the silent-disappearance risk: a vendor publishing only
+    // SKILL.blade.php yields zero skills from boost-core's perspective.
+    // boost-core does not warn (rendering Blade is out of scope). Vendors
+    // wanting propagation through boost-core must pre-render to SKILL.md.
+    $skills = skillsFromFixture('blade-only');
+
+    expect($skills)
+        ->toBeEmpty();
+});

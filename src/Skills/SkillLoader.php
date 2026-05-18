@@ -16,13 +16,18 @@ use Symfony\Component\Finder\Finder;
  *  - Hidden files (`.`-prefixed) are skipped.
  *  - Non-`.md` extensions are skipped.
  *  - **Blade-template skills** (`*.blade.php`, e.g. `SKILL.blade.php`) are
- *    silently skipped. These are vendor skills that need host-app
- *    rendering (typically Laravel — `laravel/mcp`'s `mcp-development`
- *    skill is the canonical example) before they're usable. boost-core
- *    is framework-agnostic and can't render Blade, so these skills are
- *    delivered to the host app via the vendor's own integration path —
- *    not via boost-core's per-agent fan-out. A vendor wanting the skill
- *    to propagate via boost-core sync should pre-render to `SKILL.md`.
+ *    silently skipped — they need Laravel app context to render, which
+ *    boost-core (framework-agnostic) cannot provide. `laravel/mcp`'s
+ *    `mcp-development` skill is the canonical example.
+ *
+ * Important: a vendor that publishes **only** Blade-template skills will
+ * contribute zero loaded skills from boost-core's perspective, with no
+ * diagnostic. That's intentional (boost-core does not warn about its own
+ * inability to render Blade), but vendors wanting their skills to
+ * propagate through boost-core's per-agent fan-out must pre-render to
+ * `SKILL.md` before shipping. Whether such skills reach the host app via
+ * a different integration path (e.g. the vendor's own Laravel ServiceProvider
+ * rendering on boot) is the vendor's responsibility, not boost-core's.
  */
 final readonly class SkillLoader
 {

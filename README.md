@@ -74,11 +74,16 @@ composer test
 
 That runs the full Pest suite (unit + integration, including real `composer install` subprocesses for the standalone-bin, plugin-capability, and global-context surfaces). Coverage report via `composer test-coverage`.
 
+## Upgrading
+
+See [`UPGRADING.md`](UPGRADING.md) for breaking-change migrations between majors/minors.
+
+> [!NOTE]
+> The `FileEmitter` plugin contract is `@experimental` — the shape will change before v1.0 stable.
+
 ## Changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full release history. The GitHub [releases page](https://github.com/sandermuller/boost-core/releases) has per-version notes.
-
-See [`RELEASING.md`](RELEASING.md) for the publish path. The FileEmitter plugin contract is `@experimental` — the shape will change before v1.0 stable.
 
 ## Contributing
 

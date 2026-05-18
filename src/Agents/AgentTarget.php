@@ -63,7 +63,7 @@ abstract class AgentTarget
 
         foreach ($skills as $skill) {
             $writes[] = new PendingWrite(
-                relativePath: $this->skillsDirectoryRelative() . '/' . $this->skillFilename($skill->name),
+                relativePath: $this->skillsDirectoryRelative() . '/' . $this->skillRelativePath($skill),
                 content: $this->formatSkillContent($skill),
             );
         }
@@ -79,9 +79,19 @@ abstract class AgentTarget
         return $writes;
     }
 
-    public function skillFilename(string $skillName): string
+    /**
+     * Where the rendered skill lives, relative to `skillsDirectoryRelative()`.
+     *
+     * Mirrors source layout: a flat `<name>.md` source emits as `<name>.md`;
+     * a directory-form `<name>/SKILL.md` source emits as `<name>/SKILL.md`,
+     * preserving the nested layout that Claude Code (and similar agents)
+     * expect when a skill bundles companion assets.
+     */
+    public function skillRelativePath(Skill $skill): string
     {
-        return $skillName . '.md';
+        return $skill->isDirectoryForm
+            ? $skill->name . '/SKILL.md'
+            : $skill->name . '.md';
     }
 
     public function formatSkillContent(Skill $skill): string

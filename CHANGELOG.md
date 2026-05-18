@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Directory-form source skills (`.ai/skills/<name>/SKILL.md`) now emit as `<name>/SKILL.md` instead of being flattened to `<name>.md`.** The sync used to read both flat (`<name>.md`) and dir-form sources but unconditionally wrote flat — so a source layout `.ai/skills/ai-guidelines/SKILL.md` would land as `.claude/skills/ai-guidelines.md`, losing the directory structure that Claude Code (and similar agents) need when a skill bundles companion assets. `Skill` now carries an `isDirectoryForm` flag derived from the source filename, and `AgentTarget` mirrors that layout in the output. Flat sources are unchanged.
 - **Standalone `bin/boost` no longer fatals in end-user (non-dev) installs.** `BoostCoreCommandProvider` implements `Composer\Plugin\Capability\CommandProvider` and `BoostBaseCommand` extended `Composer\Command\BaseCommand` — both classes only exist in vendor/ when `composer/composer` is dev-installed. End users running `vendor/bin/boost` got `Interface "Composer\Plugin\Capability\CommandProvider" not found`. Standalone bin now consumes a new `CommandRegistry` (zero Composer deps) and `BoostBaseCommand` extends `Symfony\Console\Command\Command` directly. Composer plugin path is unchanged.
 
 ### Added

@@ -119,6 +119,30 @@ it('check mode reports no drift after a successful write', function (): void {
     }
 });
 
+it('directory-form source skill is emitted as <name>/SKILL.md, not flattened', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        mkdir($root . '/.ai/skills/ai-guidelines', 0o755, recursive: true);
+        file_put_contents(
+            $root . '/.ai/skills/ai-guidelines/SKILL.md',
+            "---\nname: ai-guidelines\ndescription: Guidelines skill.\n---\n# Body\n",
+        );
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($result->hasErrors())->toBeFalse();
+        expect(file_exists($root . '/.claude/skills/ai-guidelines/SKILL.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/ai-guidelines.md'))->toBeFalse();
+        expect(file_get_contents($root . '/.claude/skills/ai-guidelines/SKILL.md'))
+            ->toContain('name: ai-guidelines')
+            ->toContain('# Body');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('BOOST_SKIP_GITIGNORE bypasses gitignore management even when boost.php enables it', function (): void {
     $root = makeEndToEndProject();
     putenv('BOOST_SKIP_GITIGNORE=1');

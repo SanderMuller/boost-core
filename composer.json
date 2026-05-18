@@ -50,6 +50,7 @@
         "phpstan/phpstan-strict-rules": "^2.0",
         "rector/rector": "^2.4",
         "rector/type-perfect": "^2.1",
+        "sandermuller/package-boost": "^0.15",
         "spaze/phpstan-disallowed-calls": "^4.10",
         "stolt/lean-package-validator": "^5.7",
         "symplify/phpstan-extensions": "^12.0",
@@ -70,12 +71,12 @@
         "bin/boost"
     ],
     "extra": {
-        "class": "SanderMuller\\BoostCore\\BoostCorePlugin",
-        "branch-alias": {
-            "dev-main": "1.x-dev"
-        }
+        "class": "SanderMuller\\BoostCore\\BoostCorePlugin"
     },
     "scripts": {
+        "post-install-cmd": [
+            "if [ \"$COMPOSER_DEV_MODE\" = \"1\" ]; then vendor/bin/boost sync 2>/dev/null || true; fi"
+        ],
         "phpstan": "vendor/bin/phpstan analyse --memory-limit=2G",
         "phpstan-simplified": "vendor/bin/phpstan analyse --memory-limit=2G --error-format symplify",
         "phpstan-clear-cache": "vendor/bin/phpstan clear-result-cache",
@@ -83,6 +84,7 @@
         "rector": "vendor/bin/rector process",
         "test": "vendor/bin/pest",
         "test-coverage": "vendor/bin/pest --coverage",
+        "sync-ai": "vendor/bin/boost sync",
         "validate-gitattributes": "vendor/bin/lean-package-validator validate",
         "qa": [
             "@rector",

@@ -19,7 +19,7 @@ final class BoostCoreCommandProvider implements CommandProvider
      * @return array<Command>
      */
     #[\Override]
-    public function getCommands(): array // @phpstan-ignore method.childReturnType
+    public function getCommands(): array
     {
         return CommandRegistry::commands();
     }

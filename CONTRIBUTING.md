@@ -19,12 +19,13 @@ The repository ships `composer` scripts for each quality gate:
 ```bash
 composer test            # Pest suite (unit + integration)
 composer test-coverage   # same, with coverage report
-composer pint            # Laravel Pint code style
+composer format          # Laravel Pint code style
 composer phpstan         # PHPStan at max level + bleeding edge + disallowed-calls
 composer rector          # Rector refactor pass
+composer qa              # rector + format + phpstan + test, in that order
 ```
 
-Before opening a PR, run `composer test` + `composer phpstan` locally. CI runs the matrix on push.
+Before opening a PR, run `composer qa` locally. CI runs the matrix on push.
 
 ## Code style
 

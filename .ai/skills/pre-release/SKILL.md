@@ -63,7 +63,7 @@ Must show 0 errors. Fix real issues — do not pad the baseline. See `backend-qu
 
 ### 5. Documentation freshness audit
 
-Release-worthy features change user-visible behavior, so `README.md` and the `.ai/` files we ship to downstream projects (via `package-boost:sync`) can drift silently. Every release must audit both.
+Release-worthy features change user-visible behavior, so `README.md` and the `.ai/` files we ship to downstream projects (via `boost-core`'s sync) can drift silently. Every release must audit both.
 
 **Rule:** add or edit docs only where they reflect a real change. Do not bloat the README or skills. Delete stale content aggressively.
 
@@ -77,9 +77,9 @@ Scan `README.md` against the commits in this release (`git log <last-tag>..HEAD`
 
 If unsure whether a change warrants a README update: check whether a user reading the README after the release would see outdated advice. If yes, update.
 
-#### 5b. Laravel Boost skills + guidelines
+#### 5b. boost-core skills + guidelines
 
-The `.ai/skills/` and `.ai/guidelines/` directories are synced by Laravel Boost (`vendor/bin/testbench package-boost:sync`) to `CLAUDE.md`, `AGENTS.md`, `.claude/skills/`, and `.github/skills/`. Those generated files ship with the package and are read by downstream projects' AI tooling.
+The `.ai/skills/` and `.ai/guidelines/` directories are synced by `boost-core` to per-agent layouts (`.claude/skills/`, `.cursor/skills/`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.github/skills/`, etc. — all nine supported agents). The generated files are gitignored under the managed `# >>> boost (managed) >>>` block; only `.ai/` sources go into git.
 
 Check each edited-or-eligible doc:
 
@@ -88,14 +88,14 @@ Check each edited-or-eligible doc:
 - **Non-bloat** — prefer tables and bullets over prose. One skill = one clear workflow. Add a new skill rather than overloading an existing one. Delete steps that are no longer load-bearing.
 - **Trigger words in frontmatter `description`** — if a new workflow exists, make sure someone typing the natural-language ask can discover the skill.
 
-If any `.ai/` file changed, sync and verify:
+If any `.ai/` file changed, regenerate so local agent tooling sees the update before the next `composer install` fires the plugin hook:
 
 ```bash
-vendor/bin/testbench package-boost:sync || true
-git status --short .claude/ .github/ CLAUDE.md AGENTS.md
+vendor/bin/boost sync || true
+git status --short .ai/
 ```
 
-All generated files must be committed together with their `.ai/` sources (per the `ai-guidelines` skill).
+Only `.ai/` sources need staging — the per-agent fan-outs are gitignored.
 
 ### 6. CI green-light gate (after push, before release notes + tag)
 
@@ -286,7 +286,7 @@ Wait until terminal. If red:
 | 3. Tests           | `vendor/bin/pest \|\| true`                                                                    | 0 failures                                    |
 | 4. PHPStan         | `vendor/bin/phpstan analyse --memory-limit=2G \|\| true`                                       | 0 errors                                      |
 | 5a. README         | manual scan vs `git log <last-tag>..HEAD`                                                      | no stale claims; all changed rules listed     |
-| 5b. Boost docs     | `vendor/bin/testbench package-boost:sync \|\| true`                                            | `.ai/` ↔ generated files in sync              |
+| 5b. Boost docs     | `vendor/bin/boost sync \|\| true`                                                              | `.ai/` regenerates cleanly; only `.ai/` is staged (rest is gitignored) |
 | **commit + push**  | user confirms changes + `git push`                                                             | HEAD pushed to `origin/main`                  |
 | 6. CI green-light  | `gh run list --commit "$(git rev-parse HEAD)"` all complete + no failure                       | every run for the SHA in `{success, skipped}` |
 | 7. Release notes   | preflight (clean tree + pushed + CI green) → `Write internal/release-notes-<version>.md`       | first line is `<!-- verified-sha: $SHA -->`   |

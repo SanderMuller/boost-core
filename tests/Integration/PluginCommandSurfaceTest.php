@@ -70,17 +70,21 @@ it('composer boost:* commands are registered through the plugin capability', fun
             ->toContain('boost:doctor')
             ->toContain('boost:new');
 
-        // Drive one specific command end-to-end so we know dispatch through
-        // the BaseCommandAdapter actually works (not just registration).
-        $help = Process::fromShellCommandline(
-            'cd ' . escapeshellarg($fixture) . ' && composer boost:init --help --no-interaction 2>&1',
+        // Drive a real command (not --help, which short-circuits before the
+        // adapter's execute() runs) WITH a Composer global option to prove
+        // dispatch through BaseCommandAdapter doesn't reject globals like
+        // --no-interaction. Use boost:init so we can also assert a real
+        // filesystem effect happened end-to-end.
+        $init = Process::fromShellCommandline(
+            'cd ' . escapeshellarg($fixture) . ' && composer boost:init --no-interaction 2>&1',
         );
-        $help->run();
-        $helpOutput = $help->getOutput() . $help->getErrorOutput();
+        $init->run();
+        $initOutput = $init->getOutput() . $init->getErrorOutput();
 
-        expect($help->isSuccessful())
-            ->toBeTrue("composer boost:init --help failed (exit {$help->getExitCode()}):\n" . $helpOutput);
-        expect($helpOutput)->toContain('Generate a starter boost.php');
+        expect($init->isSuccessful())
+            ->toBeTrue("composer boost:init --no-interaction failed (exit {$init->getExitCode()}):\n" . $initOutput);
+        expect($initOutput)->not->toContain('option does not exist');
+        expect(file_exists($fixture . '/boost.php'))->toBeTrue();
     } finally {
         cleanupTestDir($fixture);
     }

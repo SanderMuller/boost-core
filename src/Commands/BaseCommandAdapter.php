@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SanderMuller\BoostCore\Commands;
 
 use Composer\Command\BaseCommand;
+use ReflectionMethod;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -34,8 +35,24 @@ final class BaseCommandAdapter extends BaseCommand
         }
     }
 
+    /**
+     * Invoke the inner command's `execute()` directly via reflection.
+     *
+     * Why not `$this->inner->run($input, $output)`: the outer adapter has
+     * already merged Composer's Application definition into its own and
+     * bound $input against that — so $input legitimately carries Composer
+     * global options like `--no-interaction`. Going through inner->run()
+     * would call `mergeApplicationDefinition()` against the inner command's
+     * (empty) application and rebind, rejecting any global option the
+     * inner didn't declare.
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        return $this->inner->run($input, $output);
+        $result = (new ReflectionMethod($this->inner, 'execute'))
+            ->invoke($this->inner, $input, $output);
+
+        assert(is_int($result), 'Symfony Command::execute() contract requires int return.');
+
+        return $result;
     }
 }

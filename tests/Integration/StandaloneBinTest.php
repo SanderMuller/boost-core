@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
+/**
+ * @return array{exit: int, output: string}
+ */
 function runBin(string $args): array
 {
-    $bin = escapeshellarg(dirname(__DIR__, 2) . '/bin/boost');
-    $output = [];
-    $exit = 0;
-    exec("php $bin $args 2>&1", $output, $exit);
+    $process = \Symfony\Component\Process\Process::fromShellCommandline(
+        'php ' . escapeshellarg(dirname(__DIR__, 2) . '/bin/boost') . ' ' . $args,
+    );
+    $process->run();
 
-    return ['exit' => $exit, 'output' => implode("\n", $output)];
+    return ['exit' => $process->getExitCode() ?? 0, 'output' => $process->getOutput() . $process->getErrorOutput()];
 }
 
 it('registers all BoostCoreCommandProvider commands in standalone bin', function () {

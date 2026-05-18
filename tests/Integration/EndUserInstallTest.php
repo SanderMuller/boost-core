@@ -2,31 +2,40 @@
 
 declare(strict_types=1);
 
+use Symfony\Component\Process\Process;
+
 /**
- * Verifies bin/boost works in an end-user install where composer/composer
- * is NOT in vendor/ (it's require-dev of boost-core, dropped by --no-dev).
- *
- * Regression guard for 0.1.1: standalone bin loaded BoostCoreCommandProvider,
- * which `implements Composer\Plugin\Capability\CommandProvider` → fatal in
- * non-dev installs.
+ * Verifies bin/boost runs in an end-user install without composer/composer
+ * in vendor — the bug that caused the original 1.0.0 release to fail for
+ * users who installed without --dev (composer/composer is dev-only, but
+ * boost-core's CommandProvider previously referenced
+ * `Composer\Plugin\Capability\CommandProvider` directly, causing a fatal
+ * in non-dev installs.
  */
 function rmDirRecursive(string $path): void
 {
     if (! is_dir($path)) {
         return;
     }
-    $items = scandir($path) ?: [];
+    $items = scandir($path);
+    if ($items === false) {
+        return;
+    }
     foreach ($items as $item) {
         if ($item === '.' || $item === '..') {
             continue;
         }
         $full = $path . '/' . $item;
-        is_dir($full) && ! is_link($full) ? rmDirRecursive($full) : @unlink($full);
+        if (is_dir($full) && ! is_link($full)) {
+            rmDirRecursive($full);
+        } else {
+            @unlink($full);
+        }
     }
     @rmdir($path);
 }
 
-it('bin/boost runs in an end-user install without composer/composer in vendor', function () {
+it('bin/boost runs in an end-user install without composer/composer in vendor', function (): void {
     $packageRoot = dirname(__DIR__, 2);
     $fixture = sys_get_temp_dir() . '/boost-end-user-' . bin2hex(random_bytes(6));
     mkdir($fixture, 0o755, recursive: true);
@@ -51,30 +60,25 @@ it('bin/boost runs in an end-user install without composer/composer in vendor', 
         ],
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
-    $install = [];
-    $exit = 0;
-    exec(
-        sprintf('cd %s && composer install --no-dev --no-interaction --quiet 2>&1', escapeshellarg($fixture)),
-        $install,
-        $exit,
+    $install = Process::fromShellCommandline(
+        'cd ' . escapeshellarg($fixture) . ' && composer install --no-dev --no-interaction --quiet 2>&1',
     );
+    $install->run();
 
-    if ($exit !== 0) {
+    if (! $install->isSuccessful()) {
         rmDirRecursive($fixture);
-        $this->fail('composer install --no-dev failed: ' . implode("\n", $install));
+        throw new RuntimeException('composer install --no-dev failed: ' . $install->getOutput() . $install->getErrorOutput());
     }
 
-    // composer/composer must NOT be in vendor/ (require-dev was dropped)
     expect(is_dir($fixture . '/vendor/composer/composer'))->toBeFalse();
 
-    $output = [];
-    $exit = 0;
-    exec(sprintf('%s/vendor/bin/boost list 2>&1', escapeshellarg($fixture)), $output, $exit);
-    $outputStr = implode("\n", $output);
+    $list = Process::fromShellCommandline(escapeshellarg($fixture) . '/vendor/bin/boost list 2>&1');
+    $list->run();
+    $outputStr = $list->getOutput() . $list->getErrorOutput();
 
     rmDirRecursive($fixture);
 
-    expect($exit)->toBe(0, 'bin/boost exited non-zero: ' . $outputStr);
+    expect($list->getExitCode())->toBe(0, 'bin/boost exited non-zero: ' . $outputStr);
     expect($outputStr)
         ->toContain('sync')
         ->toContain('init')

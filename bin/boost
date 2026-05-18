@@ -17,5 +17,14 @@ declare(strict_types=1);
     }
 
     $app = new \Symfony\Component\Console\Application('boost', '0.1.0-dev');
+
+    foreach ((new \SanderMuller\BoostCore\BoostCoreCommandProvider())->getCommands() as $command) {
+        $name = $command->getName();
+        if (is_string($name) && str_starts_with($name, 'boost:')) {
+            $command->setName(substr($name, strlen('boost:')));
+        }
+        $app->add($command);
+    }
+
     $app->run();
 })();

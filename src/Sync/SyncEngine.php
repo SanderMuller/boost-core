@@ -20,6 +20,7 @@ use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
+use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Skills\CollidingSkillsException;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
@@ -134,7 +135,7 @@ final class SyncEngine
             );
         }
 
-        $packageSuffix = $this->packageSuffix($packageName);
+        $packageSuffix = self::packageSuffix($packageName);
         $skillsDir = $packageRoot . '/resources/boost/skills';
 
         /** @var list<Skill> $skills */
@@ -214,7 +215,7 @@ final class SyncEngine
         return is_string($name) && $name !== '' ? $name : null;
     }
 
-    private function packageSuffix(string $packageName): string
+    public static function packageSuffix(string $packageName): string
     {
         $slash = strrpos($packageName, '/');
 
@@ -275,7 +276,7 @@ final class SyncEngine
             $checkOnly,
         );
 
-        $gitignoreWrite = ($config->manageGitignore && getenv('BOOST_SKIP_GITIGNORE') === false)
+        $gitignoreWrite = ($config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false)
             ? $this->updateGitignore($projectRoot, $config, $checkOnly)
             : null;
 

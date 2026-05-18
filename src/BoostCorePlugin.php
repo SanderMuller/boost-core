@@ -19,12 +19,14 @@ use Throwable;
 
 final class BoostCorePlugin implements Capable, EventSubscriberInterface, PluginInterface
 {
-    private ?Composer $composer = null;
+    /**
+     * Emitted once per package skipped due to user-scope basename collision.
+     * Kept as a const so the format string is greppable from CHANGELOG /
+     * docs and not buried inside a sprintf call.
+     */
+    private const string COLLISION_WARNING = '<warning>boost: skipping global auto-sync of %s — basename "%s" already claimed by %s. Remove one of the packages or run `composer boost:sync --scope=user --working-dir=<pkg>` manually.</warning>';
 
-    public function activate(Composer $composer, IOInterface $io): void
-    {
-        $this->composer = $composer;
-    }
+    public function activate(Composer $composer, IOInterface $io): void {}
 
     public function deactivate(Composer $composer, IOInterface $io): void {}
 
@@ -53,8 +55,9 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
     public function onPostAutoloadDump(Event $event): void
     {
         $io = $event->getIO();
+        $composer = $event->getComposer();
 
-        if (getenv('BOOST_SKIP_AUTOSYNC') !== false) {
+        if (getenv(Env::SKIP_AUTOSYNC) !== false) {
             return;
         }
 
@@ -63,8 +66,8 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
             return;
         }
 
-        if ($this->isGlobalContext($projectRoot)) {
-            $this->runGlobalSync($io);
+        if ($this->isGlobalContext($composer, $projectRoot)) {
+            $this->runGlobalSync($composer, $io);
 
             return;
         }
@@ -95,13 +98,9 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
      * - cwd equals composer's configured home directory
      * - the first non-option argv is `global`
      */
-    private function isGlobalContext(string $projectRoot): bool
+    private function isGlobalContext(Composer $composer, string $projectRoot): bool
     {
-        if ($this->composer === null) {
-            return false;
-        }
-
-        $home = $this->composer->getConfig()->get('home');
+        $home = $composer->getConfig()->get('home');
         if (! is_string($home) || $home === '') {
             return false;
         }
@@ -133,23 +132,18 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
      * `resources/boost/skills/`, run user-scope sync into the agents'
      * home-directory skill folders.
      */
-    private function runGlobalSync(IOInterface $io): void
+    private function runGlobalSync(Composer $composer, IOInterface $io): void
     {
-        if ($this->composer === null) {
-            return;
-        }
-
-        $localRepo = $this->composer->getRepositoryManager()->getLocalRepository();
-        $installManager = $this->composer->getInstallationManager();
+        $localRepo = $composer->getRepositoryManager()->getLocalRepository();
+        $installManager = $composer->getInstallationManager();
 
         $engine = SyncEngine::default();
 
         // Track which package "claimed" each user-scope suffix so we can warn
-        // (and skip) on collisions like `acme/repo-init` vs `vendor/repo-init`
-        // both targeting `~/.{agent}/skills/repo-init/`. Suffix collisions are
-        // a known limitation of the current basename-only scheme in
-        // SyncEngine::packageSuffix(); detection here prevents silent
-        // file-overwrites until that scheme moves to a vendor-namespaced slug.
+        // (and skip) on collisions. Basename-only namespacing in
+        // SyncEngine::packageSuffix is the underlying limitation; collision
+        // detection here prevents silent file-overwrites until that scheme
+        // moves to a vendor-namespaced slug.
         /** @var array<string, string> $claimedSuffixes suffix => package name */
         $claimedSuffixes = [];
 
@@ -166,11 +160,10 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
                 continue;
             }
 
-            $suffix = $this->packageSuffix($package->getName());
+            $suffix = SyncEngine::packageSuffix($package->getName());
             if (isset($claimedSuffixes[$suffix])) {
                 $io->writeError(sprintf(
-                    '<warning>boost: skipping global auto-sync of %s — basename "%s" already claimed by %s. '
-                    . 'Remove one of the packages or run `composer boost:sync --scope=user --working-dir=<pkg>` manually.</warning>',
+                    self::COLLISION_WARNING,
                     $package->getName(),
                     $suffix,
                     $claimedSuffixes[$suffix],
@@ -215,12 +208,5 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
                 ));
             }
         }
-    }
-
-    private function packageSuffix(string $packageName): string
-    {
-        $slash = strrpos($packageName, '/');
-
-        return $slash === false ? $packageName : substr($packageName, $slash + 1);
     }
 }

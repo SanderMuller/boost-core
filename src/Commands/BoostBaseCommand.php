@@ -4,20 +4,19 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
-use Composer\Command\BaseCommand;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 
 /**
- * Shared base for boost-family Composer commands.
+ * Shared base for boost-family commands.
  *
- * Provides:
- * - The `--working-dir` / `-d` option declaration
- * - Project-root resolution from that option (or current working directory)
- *
- * Both boost-core's own commands and package-boost-php's commands extend this.
+ * Extends Symfony's Command directly (not Composer\Command\BaseCommand) so
+ * commands can be loaded in standalone-bin contexts where composer/composer
+ * is not in vendor/. The Composer plugin path adds them via CommandProvider;
+ * Composer's Application accepts plain Symfony commands.
  */
-abstract class BoostBaseCommand extends BaseCommand
+abstract class BoostBaseCommand extends Command
 {
     protected function addWorkingDirOption(): static
     {

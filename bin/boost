@@ -3,6 +3,9 @@
 
 declare(strict_types=1);
 
+use SanderMuller\BoostCore\Commands\CommandRegistry;
+use Symfony\Component\Console\Application;
+
 (function (): void {
     $autoloadCandidates = [
         __DIR__ . '/../vendor/autoload.php',
@@ -16,9 +19,9 @@ declare(strict_types=1);
         }
     }
 
-    $app = new \Symfony\Component\Console\Application('boost', '0.1.0-dev');
+    $app = new Application('boost', '0.1.0-dev');
 
-    foreach ((new \SanderMuller\BoostCore\BoostCoreCommandProvider())->getCommands() as $command) {
+    foreach (CommandRegistry::commands() as $command) {
         $name = $command->getName();
         if (is_string($name) && str_starts_with($name, 'boost:')) {
             $command->setName(substr($name, strlen('boost:')));

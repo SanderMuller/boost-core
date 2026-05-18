@@ -79,7 +79,10 @@
     },
     "scripts": {
         "post-install-cmd": [
-            "if [ \"$COMPOSER_DEV_MODE\" = \"1\" ]; then vendor/bin/boost sync 2>/dev/null || true; fi"
+            "@php bin/boost sync"
+        ],
+        "post-update-cmd": [
+            "@php bin/boost sync"
         ],
         "phpstan": "vendor/bin/phpstan analyse --memory-limit=2G",
         "phpstan-simplified": "vendor/bin/phpstan analyse --memory-limit=2G --error-format symplify",

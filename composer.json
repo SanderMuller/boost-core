@@ -79,10 +79,10 @@
     },
     "scripts": {
         "post-install-cmd": [
-            "@php bin/boost sync"
+            "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
         ],
         "post-update-cmd": [
-            "@php bin/boost sync"
+            "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
         ],
         "phpstan": "vendor/bin/phpstan analyse --memory-limit=2G",
         "phpstan-simplified": "vendor/bin/phpstan analyse --memory-limit=2G --error-format symplify",

@@ -93,9 +93,8 @@ final class BoostAutoSync
             return null;
         }
 
-        $binary = $event->getComposer()->getConfig()->get('bin-dir') . '/boost';
-
-        if (! is_executable($binary)) {
+        $binary = self::resolveBinary($event);
+        if ($binary === null) {
             return null;
         }
 
@@ -103,6 +102,36 @@ final class BoostAutoSync
         $process->run();
 
         return $process;
+    }
+
+    /**
+     * Resolve the boost binary, with a fallback for self-sync.
+     *
+     * Composer only symlinks dependency bins into `vendor/bin/`, never the
+     * root package's own bins. Consumer projects find boost-core's bin at
+     * `<config.bin-dir>/boost` (the symlinked one). Boost-core's own dev
+     * tree doesn't have that symlink — `bin/boost` lives directly at the
+     * project root. The fallback picks up that case so boost-core's own
+     * `composer install` triggers self-sync through the same callable
+     * consumers wire, with all the same guards (`--no-dev`,
+     * `BOOST_SKIP_AUTOSYNC`) intact.
+     */
+    private static function resolveBinary(Event $event): ?string
+    {
+        $config = $event->getComposer()->getConfig();
+        $binDirBinary = $config->get('bin-dir') . '/boost';
+
+        if (is_executable($binDirBinary)) {
+            return $binDirBinary;
+        }
+
+        $rootBinary = dirname($config->get('vendor-dir')) . '/bin/boost';
+
+        if (is_executable($rootBinary)) {
+            return $rootBinary;
+        }
+
+        return null;
     }
 
     private static function reportFailureIfAny(Event $event, Process $process): void

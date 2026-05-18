@@ -70,6 +70,47 @@ it('invokes the boost binary when present and dev-mode', function (): void {
     }
 });
 
+it('falls back to <project-root>/bin/boost when vendor/bin/ has no symlink (self-sync case)', function (): void {
+    // Boost-core's own dev tree: Composer doesn't symlink the root package's
+    // bins into vendor/bin/, so `config.bin-dir/boost` doesn't exist. The
+    // fallback resolves dirname(vendor-dir)/bin/boost — the binary at the
+    // project root.
+    $root = sys_get_temp_dir() . '/boost-autosync-rootfb-' . bin2hex(random_bytes(6));
+    mkdir($root . '/vendor/bin', 0o755, recursive: true);
+    mkdir($root . '/bin', 0o755, recursive: true);
+    $sentinel = $root . '/sentinel.flag';
+    $rootBoost = $root . '/bin/boost';
+
+    try {
+        file_put_contents(
+            $rootBoost,
+            sprintf("#!/usr/bin/env sh\ntouch %s\n", escapeshellarg($sentinel)),
+        );
+        chmod($rootBoost, 0o755);
+
+        $io = new BufferIO();
+        $config = new Config(useEnvironment: false);
+        $config->merge(['config' => [
+            'bin-dir' => $root . '/vendor/bin',
+            'vendor-dir' => $root . '/vendor',
+        ]]);
+        $composer = new Composer();
+        $composer->setConfig($config);
+        $event = new Event('post-install-cmd', $composer, $io, devMode: true);
+
+        BoostAutoSync::run($event);
+
+        expect(file_exists($sentinel))->toBeTrue();
+    } finally {
+        @unlink($sentinel);
+        @unlink($rootBoost);
+        @rmdir($root . '/vendor/bin');
+        @rmdir($root . '/vendor');
+        @rmdir($root . '/bin');
+        @rmdir($root);
+    }
+});
+
 it('honors BOOST_SKIP_AUTOSYNC env var (run + runWithSummary)', function (): void {
     // Build a fake bin-dir with a `boost` script that would touch a sentinel
     // file if invoked. If skip-autosync is honored, neither callable should

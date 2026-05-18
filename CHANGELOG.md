@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.0...HEAD)
 
+### Added
+
+- **`SanderMuller\BoostCore\Scripts\BoostAutoSync::run` script callback** for use in consumer packages' `post-install-cmd` / `post-update-cmd` hooks. Replaces the bash one-liner pattern (`if [ "$COMPOSER_DEV_MODE" = "1" ]; then vendor/bin/boost sync 2>/dev/null || true; fi`), which breaks on Windows cmd.exe. The PHP callback uses `Event::isDevMode()` (proper API instead of `$COMPOSER_DEV_MODE`), honors `composer config.bin-dir` overrides, and surfaces non-zero exits through Composer's IO instead of swallowing them. Add as a direct dep: `symfony/process: ^7.0`.
+
 ### Fixed
 
 - **User-scope sync no longer double-nests when the skill dir name matches the package basename.** Single-skill tooling packages (e.g. `sandermuller/repo-init` shipping `resources/boost/skills/repo-init/SKILL.md`) landed at `~/.{agent}/skills/repo-init/repo-init/SKILL.md` — the package suffix and the skill dir were both injected even when they were the same name. `SyncEngine::rewriteForUserScope` now strips the redundant first component when it equals the package suffix; output is `~/.{agent}/skills/repo-init/SKILL.md`. Multi-skill packages and packages whose skill name differs from the package basename are unaffected (the package/skill split still distinguishes them in the path).

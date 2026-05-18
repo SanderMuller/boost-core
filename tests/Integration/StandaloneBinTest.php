@@ -20,7 +20,7 @@ it('registers all BoostCoreCommandProvider commands in standalone bin', function
     $result = runBin('list');
 
     expect($result['exit'])->toBe(0);
-    foreach (['sync', 'init', 'install', 'scan', 'doctor', 'new'] as $name) {
+    foreach (['sync', 'install', 'scan', 'doctor', 'new'] as $name) {
         expect($result['output'])->toContain($name);
     }
 });

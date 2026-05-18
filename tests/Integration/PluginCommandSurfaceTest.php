@@ -9,7 +9,7 @@ use Symfony\Component\Process\Process;
  * cleanly through the plugin's CommandProvider capability. Composer's
  * PluginManager runtime-validates that every returned command is a
  * `Composer\Command\BaseCommand` — 0.1.2 shipped them as plain Symfony
- * commands and `composer boost:init` (and every other boost:* command)
+ * commands and `composer boost:install` (and every other boost:* command)
  * failed with "Plugin capability ... returned an invalid value".
  *
  * Covering this requires a real composer subprocess against a fixture
@@ -63,27 +63,42 @@ it('composer boost:* commands are registered through the plugin capability', fun
         expect($list->isSuccessful())->toBeTrue("composer list failed:\n" . $listOutput)
             ->and($listOutput)->not->toContain('returned an invalid value')
             ->toContain('boost:sync')
-            ->toContain('boost:init')
             ->toContain('boost:install')
             ->toContain('boost:scan')
             ->toContain('boost:doctor')
             ->toContain('boost:new');
 
-        // Drive a real command (not --help, which short-circuits before the
-        // adapter's execute() runs) WITH a Composer global option to prove
-        // dispatch through BaseCommandAdapter doesn't reject globals like
-        // --no-interaction. Use boost:init so we can also assert a real
-        // filesystem effect happened end-to-end.
-        $init = Process::fromShellCommandline(
-            'cd ' . escapeshellarg($fixture) . ' && composer boost:init --no-interaction 2>&1',
-        );
-        $init->run();
-        $initOutput = $init->getOutput() . $init->getErrorOutput();
+        // Drive a real, non-interactive command (not --help, which short-circuits
+        // before the adapter's execute() runs) WITH a Composer global option to
+        // prove dispatch through BaseCommandAdapter doesn't reject globals like
+        // --no-interaction. boost:sync is the natural fit — non-interactive,
+        // produces real filesystem output we can assert on.
+        file_put_contents($fixture . '/boost.php', <<<'PHP'
+            <?php
 
-        expect($init->isSuccessful())
-            ->toBeTrue("composer boost:init --no-interaction failed (exit {$init->getExitCode()}):\n" . $initOutput)
-            ->and($initOutput)->not->toContain('option does not exist')
-            ->and(file_exists($fixture . '/boost.php'))
+            declare(strict_types=1);
+
+            use SanderMuller\BoostCore\Config\BoostConfig;
+            use SanderMuller\BoostCore\Enums\Agent;
+
+            return BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE]);
+            PHP);
+        mkdir($fixture . '/.ai/skills', 0o755, recursive: true);
+        file_put_contents(
+            $fixture . '/.ai/skills/dispatched.md',
+            "---\nname: dispatched\n---\nProves dispatch through the adapter.\n",
+        );
+
+        $sync = Process::fromShellCommandline(
+            'cd ' . escapeshellarg($fixture) . ' && composer boost:sync --no-interaction 2>&1',
+        );
+        $sync->run();
+        $syncOutput = $sync->getOutput() . $sync->getErrorOutput();
+
+        expect($sync->isSuccessful())
+            ->toBeTrue("composer boost:sync --no-interaction failed (exit {$sync->getExitCode()}):\n" . $syncOutput)
+            ->and($syncOutput)->not->toContain('option does not exist')
+            ->and(file_exists($fixture . '/.claude/skills/dispatched/SKILL.md'))
             ->toBeTrue();
     } finally {
         cleanupTestDir($fixture);

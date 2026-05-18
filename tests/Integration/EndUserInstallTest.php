@@ -54,7 +54,6 @@ it('bin/boost runs in an end-user install without composer/composer in vendor', 
         expect($list->getExitCode())->toBe(0, 'bin/boost exited non-zero: ' . $outputStr)
             ->and($outputStr)
             ->toContain('sync')
-            ->toContain('init')
             ->toContain('install')
             ->toContain('scan')
             ->toContain('doctor')

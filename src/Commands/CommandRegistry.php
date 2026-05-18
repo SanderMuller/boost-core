@@ -22,7 +22,6 @@ final class CommandRegistry
     public static function commands(): array
     {
         return [
-            new InitCommand(),
             new InstallCommand(),
             new ScanCommand(),
             new SyncCommand(),

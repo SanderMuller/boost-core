@@ -28,14 +28,13 @@ composer require --dev sandermuller/package-boost-laravel
 Direct install for tooling authors who want to ship their own skill bundle:
 
 ```bash
-composer require --dev sandermuller/boost-core:^0.2
+composer require --dev sandermuller/boost-core
 ```
 
 ## Usage
 
 ```bash
-composer boost:init      # generate boost.php starter
-composer boost:install   # interactive picker: agents + vendor allowlist
+composer boost:install   # generate boost.php (if missing) + interactive picker for agents + vendor allowlist
 composer boost:sync      # fan out to selected agents
 ```
 

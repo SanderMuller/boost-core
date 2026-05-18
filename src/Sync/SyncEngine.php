@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Sync;
 
+use JsonException;
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
@@ -44,29 +45,29 @@ use Throwable;
  * 7. Run FileEmitters (before fan-out — one-way dependency).
  * 8. Agent fan-out: skills + guidelines per active agent.
  */
-final class SyncEngine
+final readonly class SyncEngine
 {
-    private readonly InstalledPackages $installedPackages;
+    private InstalledPackages $installedPackages;
 
-    private readonly SkillLoader $skillLoader;
+    private SkillLoader $skillLoader;
 
-    private readonly GuidelineLoader $guidelineLoader;
+    private GuidelineLoader $guidelineLoader;
 
-    private readonly VendorScanner $vendorScanner;
+    private VendorScanner $vendorScanner;
 
-    private readonly EmitterDiscovery $emitterDiscovery;
+    private EmitterDiscovery $emitterDiscovery;
 
     /**
      * @param  list<AgentTarget>  $agentTargets
      */
     public function __construct(
-        private readonly array $agentTargets,
-        private readonly BoostConfigLoader $configLoader = new BoostConfigLoader(),
-        private readonly FrontmatterParser $frontmatterParser = new FrontmatterParser(),
-        private readonly SkillResolver $skillResolver = new SkillResolver(),
-        private readonly GuidelineResolver $guidelineResolver = new GuidelineResolver(),
-        private readonly FileWriter $writer = new FileWriter(),
-        private readonly GitignoreManager $gitignoreManager = new GitignoreManager(),
+        private array $agentTargets,
+        private BoostConfigLoader $configLoader = new BoostConfigLoader(),
+        private FrontmatterParser $frontmatterParser = new FrontmatterParser(),
+        private SkillResolver $skillResolver = new SkillResolver(),
+        private GuidelineResolver $guidelineResolver = new GuidelineResolver(),
+        private FileWriter $writer = new FileWriter(),
+        private GitignoreManager $gitignoreManager = new GitignoreManager(),
         ?InstalledPackages $installedPackages = null,
     ) {
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -155,6 +156,7 @@ final class SyncEngine
                 if ($rewritten === null) {
                     continue;
                 }
+
                 $this->writeAndPrune(
                     $home,
                     new PendingWrite($rewritten, $pending->content),
@@ -200,7 +202,7 @@ final class SyncEngine
 
         try {
             $decoded = json_decode($raw, true, flags: JSON_THROW_ON_ERROR);
-        } catch (\JsonException) {
+        } catch (JsonException) {
             return null;
         }
 
@@ -250,8 +252,8 @@ final class SyncEngine
         try {
             $resolvedSkills = $this->resolveSkills($config, $allowedVendors, $force);
             $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force);
-        } catch (CollidingSkillsException $e) {
-            return new SyncResult(writes: [], emitters: [], errors: [$e->getMessage()], check: $checkOnly);
+        } catch (CollidingSkillsException $collidingSkillsException) {
+            return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
         }
 
         $context = new SyncContext(
@@ -275,7 +277,7 @@ final class SyncEngine
             : null;
 
         $writes = $fanOutWrites;
-        if ($gitignoreWrite !== null) {
+        if ($gitignoreWrite instanceof WrittenFile) {
             $writes[] = $gitignoreWrite;
         }
 
@@ -294,6 +296,7 @@ final class SyncEngine
             if (! $config->hasAgent($target->agent())) {
                 continue;
             }
+
             foreach ($target->gitignorePatterns() as $pattern) {
                 $patterns[] = $pattern;
             }
@@ -341,7 +344,7 @@ final class SyncEngine
     private function resolveSkills(BoostConfig $config, array $allowedVendors, bool $force): array
     {
         $hostSkills = is_dir($config->skillsPath)
-            ? $this->skillLoader->load($config->skillsPath, null)
+            ? $this->skillLoader->load($config->skillsPath)
             : [];
 
         /** @var array<string, iterable<Skill>> $vendorSkills */
@@ -362,7 +365,7 @@ final class SyncEngine
     private function resolveGuidelines(BoostConfig $config, array $allowedVendors, bool $force): array
     {
         $hostGuidelines = is_dir($config->guidelinesPath)
-            ? $this->guidelineLoader->load($config->guidelinesPath, null)
+            ? $this->guidelineLoader->load($config->guidelinesPath)
             : [];
 
         /** @var array<string, iterable<Guideline>> $vendorGuidelines */
@@ -420,17 +423,17 @@ final class SyncEngine
     ): EmitterResult {
         try {
             $emitted = $emitter->emitter->emit($context);
-        } catch (Throwable $e) {
+        } catch (Throwable $throwable) {
             return new EmitterResult(
                 fqcn: $emitter->fqcn,
                 vendor: $emitter->vendor,
                 action: EmitterAction::ERRORED,
                 relativePath: null,
-                reason: $e->getMessage(),
+                reason: $throwable->getMessage(),
             );
         }
 
-        if ($emitted === null) {
+        if (! $emitted instanceof EmittedFile) {
             return new EmitterResult(
                 fqcn: $emitter->fqcn,
                 vendor: $emitter->vendor,
@@ -453,6 +456,7 @@ final class SyncEngine
                 ),
             );
         }
+
         $claimedPaths[$emitted->relativePath] = $emitter->fqcn;
 
         try {
@@ -461,13 +465,13 @@ final class SyncEngine
                 new PendingWrite($emitted->relativePath, $emitted->content),
                 $checkOnly,
             );
-        } catch (Throwable $e) {
+        } catch (Throwable $throwable) {
             return new EmitterResult(
                 fqcn: $emitter->fqcn,
                 vendor: $emitter->vendor,
                 action: EmitterAction::ERRORED,
                 relativePath: $emitted->relativePath,
-                reason: $e->getMessage(),
+                reason: $throwable->getMessage(),
             );
         }
 
@@ -539,12 +543,12 @@ final class SyncEngine
             if (! $checkOnly) {
                 $this->pruneLegacyFlatSibling($baseDir, $pending->relativePath);
             }
-        } catch (Throwable $e) {
+        } catch (Throwable $throwable) {
             $errors[] = sprintf(
                 'Failed to write %s for %s: %s',
                 $pending->relativePath,
                 $target->agent()->value,
-                $e->getMessage(),
+                $throwable->getMessage(),
             );
         }
     }

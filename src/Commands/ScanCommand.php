@@ -50,8 +50,8 @@ final class ScanCommand extends BoostBaseCommand
 
         try {
             $config = $this->loader->load($projectRoot);
-        } catch (Throwable $e) {
-            $io->error($e->getMessage());
+        } catch (Throwable $throwable) {
+            $io->error($throwable->getMessage());
 
             return self::FAILURE;
         }
@@ -88,8 +88,8 @@ final class ScanCommand extends BoostBaseCommand
 
         try {
             $this->writer->update($configPath, $config->agents, $picked, $config->disabledEmitters);
-        } catch (Throwable $e) {
-            $io->error($e->getMessage());
+        } catch (Throwable $throwable) {
+            $io->error($throwable->getMessage());
 
             return self::FAILURE;
         }

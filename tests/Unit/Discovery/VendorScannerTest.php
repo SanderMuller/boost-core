@@ -43,30 +43,41 @@ function discoverAll(InstalledPackages $packages): array
 it('discovers skills at the convention path', function (): void {
     $found = discoverAll(packagesFromFixtures('with-skills-default-path'));
 
-    expect($found)->toHaveCount(1);
-    expect($found[0])->toBeInstanceOf(DiscoveredVendor::class);
-    expect($found[0]->name)->toBe('test-fixture/with-skills-default-path');
-    expect($found[0]->publishesSkills())->toBeTrue();
-    expect($found[0]->publishesGuidelines())->toBeFalse();
-    expect($found[0]->skillsPath)->toEndWith('/resources/boost/skills');
+    expect($found)->toHaveCount(1)
+        ->and($found[0])
+        ->toBeInstanceOf(DiscoveredVendor::class)
+        ->and($found[0]->name)
+        ->toBe('test-fixture/with-skills-default-path')
+        ->and($found[0]->publishesSkills())
+        ->toBeTrue()
+        ->and($found[0]->publishesGuidelines())
+        ->toBeFalse()
+        ->and($found[0]->skillsPath)
+        ->toEndWith('/resources/boost/skills');
 });
 
 it('discovers content at custom paths declared via extra.boost.skills', function (): void {
     $found = discoverAll(packagesFromFixtures('with-custom-skills-path'));
 
-    expect($found)->toHaveCount(1);
-    expect($found[0]->publishesSkills())->toBeTrue();
-    expect($found[0]->publishesGuidelines())->toBeTrue();
-    expect($found[0]->skillsPath)->toEndWith('/ai/custom-skills');
-    expect($found[0]->guidelinesPath)->toEndWith('/ai/custom-guidelines');
+    expect($found)->toHaveCount(1)
+        ->and($found[0]->publishesSkills())
+        ->toBeTrue()
+        ->and($found[0]->publishesGuidelines())
+        ->toBeTrue()
+        ->and($found[0]->skillsPath)
+        ->toEndWith('/ai/custom-skills')
+        ->and($found[0]->guidelinesPath)
+        ->toEndWith('/ai/custom-guidelines');
 });
 
 it('discovers guidelines-only packages', function (): void {
     $found = discoverAll(packagesFromFixtures('with-guidelines-only'));
 
-    expect($found)->toHaveCount(1);
-    expect($found[0]->publishesSkills())->toBeFalse();
-    expect($found[0]->publishesGuidelines())->toBeTrue();
+    expect($found)->toHaveCount(1)
+        ->and($found[0]->publishesSkills())
+        ->toBeFalse()
+        ->and($found[0]->publishesGuidelines())
+        ->toBeTrue();
 });
 
 it('skips packages with no boost content', function (): void {

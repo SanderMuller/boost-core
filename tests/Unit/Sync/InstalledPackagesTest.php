@@ -15,15 +15,18 @@ function fakePackages(): InstalledPackages
 
 it('reports installed packages via has()', function (): void {
     $packages = fakePackages();
-    expect($packages->has('foo/bar'))->toBeTrue();
-    expect($packages->has('baz/qux'))->toBeTrue();
-    expect($packages->has('not/installed'))->toBeFalse();
+    expect($packages->has('foo/bar'))->toBeTrue()
+        ->and($packages->has('baz/qux'))
+        ->toBeTrue()
+        ->and($packages->has('not/installed'))
+        ->toBeFalse();
 });
 
 it('returns version() for installed packages, null otherwise', function (): void {
     $packages = fakePackages();
-    expect($packages->version('foo/bar'))->toBe('1.2.3');
-    expect($packages->version('not/installed'))->toBeNull();
+    expect($packages->version('foo/bar'))->toBe('1.2.3')
+        ->and($packages->version('not/installed'))
+        ->toBeNull();
 });
 
 it('returns path() for installed packages', function (): void {
@@ -42,6 +45,7 @@ it('returns all() as iterable of PackageInfo', function (): void {
         expect($pkg)->toBeInstanceOf(PackageInfo::class);
         $names[] = $pkg->name;
     }
+
     expect($names)->toEqual(['foo/bar', 'baz/qux']);
 });
 

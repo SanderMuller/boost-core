@@ -80,6 +80,7 @@ final class FrontmatterParser
         if (str_starts_with(substr($remainder, $position), "---\r\n")) {
             return 5;
         }
+
         if (str_starts_with(substr($remainder, $position), "---\n")) {
             return 4;
         }

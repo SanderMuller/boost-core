@@ -32,9 +32,13 @@ function rmTreeE2E(string $path): array
     }
 
     foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
+        if ($entry === '.') {
             continue;
         }
+        if ($entry === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             $deleted = [...$deleted, ...rmTreeE2E($full)];
@@ -43,6 +47,7 @@ function rmTreeE2E(string $path): array
             $deleted[] = $full;
         }
     }
+
     rmdir($path);
 
     return $deleted;
@@ -50,7 +55,7 @@ function rmTreeE2E(string $path): array
 
 function writeBoostPhp(string $root, string $body): void
 {
-    file_put_contents($root . '/boost.php', "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\n$body\n");
+    file_put_contents($root . '/boost.php', "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\n{$body}\n");
 }
 
 function emptyInstalledPackages(): InstalledPackages
@@ -68,20 +73,22 @@ it('end-to-end: host skill + guideline → Claude Code files committed to disk',
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect($result->hasErrors())->toBeFalse();
-        expect($result->countByAction(WriteAction::WROTE))->toBe(3); // skill + guidelines + managed .gitignore
+        expect($result->hasErrors())->toBeFalse()
+            ->and($result->countByAction(WriteAction::WROTE))
+            ->toBe(3); // skill + guidelines + managed .gitignore
 
         expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue();
-        expect(file_exists($root . '/CLAUDE.md'))->toBeTrue();
-        expect(file_get_contents($root . '/.gitignore'))->toContain('.claude/skills/');
+        expect(file_exists($root . '/CLAUDE.md'))->toBeTrue()
+            ->and(file_get_contents($root . '/.gitignore'))
+            ->toContain('.claude/skills/');
 
         $skillContent = file_get_contents($root . '/.claude/skills/foo/SKILL.md');
-        expect($skillContent)->toContain('name: foo');
-        expect($skillContent)->toContain('# Foo body');
+        expect($skillContent)->toContain('name: foo')
+            ->toContain('# Foo body');
 
         $claudeMd = file_get_contents($root . '/CLAUDE.md');
-        expect($claudeMd)->toContain('# Conventions');
-        expect($claudeMd)->toContain('strict types');
+        expect($claudeMd)->toContain('# Conventions')
+            ->toContain('strict types');
     } finally {
         rmTreeE2E($root);
     }
@@ -95,9 +102,11 @@ it('check mode reports drift without writing', function (): void {
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root, checkOnly: true);
 
-        expect($result->hasDrift())->toBeTrue();
-        expect($result->countByAction(WriteAction::WOULD_WRITE))->toBeGreaterThan(0);
-        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeFalse();
+        expect($result->hasDrift())->toBeTrue()
+            ->and($result->countByAction(WriteAction::WOULD_WRITE))
+            ->toBeGreaterThan(0)
+            ->and(file_exists($root . '/.claude/skills/foo/SKILL.md'))
+            ->toBeFalse();
     } finally {
         rmTreeE2E($root);
     }
@@ -131,8 +140,9 @@ it('prunes a legacy flat `<name>.md` sibling when emitting `<name>/SKILL.md`', f
 
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue();
-        expect(file_exists($root . '/.claude/skills/foo.md'))->toBeFalse();
+        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/foo.md'))
+            ->toBeFalse();
     } finally {
         rmTreeE2E($root);
     }
@@ -179,10 +189,12 @@ it('directory-form source skill is emitted as <name>/SKILL.md, not flattened', f
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect($result->hasErrors())->toBeFalse();
-        expect(file_exists($root . '/.claude/skills/ai-guidelines/SKILL.md'))->toBeTrue();
-        expect(file_exists($root . '/.claude/skills/ai-guidelines.md'))->toBeFalse();
-        expect(file_get_contents($root . '/.claude/skills/ai-guidelines/SKILL.md'))
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/ai-guidelines/SKILL.md'))
+            ->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/ai-guidelines.md'))
+            ->toBeFalse()
+            ->and(file_get_contents($root . '/.claude/skills/ai-guidelines/SKILL.md'))
             ->toContain('name: ai-guidelines')
             ->toContain('# Body');
     } finally {
@@ -199,9 +211,11 @@ it('BOOST_SKIP_GITIGNORE bypasses gitignore management even when boost.php enabl
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect($result->hasErrors())->toBeFalse();
-        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue();
-        expect(file_exists($root . '/.gitignore'))->toBeFalse();
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/foo/SKILL.md'))
+            ->toBeTrue()
+            ->and(file_exists($root . '/.gitignore'))
+            ->toBeFalse();
     } finally {
         putenv('BOOST_SKIP_GITIGNORE');
         rmTreeE2E($root);
@@ -216,8 +230,10 @@ it('skips agent fan-out when no agents are configured', function (): void {
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect($result->writes)->toBe([]);
-        expect($result->hasErrors())->toBeFalse();
+        expect($result->writes)
+            ->toBeEmpty()
+            ->and($result->hasErrors())
+            ->toBeFalse();
     } finally {
         rmTreeE2E($root);
     }
@@ -255,9 +271,11 @@ it('discovers allowlisted vendor skills alongside host skills', function (): voi
 
         $result = SyncEngine::default($fakePackages)->sync($root);
 
-        expect($result->hasErrors())->toBeFalse();
-        expect(file_exists($root . '/.claude/skills/host-skill/SKILL.md'))->toBeTrue();
-        expect(file_exists($root . '/.claude/skills/vendor-skill/SKILL.md'))->toBeTrue();
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/host-skill/SKILL.md'))
+            ->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/vendor-skill/SKILL.md'))
+            ->toBeTrue();
     } finally {
         rmTreeE2E($root);
     }

@@ -39,7 +39,7 @@ final class SyncCommand extends BoostBaseCommand
                 'scope',
                 null,
                 InputOption::VALUE_REQUIRED,
-                'Sync scope: `project` (default, reads .ai/ + boost.php) or `user` (reads invoking package\'s resources/boost/skills/ into ~/.{agent}/skills/<pkg>/).',
+                "Sync scope: `project` (default, reads .ai/ + boost.php) or `user` (reads invoking package's resources/boost/skills/ into ~/.{agent}/skills/<pkg>/).",
                 'project',
             );
         $this->addWorkingDirOption();
@@ -83,8 +83,8 @@ final class SyncCommand extends BoostBaseCommand
     {
         try {
             $result = SyncEngine::default()->syncUser($packageRoot, $checkOnly);
-        } catch (Throwable $e) {
-            $io->error('boost:sync --scope=user failed: ' . $e->getMessage());
+        } catch (Throwable $throwable) {
+            $io->error('boost:sync --scope=user failed: ' . $throwable->getMessage());
 
             return self::FAILURE;
         }

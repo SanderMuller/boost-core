@@ -5,13 +5,15 @@ declare(strict_types=1);
 namespace SanderMuller\BoostCore\Config;
 
 use PhpParser\Error;
-use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ClassConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
+use PhpParser\Node\Identifier;
+use PhpParser\Node\Name;
+use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\NodeFinder;
@@ -50,10 +52,10 @@ use SanderMuller\BoostCore\Enums\Agent;
  * is a future improvement. For v1.0 this is straight parse → modify →
  * pretty-print, and the deviations are accepted.
  */
-final class BoostConfigWriter
+final readonly class BoostConfigWriter
 {
     public function __construct(
-        private readonly Standard $printer = new Standard(),
+        private Standard $printer = new Standard(),
     ) {}
 
     /**
@@ -78,8 +80,8 @@ final class BoostConfigWriter
         $parser = (new ParserFactory())->createForNewestSupportedVersion();
         try {
             $stmts = $parser->parse($source);
-        } catch (Error $e) {
-            throw new BoostConfigWriteException($configPath, 'parse error: ' . $e->getMessage());
+        } catch (Error $error) {
+            throw new BoostConfigWriteException($configPath, 'parse error: ' . $error->getMessage());
         }
 
         if ($stmts === null) {
@@ -96,7 +98,7 @@ final class BoostConfigWriter
         if ($return->expr instanceof StaticCall && $this->isBoostConfigConfigure($return->expr)) {
             $return->expr = new MethodCall(
                 var: $return->expr,
-                name: new Node\Identifier('withAgents'),
+                name: new Identifier('withAgents'),
                 args: [new Arg($this->agentsToArray([]))],
             );
         }
@@ -121,17 +123,17 @@ final class BoostConfigWriter
 
     private function isBoostConfigConfigure(StaticCall $call): bool
     {
-        if (! $call->class instanceof Node\Name) {
+        if (! $call->class instanceof Name) {
             return false;
         }
 
         $className = $call->class->toString();
         $isBoostConfig = in_array($className, [
-            'SanderMuller\\BoostCore\\Config\\BoostConfig',
+            BoostConfig::class,
             'BoostConfig',
         ], true);
 
-        $isConfigure = $call->name instanceof Node\Identifier && $call->name->name === 'configure';
+        $isConfigure = $call->name instanceof Identifier && $call->name->name === 'configure';
 
         return $isBoostConfig && $isConfigure;
     }
@@ -146,6 +148,7 @@ final class BoostConfigWriter
 
                 continue;
             }
+
             if ($receiver instanceof StaticCall) {
                 return $this->isBoostConfigConfigure($receiver);
             }
@@ -167,7 +170,7 @@ final class BoostConfigWriter
 
         $target = $this->findMethodInChain($chain, $methodName);
 
-        if ($target !== null) {
+        if ($target instanceof MethodCall) {
             $target->args = [new Arg($array)];
 
             return;
@@ -182,7 +185,7 @@ final class BoostConfigWriter
         $original = $current->var; // StaticCall
         $current->var = new MethodCall(
             var: $original,
-            name: new Node\Identifier($methodName),
+            name: new Identifier($methodName),
             args: [new Arg($array)],
         );
     }
@@ -191,7 +194,7 @@ final class BoostConfigWriter
     {
         $current = $outermost;
         while (true) {
-            if ($current->name instanceof Node\Identifier && $current->name->name === $methodName) {
+            if ($current->name instanceof Identifier && $current->name->name === $methodName) {
                 return $current;
             }
 
@@ -216,8 +219,8 @@ final class BoostConfigWriter
             // the host config imports the Agent enum.
             $items[] = new ArrayItem(
                 new ClassConstFetch(
-                    class: new Node\Name\FullyQualified(Agent::class),
-                    name: new Node\Identifier(strtoupper($agent->name)),
+                    class: new FullyQualified(Agent::class),
+                    name: new Identifier(strtoupper($agent->name)),
                 ),
             );
         }

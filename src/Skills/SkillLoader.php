@@ -14,10 +14,10 @@ use Symfony\Component\Finder\Finder;
  *
  * Skip rules: hidden files (`.`-prefixed), non-`.md` extensions.
  */
-final class SkillLoader
+final readonly class SkillLoader
 {
     public function __construct(
-        private readonly FrontmatterParser $parser,
+        private FrontmatterParser $parser,
     ) {}
 
     /**

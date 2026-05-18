@@ -21,10 +21,10 @@ use Throwable;
  * - Class must implement FileEmitter. Mismatches are silently skipped.
  * - Constructor must be parameterless. Throwing constructors are skipped.
  */
-final class EmitterDiscovery
+final readonly class EmitterDiscovery
 {
     public function __construct(
-        private readonly InstalledPackages $packages,
+        private InstalledPackages $packages,
     ) {}
 
     /**
@@ -52,7 +52,7 @@ final class EmitterDiscovery
 
             foreach ($this->extractEmitterFqcns($config) as $fqcn) {
                 $instance = $this->instantiate($fqcn);
-                if ($instance === null) {
+                if (! $instance instanceof FileEmitter) {
                     continue;
                 }
 

@@ -55,7 +55,7 @@ final readonly class SyncResult
         $count = 0;
         foreach ($this->writes as $write) {
             if ($write->action === $action) {
-                $count++;
+                ++$count;
             }
         }
 
@@ -67,7 +67,7 @@ final readonly class SyncResult
         $count = 0;
         foreach ($this->emitters as $emitter) {
             if ($emitter->action === $action) {
-                $count++;
+                ++$count;
             }
         }
 

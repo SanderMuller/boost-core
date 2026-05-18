@@ -22,6 +22,7 @@ function runInit(string $dir, bool $force = false): array
     if ($force) {
         $args['--force'] = true;
     }
+
     $exit = $tester->execute($args);
 
     return ['exit' => $exit, 'tester' => $tester];
@@ -40,14 +41,20 @@ function rmTreeInit(string $path): void
     if (! is_dir($path)) {
         return;
     }
+
     $entries = scandir($path);
     if ($entries === false) {
         return;
     }
+
     foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
+        if ($entry === '.') {
             continue;
         }
+        if ($entry === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             rmTreeInit($full);
@@ -55,6 +62,7 @@ function rmTreeInit(string $path): void
             unlink($full);
         }
     }
+
     rmdir($path);
 }
 
@@ -63,13 +71,14 @@ it('generates a boost.php at the project root', function (): void {
     try {
         $result = runInit($dir);
 
-        expect($result['exit'])->toBe(0);
-        expect(file_exists($dir . '/boost.php'))->toBeTrue();
+        expect($result['exit'])->toBe(0)
+            ->and(file_exists($dir . '/boost.php'))
+            ->toBeTrue();
 
         $contents = (string) file_get_contents($dir . '/boost.php');
-        expect($contents)->toContain('BoostConfig::configure()');
-        expect($contents)->toContain('withAgents');
-        expect($contents)->toContain('withAllowedVendors');
+        expect($contents)->toContain('BoostConfig::configure()')
+            ->toContain('withAgents')
+            ->toContain('withAllowedVendors');
     } finally {
         rmTreeInit($dir);
     }
@@ -82,9 +91,12 @@ it('the generated file loads as a valid BoostConfigBuilder', function (): void {
 
         $config = (new BoostConfigLoader())->load($dir);
 
-        expect($config->agents)->toBe([]);
-        expect($config->allowedVendors)->toBe([]);
-        expect($config->disabledEmitters)->toBe([]);
+        expect($config->agents)
+            ->toBeEmpty()
+            ->and($config->allowedVendors)
+            ->toBeEmpty()
+            ->and($config->disabledEmitters)
+            ->toBeEmpty();
     } finally {
         rmTreeInit($dir);
     }
@@ -97,8 +109,9 @@ it('refuses to overwrite an existing boost.php without --force', function (): vo
 
         $result = runInit($dir);
 
-        expect($result['exit'])->toBe(1);
-        expect(file_get_contents($dir . '/boost.php'))->toBe('<?php // existing content');
+        expect($result['exit'])->toBe(1)
+            ->and(file_get_contents($dir . '/boost.php'))
+            ->toBe('<?php // existing content');
     } finally {
         rmTreeInit($dir);
     }
@@ -111,8 +124,9 @@ it('overwrites with --force', function (): void {
 
         $result = runInit($dir, force: true);
 
-        expect($result['exit'])->toBe(0);
-        expect((string) file_get_contents($dir . '/boost.php'))->toContain('BoostConfig::configure()');
+        expect($result['exit'])->toBe(0)
+            ->and((string) file_get_contents($dir . '/boost.php'))
+            ->toContain('BoostConfig::configure()');
     } finally {
         rmTreeInit($dir);
     }

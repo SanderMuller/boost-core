@@ -7,12 +7,12 @@ namespace SanderMuller\BoostCore\Sync;
 use Composer\InstalledVersions;
 use LogicException;
 
-final class InstalledPackages
+final readonly class InstalledPackages
 {
     /**
      * @param  array<string, PackageInfo>  $packages  keyed by composer package name
      */
-    public function __construct(private readonly array $packages) {}
+    public function __construct(private array $packages) {}
 
     /**
      * Build from the host project's Composer runtime API.

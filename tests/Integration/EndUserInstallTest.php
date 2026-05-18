@@ -45,21 +45,20 @@ it('bin/boost runs in an end-user install without composer/composer in vendor', 
             throw new RuntimeException('composer install --no-dev failed: ' . $install->getOutput() . $install->getErrorOutput());
         }
 
-        expect(is_dir($fixture . '/vendor/composer/composer'))->toBeFalse();
+        expect($fixture . '/vendor/composer/composer')->not->toBeDirectory();
 
         $list = Process::fromShellCommandline(escapeshellarg($fixture) . '/vendor/bin/boost list 2>&1');
         $list->run();
         $outputStr = $list->getOutput() . $list->getErrorOutput();
 
-        expect($list->getExitCode())->toBe(0, 'bin/boost exited non-zero: ' . $outputStr);
-        expect($outputStr)
+        expect($list->getExitCode())->toBe(0, 'bin/boost exited non-zero: ' . $outputStr)
+            ->and($outputStr)
             ->toContain('sync')
             ->toContain('init')
             ->toContain('install')
             ->toContain('scan')
             ->toContain('doctor')
-            ->toContain('new')
-            ->not->toContain('Fatal error');
+            ->toContain('new')->not->toContain('Fatal error');
     } finally {
         cleanupTestDir($fixture);
     }

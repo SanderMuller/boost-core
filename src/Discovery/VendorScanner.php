@@ -18,14 +18,14 @@ use SanderMuller\BoostCore\Sync\PackageInfo;
  * - VendorScanner returns ALL packages with discoverable content. Allowlist
  *   filtering is the SyncEngine's responsibility downstream — keep concerns split.
  */
-final class VendorScanner
+final readonly class VendorScanner
 {
     private const DEFAULT_SKILLS_PATH = 'resources/boost/skills';
 
     private const DEFAULT_GUIDELINES_PATH = 'resources/boost/guidelines';
 
     public function __construct(
-        private readonly InstalledPackages $packages,
+        private InstalledPackages $packages,
     ) {}
 
     /**
@@ -35,7 +35,7 @@ final class VendorScanner
     {
         foreach ($this->packages->all() as $package) {
             $vendor = $this->scanPackage($package);
-            if ($vendor !== null && $vendor->publishesAnything()) {
+            if ($vendor instanceof DiscoveredVendor && $vendor->publishesAnything()) {
                 yield $vendor;
             }
         }

@@ -43,7 +43,7 @@ function findSkill(array $skills, string $name): Skill
 
 it('returns host skills when no vendors are provided', function (): void {
     $resolver = new SkillResolver();
-    $resolved = $resolver->resolve(loadFixture('host', null), []);
+    $resolved = $resolver->resolve(loadFixture('host'), []);
 
     $names = array_map(fn (Skill $s): string => $s->name, $resolved);
     expect($names)->toEqual(['host-skill', 'shared-name']);
@@ -52,19 +52,20 @@ it('returns host skills when no vendors are provided', function (): void {
 it('host always wins over vendor on collision', function (): void {
     $resolver = new SkillResolver();
     $resolved = $resolver->resolve(
-        loadFixture('host', null),
+        loadFixture('host'),
         ['test/vendor-a' => loadFixture('vendor-a', 'test/vendor-a')],
     );
 
     $sharedName = findSkill($resolved, 'shared-name');
-    expect($sharedName->isHostAuthored())->toBeTrue();
-    expect($sharedName->description)->toBe("Host's version, should win collisions.");
+    expect($sharedName->isHostAuthored())->toBeTrue()
+        ->and($sharedName->description)
+        ->toBe("Host's version, should win collisions.");
 });
 
 it('includes vendor skills that have no host equivalent', function (): void {
     $resolver = new SkillResolver();
     $resolved = $resolver->resolve(
-        loadFixture('host', null),
+        loadFixture('host'),
         ['test/vendor-a' => loadFixture('vendor-a', 'test/vendor-a')],
     );
 
@@ -95,9 +96,10 @@ it('captures both vendors in the collision exception', function (): void {
             ],
         );
         throw new RuntimeException('Expected CollidingSkillsException');
-    } catch (CollidingSkillsException $e) {
-        expect($e->name)->toBe('colliding');
-        expect($e->vendors)->toEqual(['test/vendor-a', 'test/vendor-b']);
+    } catch (CollidingSkillsException $collidingSkillsException) {
+        expect($collidingSkillsException->name)->toBe('colliding')
+            ->and($collidingSkillsException->vendors)
+            ->toEqual(['test/vendor-a', 'test/vendor-b']);
     }
 });
 
@@ -113,8 +115,9 @@ it('with --force, vendor declaration order wins silently', function (): void {
     );
 
     $colliding = findSkill($resolved, 'colliding');
-    expect($colliding->sourceVendor)->toBe('test/vendor-a');
-    expect($colliding->description)->toBe("Vendor A's version. Will collide with vendor-b.");
+    expect($colliding->sourceVendor)->toBe('test/vendor-a')
+        ->and($colliding->description)
+        ->toBe("Vendor A's version. Will collide with vendor-b.");
 });
 
 it('host overrides ALL vendors silently, even multiple ones', function (): void {
@@ -132,7 +135,7 @@ it('host overrides ALL vendors silently, even multiple ones', function (): void 
     );
 
     $resolved = $resolver->resolve(
-        loadFixture('host', null), // has 'shared-name'
+        loadFixture('host'), // has 'shared-name'
         [
             'test/vendor-a' => loadFixture('vendor-a', 'test/vendor-a'), // also 'shared-name'
             'test/vendor-b' => [$vendorBSkill],

@@ -40,7 +40,7 @@ final class DoctorCommand extends BoostBaseCommand
         $io->newLine();
 
         $config = $this->loadConfig($io, $projectRoot);
-        if ($config === null) {
+        if (! $config instanceof BoostConfig) {
             return self::FAILURE;
         }
 
@@ -78,6 +78,7 @@ final class DoctorCommand extends BoostBaseCommand
 
             return;
         }
+
         $io->listing($agents);
     }
 
@@ -110,6 +111,7 @@ final class DoctorCommand extends BoostBaseCommand
                 $allowedButMissing[] = $vendor;
             }
         }
+
         $discoveredButNotAllowed = array_values(array_diff($discoveredNames, $config->allowedVendors));
 
         $this->renderAllowlistGroup($io, 'Allowlisted and publishing', $allowedAndPresent, 'info');
@@ -129,6 +131,7 @@ final class DoctorCommand extends BoostBaseCommand
         if ($items === []) {
             return;
         }
+
         $io->writeln(sprintf('<%s>%s:</%s>', $tag, $label, $tag));
         $io->listing($items);
     }
@@ -139,8 +142,8 @@ final class DoctorCommand extends BoostBaseCommand
 
         try {
             $result = SyncEngine::default()->sync($projectRoot, checkOnly: true);
-        } catch (Throwable $e) {
-            $io->warning('Could not check drift: ' . $e->getMessage());
+        } catch (Throwable $throwable) {
+            $io->warning('Could not check drift: ' . $throwable->getMessage());
 
             return;
         }

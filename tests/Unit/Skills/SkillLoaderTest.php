@@ -43,28 +43,33 @@ it('loads skills with frontmatter from a directory', function (): void {
     $skills = skillsFromFixture('host');
 
     $names = array_map(fn (Skill $s): string => $s->name, $skills);
-    expect($names)->toContain('host-skill');
-    expect($names)->toContain('shared-name');
+    expect($names)->toContain('host-skill')
+        ->toContain('shared-name');
 });
 
 it('marks loaded skills with the source vendor', function (): void {
-    $hostSkills = skillsFromFixture('host', null);
+    $hostSkills = skillsFromFixture('host');
     $vendorSkills = skillsFromFixture('vendor-a', 'test/vendor-a');
 
-    expect($hostSkills[0]->sourceVendor)->toBeNull();
-    expect($hostSkills[0]->isHostAuthored())->toBeTrue();
-
-    expect($vendorSkills[0]->sourceVendor)->toBe('test/vendor-a');
-    expect($vendorSkills[0]->isHostAuthored())->toBeFalse();
+    expect($hostSkills[0]->sourceVendor)->toBeNull()
+        ->and($hostSkills[0]->isHostAuthored())
+        ->toBeTrue()
+        ->and($vendorSkills[0]->sourceVendor)
+        ->toBe('test/vendor-a')
+        ->and($vendorSkills[0]->isHostAuthored())
+        ->toBeFalse();
 });
 
 it('derives name from filename when frontmatter omits it', function (): void {
     $skills = skillsFromFixture('no-frontmatter');
 
-    expect($skills)->toHaveCount(1);
-    expect($skills[0]->name)->toBe('raw');
-    expect($skills[0]->frontmatter)->toBe([]);
-    expect($skills[0]->body)->toContain('Just a body');
+    expect($skills)->toHaveCount(1)
+        ->and($skills[0]->name)
+        ->toBe('raw')
+        ->and($skills[0]->frontmatter)
+        ->toBeEmpty()
+        ->and($skills[0]->body)
+        ->toContain('Just a body');
 });
 
 it('returns empty iterable for missing directories', function (): void {

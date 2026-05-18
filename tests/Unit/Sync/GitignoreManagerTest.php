@@ -7,19 +7,20 @@ use SanderMuller\BoostCore\Sync\GitignoreManager;
 it('returns null when no block exists and no patterns are requested', function (): void {
     $manager = new GitignoreManager();
 
-    expect($manager->render(null, []))->toBeNull();
-    expect($manager->render('vendor/', []))->toBeNull();
+    expect($manager->render(null, []))->toBeNull()
+        ->and($manager->render('vendor/', []))
+        ->toBeNull();
 });
 
 it('appends a block to empty contents', function (): void {
     $manager = new GitignoreManager();
     $result = $manager->render(null, ['.claude/skills/', 'CLAUDE.md']);
 
-    expect($result)->not()->toBeNull();
-    expect($result)->toContain(GitignoreManager::START);
-    expect($result)->toContain(GitignoreManager::END);
-    expect($result)->toContain('.claude/skills/');
-    expect($result)->toContain('CLAUDE.md');
+    expect($result)->not()->toBeNull()
+        ->toContain(GitignoreManager::START)
+        ->toContain(GitignoreManager::END)
+        ->toContain('.claude/skills/')
+        ->toContain('CLAUDE.md');
 });
 
 it('appends a block to existing contents preserving foreign lines', function (): void {
@@ -27,8 +28,8 @@ it('appends a block to existing contents preserving foreign lines', function ():
     $existing = "vendor/\n.idea/\n";
     $result = $manager->render($existing, ['.claude/skills/']);
 
-    expect($result)->toStartWith("vendor/\n.idea/\n");
-    expect($result)->toContain('.claude/skills/');
+    expect($result)->toStartWith("vendor/\n.idea/\n")
+        ->toContain('.claude/skills/');
 });
 
 it('rebuilds the block in place when it already exists', function (): void {
@@ -42,12 +43,13 @@ it('rebuilds the block in place when it already exists', function (): void {
 
     $result = $manager->render($existing, ['.claude/skills/', 'CLAUDE.md']);
 
-    expect($result)->not()->toBeNull();
-    expect($result)->toContain('vendor/');
-    expect($result)->toContain('node_modules/');
-    expect($result)->toContain('.claude/skills/');
-    expect($result)->toContain('CLAUDE.md');
-    expect($result)->not()->toContain('.oldagent/');
+    expect($result)->not()->toBeNull()
+        ->toContain('vendor/')
+        ->toContain('node_modules/')
+        ->toContain('.claude/skills/')
+        ->toContain('CLAUDE.md')
+        ->not()
+        ->toContain('.oldagent/');
 });
 
 it('strips the block when no patterns are requested', function (): void {
@@ -60,11 +62,13 @@ it('strips the block when no patterns are requested', function (): void {
 
     $result = $manager->render($existing, []);
 
-    expect($result)->not()->toBeNull();
-    expect($result)->toContain('vendor/');
-    expect($result)->toContain('node_modules/');
-    expect($result)->not()->toContain(GitignoreManager::START);
-    expect($result)->not()->toContain('.claude/skills/');
+    expect($result)->not()->toBeNull()
+        ->toContain('vendor/')
+        ->toContain('node_modules/')
+        ->not()
+        ->toContain(GitignoreManager::START)
+        ->not()
+        ->toContain('.claude/skills/');
 });
 
 it('returns null when block content matches requested patterns', function (): void {

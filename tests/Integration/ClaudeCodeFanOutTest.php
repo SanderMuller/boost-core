@@ -35,9 +35,13 @@ function rmTreeIntegration(string $path): array
     }
 
     foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
+        if ($entry === '.') {
             continue;
         }
+        if ($entry === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             $deleted = [...$deleted, ...rmTreeIntegration($full)];
@@ -46,6 +50,7 @@ function rmTreeIntegration(string $path): array
             $deleted[] = $full;
         }
     }
+
     rmdir($path);
 
     return $deleted;
@@ -58,7 +63,7 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
         $loader = new SkillLoader(new FrontmatterParser());
         /** @var list<Skill> $skills */
         $skills = [];
-        foreach ($loader->load(__DIR__ . '/../Fixtures/skills/host', null) as $skill) {
+        foreach ($loader->load(__DIR__ . '/../Fixtures/skills/host') as $skill) {
             $skills[] = $skill;
         }
 
@@ -81,24 +86,26 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
 
         // Verify all writes happened
         foreach ($results as $result) {
-            expect($result->action)->toBe(WriteAction::WROTE);
-            expect(file_exists($result->absolutePath))->toBeTrue();
+            expect($result->action)->toBe(WriteAction::WROTE)
+                ->and(file_exists($result->absolutePath))
+                ->toBeTrue();
         }
 
         // Verify expected files exist
         expect(file_exists($root . '/.claude/skills/host-skill/SKILL.md'))->toBeTrue();
-        expect(file_exists($root . '/.claude/skills/shared-name/SKILL.md'))->toBeTrue();
-        expect(file_exists($root . '/CLAUDE.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/shared-name/SKILL.md'))->toBeTrue()
+            ->and(file_exists($root . '/CLAUDE.md'))
+            ->toBeTrue();
 
         // Skill content has frontmatter + body
         $hostSkillContent = file_get_contents($root . '/.claude/skills/host-skill/SKILL.md');
-        expect($hostSkillContent)->toContain('name: host-skill');
-        expect($hostSkillContent)->toContain('# Host skill');
+        expect($hostSkillContent)->toContain('name: host-skill')
+            ->toContain('# Host skill');
 
         // Guidelines file has the body
         $claudeMd = file_get_contents($root . '/CLAUDE.md');
-        expect($claudeMd)->toContain('# Conventions');
-        expect($claudeMd)->toContain('strict types');
+        expect($claudeMd)->toContain('# Conventions')
+            ->toContain('strict types');
     } finally {
         rmTreeIntegration($root);
     }
@@ -110,7 +117,7 @@ it('second run with same content reports `unchanged`', function (): void {
         $loader = new SkillLoader(new FrontmatterParser());
         /** @var list<Skill> $skills */
         $skills = [];
-        foreach ($loader->load(__DIR__ . '/../Fixtures/skills/host', null) as $skill) {
+        foreach ($loader->load(__DIR__ . '/../Fixtures/skills/host') as $skill) {
             $skills[] = $skill;
         }
 

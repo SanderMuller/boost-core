@@ -89,6 +89,7 @@ final class GitignoreManager
             if ($trimmed === '') {
                 continue;
             }
+
             $seen[$trimmed] = true;
         }
 
@@ -117,6 +118,7 @@ final class GitignoreManager
         foreach ($patterns as $pattern) {
             $lines[] = $pattern;
         }
+
         $lines[] = self::END;
 
         return implode("\n", $lines) . "\n";

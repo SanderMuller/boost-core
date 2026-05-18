@@ -35,19 +35,18 @@ function allTargets(): array
 
 it('every Agent enum case has a matching AgentTarget', function (): void {
     $covered = array_map(static fn (array $row): Agent => $row[1], allTargets());
+    expect(Agent::cases())->each->toBeIn($covered);
 
-    foreach (Agent::cases() as $agent) {
-        expect(in_array($agent, $covered, true))
-            ->toBeTrue();
-    }
-    expect($covered)->toHaveCount(count(Agent::cases()));
+    expect($covered)->toHaveSameSize(Agent::cases());
 });
 
 it('each target reports the correct agent + paths', function (): void {
     foreach (allTargets() as [$target, $agent, $skillsDir, $guidelinesFile]) {
-        expect($target->agent())->toBe($agent);
-        expect($target->skillsDirectoryRelative())->toBe($skillsDir);
-        expect($target->guidelinesFileRelative())->toBe($guidelinesFile);
+        expect($target->agent())->toBe($agent)
+            ->and($target->skillsDirectoryRelative())
+            ->toBe($skillsDir)
+            ->and($target->guidelinesFileRelative())
+            ->toBe($guidelinesFile);
     }
 });
 
@@ -64,7 +63,8 @@ it('every target plans at least one skill file when given one skill', function (
     foreach (allTargets() as [$target, $agent, $skillsDir]) {
         $writes = $target->plan([$skill], []);
 
-        expect($writes)->toHaveCount(1);
-        expect($writes[0]->relativePath)->toBe($skillsDir . '/foo/SKILL.md');
+        expect($writes)->toHaveCount(1)
+            ->and($writes[0]->relativePath)
+            ->toBe($skillsDir . '/foo/SKILL.md');
     }
 });

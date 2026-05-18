@@ -60,9 +60,8 @@ it('composer boost:* commands are registered through the plugin capability', fun
         $list->run();
         $listOutput = $list->getOutput() . $list->getErrorOutput();
 
-        expect($list->isSuccessful())->toBeTrue("composer list failed:\n" . $listOutput);
-        expect($listOutput)
-            ->not->toContain('returned an invalid value')
+        expect($list->isSuccessful())->toBeTrue("composer list failed:\n" . $listOutput)
+            ->and($listOutput)->not->toContain('returned an invalid value')
             ->toContain('boost:sync')
             ->toContain('boost:init')
             ->toContain('boost:install')
@@ -82,9 +81,10 @@ it('composer boost:* commands are registered through the plugin capability', fun
         $initOutput = $init->getOutput() . $init->getErrorOutput();
 
         expect($init->isSuccessful())
-            ->toBeTrue("composer boost:init --no-interaction failed (exit {$init->getExitCode()}):\n" . $initOutput);
-        expect($initOutput)->not->toContain('option does not exist');
-        expect(file_exists($fixture . '/boost.php'))->toBeTrue();
+            ->toBeTrue("composer boost:init --no-interaction failed (exit {$init->getExitCode()}):\n" . $initOutput)
+            ->and($initOutput)->not->toContain('option does not exist')
+            ->and(file_exists($fixture . '/boost.php'))
+            ->toBeTrue();
     } finally {
         cleanupTestDir($fixture);
     }

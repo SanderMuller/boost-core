@@ -36,14 +36,20 @@ function cleanupTestDir(string $path): void
     if (! is_dir($path)) {
         return;
     }
+
     $items = scandir($path);
     if ($items === false) {
         return;
     }
+
     foreach ($items as $item) {
-        if ($item === '.' || $item === '..') {
+        if ($item === '.') {
             continue;
         }
+        if ($item === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $item;
         if (is_dir($full) && ! is_link($full)) {
             cleanupTestDir($full);
@@ -51,5 +57,6 @@ function cleanupTestDir(string $path): void
             @unlink($full);
         }
     }
+
     @rmdir($path);
 }

@@ -26,14 +26,20 @@ function rmTreeUserScope(string $path): void
     if (! is_dir($path)) {
         return;
     }
+
     $entries = scandir($path);
     if ($entries === false) {
         return;
     }
+
     foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
+        if ($entry === '.') {
             continue;
         }
+        if ($entry === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             rmTreeUserScope($full);
@@ -41,6 +47,7 @@ function rmTreeUserScope(string $path): void
             unlink($full);
         }
     }
+
     rmdir($path);
 }
 
@@ -69,9 +76,11 @@ it('user-scope sync does NOT prune the legacy sibling if the new write fails', f
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
-        expect($result->hasErrors())->toBeTrue();
-        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))->toBeTrue();
-        expect(file_get_contents($home . '/.claude/skills/sample-tool/sample-skill.md'))->toContain('last good copy');
+        expect($result->hasErrors())->toBeTrue()
+            ->and(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))
+            ->toBeTrue()
+            ->and(file_get_contents($home . '/.claude/skills/sample-tool/sample-skill.md'))
+            ->toContain('last good copy');
     } finally {
         rmTreeUserScope($pkg);
         rmTreeUserScope($home);
@@ -102,8 +111,9 @@ it('user-scope sync prunes a legacy flat `<skill>.md` sibling alongside the new 
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
-        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md'))->toBeTrue();
-        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))->toBeFalse();
+        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md'))->toBeTrue()
+            ->and(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))
+            ->toBeFalse();
     } finally {
         rmTreeUserScope($pkg);
         rmTreeUserScope($home);
@@ -130,15 +140,19 @@ it('user-scope sync fans skills into ~/.{agent}/skills/<package>/ under HOME', f
             new CursorTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
-        expect($result->hasErrors())->toBeFalse();
-        expect($result->packageName)->toBe('test-vendor/sample-tool');
-        expect($result->homeRoot)->toBe($home);
-        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md'))->toBeTrue();
-        expect(file_exists($home . '/.cursor/skills/sample-tool/sample-skill/SKILL.md'))->toBeTrue();
+        expect($result->hasErrors())->toBeFalse()
+            ->and($result->packageName)
+            ->toBe('test-vendor/sample-tool')
+            ->and($result->homeRoot)
+            ->toBe($home)
+            ->and(file_exists($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md'))
+            ->toBeTrue()
+            ->and(file_exists($home . '/.cursor/skills/sample-tool/sample-skill/SKILL.md'))
+            ->toBeTrue();
 
         $written = (string) file_get_contents($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md');
-        expect($written)->toContain('Body.');
-        expect($written)->toContain('name: sample-skill');
+        expect($written)->toContain('Body.')
+            ->toContain('name: sample-skill');
     } finally {
         rmTreeUserScope($pkg);
         rmTreeUserScope($home);
@@ -162,10 +176,13 @@ it('user-scope skips guideline files (CLAUDE.md, AGENTS.md) — no home-dir poll
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
-        expect(file_exists($home . '/.claude/skills/pkg/x/SKILL.md'))->toBeTrue();
-        expect(file_exists($home . '/CLAUDE.md'))->toBeFalse();
-        expect(file_exists($home . '/AGENTS.md'))->toBeFalse();
-        expect(file_exists($home . '/GEMINI.md'))->toBeFalse();
+        expect(file_exists($home . '/.claude/skills/pkg/x/SKILL.md'))->toBeTrue()
+            ->and(file_exists($home . '/CLAUDE.md'))
+            ->toBeFalse()
+            ->and(file_exists($home . '/AGENTS.md'))
+            ->toBeFalse()
+            ->and(file_exists($home . '/GEMINI.md'))
+            ->toBeFalse();
     } finally {
         rmTreeUserScope($pkg);
         rmTreeUserScope($home);
@@ -185,9 +202,11 @@ it('user-scope check mode reports drift without writing', function (): void {
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, checkOnly: true, homeRoot: $home);
 
-        expect($result->hasDrift())->toBeTrue();
-        expect($result->countByAction(WriteAction::WOULD_WRITE))->toBe(1);
-        expect(file_exists($home . '/.claude/skills/pkg/x.md'))->toBeFalse();
+        expect($result->hasDrift())->toBeTrue()
+            ->and($result->countByAction(WriteAction::WOULD_WRITE))
+            ->toBe(1)
+            ->and(file_exists($home . '/.claude/skills/pkg/x.md'))
+            ->toBeFalse();
     } finally {
         rmTreeUserScope($pkg);
         rmTreeUserScope($home);
@@ -203,8 +222,9 @@ it('user-scope errors when composer.json is missing', function (): void {
         $result = (new SyncEngine([], installedPackages: new InstalledPackages([])))
             ->syncUser($pkg, homeRoot: $home);
 
-        expect($result->hasErrors())->toBeTrue();
-        expect($result->errors[0])->toContain('composer.json not found');
+        expect($result->hasErrors())->toBeTrue()
+            ->and($result->errors[0])
+            ->toContain('composer.json not found');
     } finally {
         rmTreeUserScope($pkg);
         rmTreeUserScope($home);

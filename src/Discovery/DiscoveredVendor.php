@@ -25,6 +25,10 @@ final readonly class DiscoveredVendor
 
     public function publishesAnything(): bool
     {
-        return $this->publishesSkills() || $this->publishesGuidelines();
+        if ($this->publishesSkills()) {
+            return true;
+        }
+
+        return $this->publishesGuidelines();
     }
 }

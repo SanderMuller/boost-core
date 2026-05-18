@@ -73,9 +73,10 @@ it('auto-syncs user-scope skills for global-required packages', function (): voi
 
         $expected = $fakeHome . '/.claude/skills/global-skill-pkg/hello/SKILL.md';
 
-        expect(is_file($expected))
-            ->toBeTrue('expected ' . $expected . ' to exist. Composer output:' . PHP_EOL . $outputStr);
-        expect((string) file_get_contents($expected))->toContain('Hello from the fixture.');
+        expect($expected)
+            ->toBeFile()
+            ->and((string) file_get_contents($expected))
+            ->toContain('Hello from the fixture.');
     } finally {
         cleanupTestDir($base);
     }
@@ -150,8 +151,8 @@ it('warns and skips on basename collision in global ctx', function (): void {
 
         expect($hasA xor $hasB)->toBeTrue(
             sprintf('expected exactly one of from-a/SKILL.md or from-b/SKILL.md (a=%d b=%d). Output:%s%s', (int) $hasA, (int) $hasB, PHP_EOL, $outputStr),
-        );
-        expect($outputStr)
+        )
+            ->and($outputStr)
             ->toContain('basename "dup-tool" already claimed')
             ->toContain('skipping global auto-sync');
     } finally {

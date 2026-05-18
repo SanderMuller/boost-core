@@ -6,6 +6,7 @@ namespace SanderMuller\BoostCore;
 
 use Composer\Command\BaseCommand;
 use Composer\Plugin\Capability\CommandProvider;
+use Override;
 use SanderMuller\BoostCore\Commands\BaseCommandAdapter;
 use SanderMuller\BoostCore\Commands\CommandRegistry;
 use Symfony\Component\Console\Command\Command;
@@ -26,7 +27,7 @@ final class BoostCoreCommandProvider implements CommandProvider
      *
      * @return array<BaseCommand>
      */
-    #[\Override]
+    #[Override]
     public function getCommands(): array
     {
         return array_map(

@@ -19,9 +19,11 @@ it('reports membership via hasAgent', function (): void {
         disabledEmitters: [],
     );
 
-    expect($config->hasAgent(Agent::CLAUDE_CODE))->toBeTrue();
-    expect($config->hasAgent(Agent::CURSOR))->toBeTrue();
-    expect($config->hasAgent(Agent::COPILOT))->toBeFalse();
+    expect($config->hasAgent(Agent::CLAUDE_CODE))->toBeTrue()
+        ->and($config->hasAgent(Agent::CURSOR))
+        ->toBeTrue()
+        ->and($config->hasAgent(Agent::COPILOT))
+        ->toBeFalse();
 });
 
 it('reports allowlist membership via isVendorAllowed', function (): void {
@@ -33,8 +35,9 @@ it('reports allowlist membership via isVendorAllowed', function (): void {
         disabledEmitters: [],
     );
 
-    expect($config->isVendorAllowed('doctrine/orm'))->toBeTrue();
-    expect($config->isVendorAllowed('not/allowed'))->toBeFalse();
+    expect($config->isVendorAllowed('doctrine/orm'))->toBeTrue()
+        ->and($config->isVendorAllowed('not/allowed'))
+        ->toBeFalse();
 });
 
 it('reports disabled emitters via isEmitterDisabled', function (): void {
@@ -46,6 +49,7 @@ it('reports disabled emitters via isEmitterDisabled', function (): void {
         disabledEmitters: ['Foo\\BarEmitter'],
     );
 
-    expect($config->isEmitterDisabled('Foo\\BarEmitter'))->toBeTrue();
-    expect($config->isEmitterDisabled('Baz\\QuxEmitter'))->toBeFalse();
+    expect($config->isEmitterDisabled('Foo\\BarEmitter'))->toBeTrue()
+        ->and($config->isEmitterDisabled('Baz\\QuxEmitter'))
+        ->toBeFalse();
 });

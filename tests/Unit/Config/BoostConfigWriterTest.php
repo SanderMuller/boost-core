@@ -68,9 +68,11 @@ PHP);
         (new BoostConfigWriter())->update($path, [Agent::COPILOT], ['inserted/vendor'], ['Disabled\\Emitter']);
 
         $config = (new BoostConfigLoader())->load(dirname($path), $path);
-        expect($config->agents)->toEqual([Agent::COPILOT]);
-        expect($config->allowedVendors)->toEqual(['inserted/vendor']);
-        expect($config->disabledEmitters)->toEqual(['Disabled\\Emitter']);
+        expect($config->agents)->toEqual([Agent::COPILOT])
+            ->and($config->allowedVendors)
+            ->toEqual(['inserted/vendor'])
+            ->and($config->disabledEmitters)
+            ->toEqual(['Disabled\\Emitter']);
     } finally {
         @unlink($path);
     }
@@ -124,9 +126,11 @@ PHP);
 
         $config = (new BoostConfigLoader())->load(dirname($path), $path);
 
-        expect($config->agents)->toEqual([Agent::CLAUDE_CODE, Agent::CURSOR, Agent::COPILOT]);
-        expect($config->allowedVendors)->toEqual(['acme/foo', 'acme/bar']);
-        expect($config->disabledEmitters)->toEqual(['Acme\\SomeEmitter']);
+        expect($config->agents)->toEqual([Agent::CLAUDE_CODE, Agent::CURSOR, Agent::COPILOT])
+            ->and($config->allowedVendors)
+            ->toEqual(['acme/foo', 'acme/bar'])
+            ->and($config->disabledEmitters)
+            ->toEqual(['Acme\\SomeEmitter']);
 
         // Loadable as a BoostConfigBuilder when required directly.
         $builder = require $path;

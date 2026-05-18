@@ -47,7 +47,7 @@ final readonly class UserScopeResult
         $count = 0;
         foreach ($this->writes as $write) {
             if ($write->action === $action) {
-                $count++;
+                ++$count;
             }
         }
 

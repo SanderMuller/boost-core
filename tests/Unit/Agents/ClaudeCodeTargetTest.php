@@ -38,9 +38,11 @@ function makeGuideline(string $name, string $body): Guideline
 it('reports the Claude Code agent and conventional paths', function (): void {
     $target = new ClaudeCodeTarget();
 
-    expect($target->agent())->toBe(Agent::CLAUDE_CODE);
-    expect($target->skillsDirectoryRelative())->toBe('.claude/skills');
-    expect($target->guidelinesFileRelative())->toBe('CLAUDE.md');
+    expect($target->agent())->toBe(Agent::CLAUDE_CODE)
+        ->and($target->skillsDirectoryRelative())
+        ->toBe('.claude/skills')
+        ->and($target->guidelinesFileRelative())
+        ->toBe('CLAUDE.md');
 });
 
 it('plans one PendingWrite per skill, named `{name}/SKILL.md` under skills dir', function (): void {
@@ -53,10 +55,13 @@ it('plans one PendingWrite per skill, named `{name}/SKILL.md` under skills dir',
         guidelines: [],
     );
 
-    expect($writes)->toHaveCount(2);
-    expect($writes[0])->toBeInstanceOf(PendingWrite::class);
-    expect($writes[0]->relativePath)->toBe('.claude/skills/foo/SKILL.md');
-    expect($writes[1]->relativePath)->toBe('.claude/skills/bar/SKILL.md');
+    expect($writes)->toHaveCount(2)
+        ->and($writes[0])
+        ->toBeInstanceOf(PendingWrite::class)
+        ->and($writes[0]->relativePath)
+        ->toBe('.claude/skills/foo/SKILL.md')
+        ->and($writes[1]->relativePath)
+        ->toBe('.claude/skills/bar/SKILL.md');
 });
 
 it('embeds frontmatter at the top of each skill file', function (): void {
@@ -66,10 +71,10 @@ it('embeds frontmatter at the top of each skill file', function (): void {
         guidelines: [],
     );
 
-    expect($writes[0]->content)->toContain('---');
-    expect($writes[0]->content)->toContain('name: foo');
-    expect($writes[0]->content)->toContain('description:');
-    expect($writes[0]->content)->toContain('Body content.');
+    expect($writes[0]->content)->toContain('---')
+        ->toContain('name: foo')
+        ->toContain('description:')
+        ->toContain('Body content.');
 });
 
 it('omits the frontmatter block when frontmatter is empty', function (): void {
@@ -92,11 +97,13 @@ it('plans a guidelines write at CLAUDE.md when guidelines are present', function
         ],
     );
 
-    expect($writes)->toHaveCount(1);
-    expect($writes[0]->relativePath)->toBe('CLAUDE.md');
-    expect($writes[0]->content)->toContain('# Conventions');
-    expect($writes[0]->content)->toContain('# Style');
-    expect($writes[0]->content)->toContain('---'); // separator between guidelines
+    expect($writes)->toHaveCount(1)
+        ->and($writes[0]->relativePath)
+        ->toBe('CLAUDE.md')
+        ->and($writes[0]->content)
+        ->toContain('# Conventions')
+        ->toContain('# Style')
+        ->toContain('---'); // separator between guidelines
 });
 
 it('omits the guidelines write when no guidelines are provided', function (): void {
@@ -106,8 +113,9 @@ it('omits the guidelines write when no guidelines are provided', function (): vo
         guidelines: [],
     );
 
-    expect($writes)->toHaveCount(1);
-    expect($writes[0]->relativePath)->toBe('.claude/skills/foo/SKILL.md');
+    expect($writes)->toHaveCount(1)
+        ->and($writes[0]->relativePath)
+        ->toBe('.claude/skills/foo/SKILL.md');
 });
 
 it('handles both skills and guidelines in a single plan', function (): void {

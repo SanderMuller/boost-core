@@ -23,14 +23,20 @@ function rmTreeEmit(string $path): void
     if (! is_dir($path)) {
         return;
     }
+
     $entries = scandir($path);
     if ($entries === false) {
         return;
     }
+
     foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
+        if ($entry === '.') {
             continue;
         }
+        if ($entry === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             rmTreeEmit($full);
@@ -38,6 +44,7 @@ function rmTreeEmit(string $path): void
             unlink($full);
         }
     }
+
     rmdir($path);
 }
 
@@ -75,11 +82,15 @@ it('runs a discovered emitter and writes its file', function (): void {
 
         $result = (new SyncEngine([], installedPackages: $packages))->sync($root);
 
-        expect($result->emitters)->toHaveCount(1);
-        expect($result->emitters[0]->action)->toBe(EmitterAction::WROTE);
-        expect($result->emitters[0]->fqcn)->toBe(DummyEmitter::class);
-        expect($result->emitters[0]->vendor)->toBe('test/dummy-pkg');
-        expect(file_exists($root . '/.dummy/output.txt'))->toBeTrue();
+        expect($result->emitters)->toHaveCount(1)
+            ->and($result->emitters[0]->action)
+            ->toBe(EmitterAction::WROTE)
+            ->and($result->emitters[0]->fqcn)
+            ->toBe(DummyEmitter::class)
+            ->and($result->emitters[0]->vendor)
+            ->toBe('test/dummy-pkg')
+            ->and(file_exists($root . '/.dummy/output.txt'))
+            ->toBeTrue();
     } finally {
         rmTreeEmit($root);
     }
@@ -98,9 +109,11 @@ it('records skipped emitters when emit() returns null', function (): void {
 
         $result = (new SyncEngine([], installedPackages: $packages))->sync($root);
 
-        expect($result->emitters)->toHaveCount(1);
-        expect($result->emitters[0]->action)->toBe(EmitterAction::SKIPPED);
-        expect($result->hasErrors())->toBeFalse();
+        expect($result->emitters)->toHaveCount(1)
+            ->and($result->emitters[0]->action)
+            ->toBe(EmitterAction::SKIPPED)
+            ->and($result->hasErrors())
+            ->toBeFalse();
     } finally {
         rmTreeEmit($root);
     }
@@ -119,10 +132,13 @@ it('records errored emitters when emit() throws and continues sync', function ()
 
         $result = (new SyncEngine([], installedPackages: $packages))->sync($root);
 
-        expect($result->emitters)->toHaveCount(1);
-        expect($result->emitters[0]->action)->toBe(EmitterAction::ERRORED);
-        expect($result->emitters[0]->reason)->toContain('Deliberate failure');
-        expect($result->hasErrors())->toBeTrue(); // errored emitters count as errors
+        expect($result->emitters)->toHaveCount(1)
+            ->and($result->emitters[0]->action)
+            ->toBe(EmitterAction::ERRORED)
+            ->and($result->emitters[0]->reason)
+            ->toContain('Deliberate failure')
+            ->and($result->hasErrors())
+            ->toBeTrue(); // errored emitters count as errors
     } finally {
         rmTreeEmit($root);
     }
@@ -148,9 +164,11 @@ it('records disabled emitters when withDisabledEmitters lists them', function ()
 
         $result = (new SyncEngine([], installedPackages: $packages))->sync($root);
 
-        expect($result->emitters)->toHaveCount(1);
-        expect($result->emitters[0]->action)->toBe(EmitterAction::DISABLED);
-        expect(file_exists($root . '/.dummy/output.txt'))->toBeFalse();
+        expect($result->emitters)->toHaveCount(1)
+            ->and($result->emitters[0]->action)
+            ->toBe(EmitterAction::DISABLED)
+            ->and(file_exists($root . '/.dummy/output.txt'))
+            ->toBeFalse();
     } finally {
         rmTreeEmit($root);
     }
@@ -169,10 +187,13 @@ it('reports would-write for emitters in check mode', function (): void {
 
         $result = (new SyncEngine([], installedPackages: $packages))->sync($root, checkOnly: true);
 
-        expect($result->emitters)->toHaveCount(1);
-        expect($result->emitters[0]->action)->toBe(EmitterAction::WOULD_WRITE);
-        expect($result->hasDrift())->toBeTrue();
-        expect(file_exists($root . '/.dummy/output.txt'))->toBeFalse();
+        expect($result->emitters)->toHaveCount(1)
+            ->and($result->emitters[0]->action)
+            ->toBe(EmitterAction::WOULD_WRITE)
+            ->and($result->hasDrift())
+            ->toBeTrue()
+            ->and(file_exists($root . '/.dummy/output.txt'))
+            ->toBeFalse();
     } finally {
         rmTreeEmit($root);
     }
@@ -195,8 +216,10 @@ it('emitters from non-allowlisted vendors never run', function (): void {
 
         $result = (new SyncEngine([], installedPackages: $packages))->sync($root);
 
-        expect($result->emitters)->toBe([]);
-        expect(file_exists($root . '/.dummy/output.txt'))->toBeFalse();
+        expect($result->emitters)
+            ->toBeEmpty()
+            ->and(file_exists($root . '/.dummy/output.txt'))
+            ->toBeFalse();
     } finally {
         rmTreeEmit($root);
     }

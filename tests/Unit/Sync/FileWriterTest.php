@@ -31,9 +31,13 @@ function rmTree(string $path): array
     }
 
     foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
+        if ($entry === '.') {
             continue;
         }
+        if ($entry === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             $deleted = [...$deleted, ...rmTree($full)];
@@ -42,6 +46,7 @@ function rmTree(string $path): array
             $deleted[] = $full;
         }
     }
+
     rmdir($path);
 
     return $deleted;
@@ -53,9 +58,11 @@ it('writes content to the resolved absolute path', function (): void {
         $writer = new FileWriter();
         $result = $writer->write($root, new PendingWrite('foo/bar.md', 'hello'));
 
-        expect($result->action)->toBe(WriteAction::WROTE);
-        expect($result->absolutePath)->toBe($root . '/foo/bar.md');
-        expect(file_get_contents($result->absolutePath))->toBe('hello');
+        expect($result->action)->toBe(WriteAction::WROTE)
+            ->and($result->absolutePath)
+            ->toBe($root . '/foo/bar.md')
+            ->and(file_get_contents($result->absolutePath))
+            ->toBe('hello');
     } finally {
         rmTree($root);
     }
@@ -67,8 +74,10 @@ it('creates parent directories as needed', function (): void {
         $writer = new FileWriter();
         $writer->write($root, new PendingWrite('a/b/c/d.md', 'deep'));
 
-        expect(is_dir($root . '/a/b/c'))->toBeTrue();
-        expect(file_get_contents($root . '/a/b/c/d.md'))->toBe('deep');
+        expect($root . '/a/b/c')
+            ->toBeDirectory()
+            ->and(file_get_contents($root . '/a/b/c/d.md'))
+            ->toBe('deep');
     } finally {
         rmTree($root);
     }
@@ -93,8 +102,9 @@ it('reports `would-write` in check mode when content differs', function (): void
         $writer = new FileWriter();
         $result = $writer->write($root, new PendingWrite('new.md', 'fresh'), checkOnly: true);
 
-        expect($result->action)->toBe(WriteAction::WOULD_WRITE);
-        expect(file_exists($root . '/new.md'))->toBeFalse();
+        expect($result->action)->toBe(WriteAction::WOULD_WRITE)
+            ->and(file_exists($root . '/new.md'))
+            ->toBeFalse();
     } finally {
         rmTree($root);
     }

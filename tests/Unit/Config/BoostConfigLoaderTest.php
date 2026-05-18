@@ -18,11 +18,15 @@ it('loads a fully-configured boost.php fixture', function (): void {
         configFixture('valid-boost.php'),
     );
 
-    expect($config->agents)->toEqual([Agent::CLAUDE_CODE, Agent::CURSOR]);
-    expect($config->allowedVendors)->toEqual(['doctrine/orm', 'symfony/symfony']);
-    expect($config->skillsPath)->toEndWith('/custom-skills');
-    expect($config->guidelinesPath)->toEndWith('/custom-guidelines');
-    expect($config->disabledEmitters)->toEqual(['Acme\\SomeEmitter']);
+    expect($config->agents)->toEqual([Agent::CLAUDE_CODE, Agent::CURSOR])
+        ->and($config->allowedVendors)
+        ->toEqual(['doctrine/orm', 'symfony/symfony'])
+        ->and($config->skillsPath)
+        ->toEndWith('/custom-skills')
+        ->and($config->guidelinesPath)
+        ->toEndWith('/custom-guidelines')
+        ->and($config->disabledEmitters)
+        ->toEqual(['Acme\\SomeEmitter']);
 });
 
 it('loads a minimal boost.php with all defaults applied', function (): void {
@@ -31,11 +35,16 @@ it('loads a minimal boost.php with all defaults applied', function (): void {
         configFixture('minimal-boost.php'),
     );
 
-    expect($config->agents)->toBe([]);
-    expect($config->allowedVendors)->toBe([]);
-    expect($config->skillsPath)->toBe('/fake/project/.ai/skills');
-    expect($config->guidelinesPath)->toBe('/fake/project/.ai/guidelines');
-    expect($config->disabledEmitters)->toBe([]);
+    expect($config->agents)
+        ->toBeEmpty()
+        ->and($config->allowedVendors)
+        ->toBeEmpty()
+        ->and($config->skillsPath)
+        ->toBe('/fake/project/.ai/skills')
+        ->and($config->guidelinesPath)
+        ->toBe('/fake/project/.ai/guidelines')
+        ->and($config->disabledEmitters)
+        ->toBeEmpty();
 });
 
 it('throws when boost.php does not exist', function (): void {
@@ -51,8 +60,8 @@ it('reports the expected path in the not-found exception', function (): void {
     try {
         (new BoostConfigLoader())->load('/fake/project', $missing);
         throw new RuntimeException('Expected BoostConfigNotFoundException');
-    } catch (BoostConfigNotFoundException $e) {
-        expect($e->expectedPath)->toBe($missing);
+    } catch (BoostConfigNotFoundException $boostConfigNotFoundException) {
+        expect($boostConfigNotFoundException->expectedPath)->toBe($missing);
     }
 });
 

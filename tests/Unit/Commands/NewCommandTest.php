@@ -23,14 +23,20 @@ function rmTreeNew(string $path): void
     if (! is_dir($path)) {
         return;
     }
+
     $entries = scandir($path);
     if ($entries === false) {
         return;
     }
+
     foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
+        if ($entry === '.') {
             continue;
         }
+        if ($entry === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             rmTreeNew($full);
@@ -38,6 +44,7 @@ function rmTreeNew(string $path): void
             unlink($full);
         }
     }
+
     rmdir($path);
 }
 
@@ -67,13 +74,14 @@ it('creates a skill file with frontmatter', function (): void {
             '--description' => 'A foo-bar skill.',
         ]);
 
-        expect($result['exit'])->toBe(0);
-        expect(file_exists($dir . '/.ai/skills/foo-bar.md'))->toBeTrue();
+        expect($result['exit'])->toBe(0)
+            ->and(file_exists($dir . '/.ai/skills/foo-bar.md'))
+            ->toBeTrue();
 
         $contents = (string) file_get_contents($dir . '/.ai/skills/foo-bar.md');
-        expect($contents)->toContain('name: foo-bar');
-        expect($contents)->toContain('description: A foo-bar skill.');
-        expect($contents)->toContain('# foo-bar');
+        expect($contents)->toContain('name: foo-bar')
+            ->toContain('description: A foo-bar skill.')
+            ->toContain('# foo-bar');
     } finally {
         rmTreeNew($dir);
     }
@@ -88,8 +96,9 @@ it('creates a guideline file in the guidelines dir', function (): void {
             '--working-dir' => $dir,
         ]);
 
-        expect($result['exit'])->toBe(0);
-        expect(file_exists($dir . '/.ai/guidelines/conventions.md'))->toBeTrue();
+        expect($result['exit'])->toBe(0)
+            ->and(file_exists($dir . '/.ai/guidelines/conventions.md'))
+            ->toBeTrue();
     } finally {
         rmTreeNew($dir);
     }
@@ -119,8 +128,9 @@ it('overwrites with --force', function (): void {
             '--description' => 'Updated.',
         ]);
 
-        expect($second['exit'])->toBe(0);
-        expect((string) file_get_contents($dir . '/.ai/skills/foo.md'))->toContain('Updated.');
+        expect($second['exit'])->toBe(0)
+            ->and((string) file_get_contents($dir . '/.ai/skills/foo.md'))
+            ->toContain('Updated.');
     } finally {
         rmTreeNew($dir);
     }

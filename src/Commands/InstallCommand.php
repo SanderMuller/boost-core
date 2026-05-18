@@ -50,8 +50,8 @@ final class InstallCommand extends BoostBaseCommand
 
         try {
             $config = $this->loader->load($projectRoot);
-        } catch (Throwable $e) {
-            $io->error($e->getMessage());
+        } catch (Throwable $throwable) {
+            $io->error($throwable->getMessage());
 
             return self::FAILURE;
         }
@@ -69,8 +69,8 @@ final class InstallCommand extends BoostBaseCommand
                 $vendors,
                 $config->disabledEmitters,
             );
-        } catch (Throwable $e) {
-            $io->error($e->getMessage());
+        } catch (Throwable $throwable) {
+            $io->error($throwable->getMessage());
 
             return self::FAILURE;
         }
@@ -103,7 +103,7 @@ final class InstallCommand extends BoostBaseCommand
             hint: 'Space to toggle, enter to confirm.',
         );
 
-        return array_map(static fn (string $value): Agent => Agent::from($value), $picked);
+        return array_map(Agent::from(...), $picked);
     }
 
     /**

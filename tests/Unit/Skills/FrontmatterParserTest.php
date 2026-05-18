@@ -13,8 +13,9 @@ it('parses standard frontmatter blocks', function (): void {
     expect($doc->frontmatter)->toEqual([
         'name' => 'example',
         'description' => 'An example skill.',
-    ]);
-    expect($doc->body)->toBe("# Body\n\nContent.\n");
+    ])
+        ->and($doc->body)
+        ->toBe("# Body\n\nContent.\n");
 });
 
 it('passes through unknown frontmatter keys (loose v1 schema)', function (): void {
@@ -23,9 +24,8 @@ it('passes through unknown frontmatter keys (loose v1 schema)', function (): voi
 
     $doc = $parser->parse($input);
 
-    expect($doc->frontmatter)->toHaveKey('custom_field');
-    expect($doc->frontmatter['custom_field'])->toBe('anything');
-    expect($doc->frontmatter['triggers'])->toBe(['foo', 'bar']);
+    expect($doc->frontmatter)->toHaveKey('custom_field')
+        ->toMatchArray(['custom_field' => 'anything', 'triggers' => ['foo', 'bar']]);
 });
 
 it('returns empty frontmatter when no fence is present', function (): void {
@@ -34,8 +34,10 @@ it('returns empty frontmatter when no fence is present', function (): void {
 
     $doc = $parser->parse($input);
 
-    expect($doc->frontmatter)->toBe([]);
-    expect($doc->body)->toBe($input);
+    expect($doc->frontmatter)
+        ->toBeEmpty()
+        ->and($doc->body)
+        ->toBe($input);
 });
 
 it('returns empty frontmatter when frontmatter is malformed YAML', function (): void {
@@ -44,7 +46,8 @@ it('returns empty frontmatter when frontmatter is malformed YAML', function (): 
 
     $doc = $parser->parse($input);
 
-    expect($doc->frontmatter)->toBe([]);
+    expect($doc->frontmatter)
+        ->toBeEmpty();
 });
 
 it('handles CRLF line endings', function (): void {
@@ -53,8 +56,9 @@ it('handles CRLF line endings', function (): void {
 
     $doc = $parser->parse($input);
 
-    expect($doc->frontmatter)->toEqual(['name' => 'crlf']);
-    expect($doc->body)->toContain('Body.');
+    expect($doc->frontmatter)->toEqual(['name' => 'crlf'])
+        ->and($doc->body)
+        ->toContain('Body.');
 });
 
 it('returns empty frontmatter when frontmatter is a scalar not a map', function (): void {
@@ -63,5 +67,6 @@ it('returns empty frontmatter when frontmatter is a scalar not a map', function 
 
     $doc = $parser->parse($input);
 
-    expect($doc->frontmatter)->toBe([]);
+    expect($doc->frontmatter)
+        ->toBeEmpty();
 });

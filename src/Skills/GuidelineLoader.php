@@ -6,10 +6,10 @@ namespace SanderMuller\BoostCore\Skills;
 
 use Symfony\Component\Finder\Finder;
 
-final class GuidelineLoader
+final readonly class GuidelineLoader
 {
     public function __construct(
-        private readonly FrontmatterParser $parser,
+        private FrontmatterParser $parser,
     ) {}
 
     /**

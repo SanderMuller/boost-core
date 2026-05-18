@@ -87,8 +87,8 @@ final class NewCommand extends BoostBaseCommand
 
         try {
             $config = $this->loader->load($projectRoot);
-        } catch (Throwable $e) {
-            $io->error($e->getMessage());
+        } catch (Throwable $throwable) {
+            $io->error($throwable->getMessage());
 
             return self::FAILURE;
         }

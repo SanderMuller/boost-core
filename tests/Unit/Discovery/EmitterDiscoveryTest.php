@@ -37,10 +37,13 @@ it('discovers emitters from allowlisted vendors', function (): void {
 
         $discovered = (new EmitterDiscovery($packages))->discover(['test/with-emitter']);
 
-        expect($discovered)->toHaveCount(1);
-        expect($discovered[0]->vendor)->toBe('test/with-emitter');
-        expect($discovered[0]->fqcn)->toBe(DummyEmitter::class);
-        expect($discovered[0]->emitter)->toBeInstanceOf(DummyEmitter::class);
+        expect($discovered)->toHaveCount(1)
+            ->and($discovered[0]->vendor)
+            ->toBe('test/with-emitter')
+            ->and($discovered[0]->fqcn)
+            ->toBe(DummyEmitter::class)
+            ->and($discovered[0]->emitter)
+            ->toBeInstanceOf(DummyEmitter::class);
     } finally {
         @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);
@@ -61,7 +64,8 @@ it('skips non-allowlisted vendors even if they declare emitters', function (): v
         // Allowlist does NOT include forbidden/vendor.
         $discovered = (new EmitterDiscovery($packages))->discover(['some/other-vendor']);
 
-        expect($discovered)->toBe([]);
+        expect($discovered)
+            ->toBeEmpty();
     } finally {
         @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);
@@ -81,7 +85,8 @@ it('silently skips emitters whose class does not autoload', function (): void {
 
         $discovered = (new EmitterDiscovery($packages))->discover(['test/missing-class']);
 
-        expect($discovered)->toBe([]);
+        expect($discovered)
+            ->toBeEmpty();
     } finally {
         @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);
@@ -125,7 +130,8 @@ it('handles vendors with no emitters section gracefully', function (): void {
 
         $discovered = (new EmitterDiscovery($packages))->discover(['test/no-emitters']);
 
-        expect($discovered)->toBe([]);
+        expect($discovered)
+            ->toBeEmpty();
     } finally {
         @unlink($vendorDir . '/composer.json');
         @rmdir($vendorDir);

@@ -16,7 +16,7 @@ function runBin(string $args): array
     return ['exit' => $process->getExitCode() ?? 0, 'output' => $process->getOutput() . $process->getErrorOutput()];
 }
 
-it('registers all BoostCoreCommandProvider commands in standalone bin', function () {
+it('registers all BoostCoreCommandProvider commands in standalone bin', function (): void {
     $result = runBin('list');
 
     expect($result['exit'])->toBe(0);
@@ -25,14 +25,16 @@ it('registers all BoostCoreCommandProvider commands in standalone bin', function
     }
 });
 
-it('strips boost: prefix from command names in standalone bin', function () {
+it('strips boost: prefix from command names in standalone bin', function (): void {
     $result = runBin('sync --help');
 
-    expect($result['exit'])->toBe(0);
-    expect($result['output'])->toContain('Usage:')->toContain('sync [options]');
+    expect($result['exit'])->toBe(0)
+        ->and($result['output'])
+        ->toContain('Usage:')
+        ->toContain('sync [options]');
 });
 
-it('exposes --scope option on sync command', function () {
+it('exposes --scope option on sync command', function (): void {
     $result = runBin('sync --help');
 
     expect($result['output'])->toContain('--scope');

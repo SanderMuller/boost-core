@@ -78,8 +78,8 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
 
         try {
             $result = SyncEngine::default()->sync($projectRoot);
-        } catch (Throwable $e) {
-            $io->writeError('<warning>boost: auto-sync skipped — ' . $e->getMessage() . '</warning>');
+        } catch (Throwable $throwable) {
+            $io->writeError('<warning>boost: auto-sync skipped — ' . $throwable->getMessage() . '</warning>');
 
             return;
         }
@@ -117,6 +117,7 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
             if ($i === 0) {
                 continue;
             }
+
             if (str_starts_with($arg, '-')) {
                 continue;
             }
@@ -153,9 +154,13 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
             }
 
             $installPath = $installManager->getInstallPath($package);
-            if (! is_string($installPath) || $installPath === '') {
+            if (! is_string($installPath)) {
                 continue;
             }
+            if ($installPath === '') {
+                continue;
+            }
+
             if (! is_dir($installPath . '/resources/boost/skills')) {
                 continue;
             }
@@ -171,6 +176,7 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
 
                 continue;
             }
+
             $claimedSuffixes[$suffix] = $package->getName();
 
             try {

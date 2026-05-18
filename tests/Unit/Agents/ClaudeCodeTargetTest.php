@@ -43,7 +43,7 @@ it('reports the Claude Code agent and conventional paths', function (): void {
     expect($target->guidelinesFileRelative())->toBe('CLAUDE.md');
 });
 
-it('plans one PendingWrite per skill, named `{name}.md` under skills dir', function (): void {
+it('plans one PendingWrite per skill, named `{name}/SKILL.md` under skills dir', function (): void {
     $target = new ClaudeCodeTarget();
     $writes = $target->plan(
         skills: [
@@ -55,8 +55,8 @@ it('plans one PendingWrite per skill, named `{name}.md` under skills dir', funct
 
     expect($writes)->toHaveCount(2);
     expect($writes[0])->toBeInstanceOf(PendingWrite::class);
-    expect($writes[0]->relativePath)->toBe('.claude/skills/foo.md');
-    expect($writes[1]->relativePath)->toBe('.claude/skills/bar.md');
+    expect($writes[0]->relativePath)->toBe('.claude/skills/foo/SKILL.md');
+    expect($writes[1]->relativePath)->toBe('.claude/skills/bar/SKILL.md');
 });
 
 it('embeds frontmatter at the top of each skill file', function (): void {
@@ -107,7 +107,7 @@ it('omits the guidelines write when no guidelines are provided', function (): vo
     );
 
     expect($writes)->toHaveCount(1);
-    expect($writes[0]->relativePath)->toBe('.claude/skills/foo.md');
+    expect($writes[0]->relativePath)->toBe('.claude/skills/foo/SKILL.md');
 });
 
 it('handles both skills and guidelines in a single plan', function (): void {
@@ -119,5 +119,5 @@ it('handles both skills and guidelines in a single plan', function (): void {
 
     expect($writes)->toHaveCount(2);
     $paths = array_map(fn (PendingWrite $w): string => $w->relativePath, $writes);
-    expect($paths)->toEqual(['.claude/skills/foo.md', 'CLAUDE.md']);
+    expect($paths)->toEqual(['.claude/skills/foo/SKILL.md', 'CLAUDE.md']);
 });

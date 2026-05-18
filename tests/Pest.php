@@ -36,7 +36,10 @@ function cleanupTestDir(string $path): void
     if (! is_dir($path)) {
         return;
     }
-    $items = scandir($path) ?: [];
+    $items = scandir($path);
+    if ($items === false) {
+        return;
+    }
     foreach ($items as $item) {
         if ($item === '.' || $item === '..') {
             continue;

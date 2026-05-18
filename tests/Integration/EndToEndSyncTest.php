@@ -71,11 +71,11 @@ it('end-to-end: host skill + guideline → Claude Code files committed to disk',
         expect($result->hasErrors())->toBeFalse();
         expect($result->countByAction(WriteAction::WROTE))->toBe(3); // skill + guidelines + managed .gitignore
 
-        expect(file_exists($root . '/.claude/skills/foo.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue();
         expect(file_exists($root . '/CLAUDE.md'))->toBeTrue();
         expect(file_get_contents($root . '/.gitignore'))->toContain('.claude/skills/');
 
-        $skillContent = file_get_contents($root . '/.claude/skills/foo.md');
+        $skillContent = file_get_contents($root . '/.claude/skills/foo/SKILL.md');
         expect($skillContent)->toContain('name: foo');
         expect($skillContent)->toContain('# Foo body');
 
@@ -97,7 +97,7 @@ it('check mode reports drift without writing', function (): void {
 
         expect($result->hasDrift())->toBeTrue();
         expect($result->countByAction(WriteAction::WOULD_WRITE))->toBeGreaterThan(0);
-        expect(file_exists($root . '/.claude/skills/foo.md'))->toBeFalse();
+        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeFalse();
     } finally {
         rmTreeE2E($root);
     }
@@ -114,6 +114,25 @@ it('check mode reports no drift after a successful write', function (): void {
         $second = $engine->sync($root, checkOnly: true);
 
         expect($second->hasDrift())->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('prunes a legacy flat `<name>.md` sibling when emitting `<name>/SKILL.md`', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nNew body.\n");
+
+        // Simulate the pre-0.2 layout: stale flat skill committed to disk.
+        mkdir($root . '/.claude/skills', 0o755, recursive: true);
+        file_put_contents($root . '/.claude/skills/foo.md', "stale content from older sync\n");
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/foo.md'))->toBeFalse();
     } finally {
         rmTreeE2E($root);
     }
@@ -153,7 +172,7 @@ it('BOOST_SKIP_GITIGNORE bypasses gitignore management even when boost.php enabl
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
         expect($result->hasErrors())->toBeFalse();
-        expect(file_exists($root . '/.claude/skills/foo.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue();
         expect(file_exists($root . '/.gitignore'))->toBeFalse();
     } finally {
         putenv('BOOST_SKIP_GITIGNORE');
@@ -209,8 +228,8 @@ it('discovers allowlisted vendor skills alongside host skills', function (): voi
         $result = SyncEngine::default($fakePackages)->sync($root);
 
         expect($result->hasErrors())->toBeFalse();
-        expect(file_exists($root . '/.claude/skills/host-skill.md'))->toBeTrue();
-        expect(file_exists($root . '/.claude/skills/vendor-skill.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/host-skill/SKILL.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/vendor-skill/SKILL.md'))->toBeTrue();
     } finally {
         rmTreeE2E($root);
     }
@@ -235,7 +254,7 @@ it('respects the allowlist: non-allowlisted vendor skills are skipped', function
 
         $result = SyncEngine::default($fakePackages)->sync($root);
 
-        expect(file_exists($root . '/.claude/skills/should-not-appear.md'))->toBeFalse();
+        expect(file_exists($root . '/.claude/skills/should-not-appear/SKILL.md'))->toBeFalse();
     } finally {
         rmTreeE2E($root);
     }

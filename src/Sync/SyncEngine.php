@@ -528,9 +528,33 @@ final class SyncEngine
                         $e->getMessage(),
                     );
                 }
+
+                if (! $checkOnly) {
+                    $this->pruneLegacyFlatSibling($projectRoot, $pending->relativePath);
+                }
             }
         }
 
         return [$writes, $errors];
+    }
+
+    /**
+     * When we emit `<dir>/<name>/SKILL.md`, delete an obsolete flat sibling
+     * at `<dir>/<name>.md` left behind by a pre-0.2 boost-core run. Scoped
+     * narrowly: only fires when both files coexist for the same skill, so
+     * a user-authored flat file in an unrelated location is never touched.
+     */
+    private function pruneLegacyFlatSibling(string $projectRoot, string $relativePath): void
+    {
+        if (! str_ends_with($relativePath, '/SKILL.md')) {
+            return;
+        }
+
+        $legacyRelative = substr($relativePath, 0, -strlen('/SKILL.md')) . '.md';
+        $legacyAbsolute = $projectRoot . '/' . $legacyRelative;
+
+        if (is_file($legacyAbsolute)) {
+            @unlink($legacyAbsolute);
+        }
     }
 }

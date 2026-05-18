@@ -82,16 +82,14 @@ abstract class AgentTarget
     /**
      * Where the rendered skill lives, relative to `skillsDirectoryRelative()`.
      *
-     * Mirrors source layout: a flat `<name>.md` source emits as `<name>.md`;
-     * a directory-form `<name>/SKILL.md` source emits as `<name>/SKILL.md`,
-     * preserving the nested layout that Claude Code (and similar agents)
-     * expect when a skill bundles companion assets.
+     * Always emits the directory form `<name>/SKILL.md`. Claude Code (and
+     * the other agents boost-core targets) only auto-discover skills under
+     * the nested-directory layout — flat `<name>.md` outputs are silently
+     * ignored, so source-layout-mirror semantics aren't useful here.
      */
     public function skillRelativePath(Skill $skill): string
     {
-        return $skill->isDirectoryForm
-            ? $skill->name . '/SKILL.md'
-            : $skill->name . '.md';
+        return $skill->name . '/SKILL.md';
     }
 
     public function formatSkillContent(Skill $skill): string

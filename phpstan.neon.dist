@@ -53,3 +53,11 @@ parameters:
             identifier: method.nonObject
             path: tests/*
             reportUnmatched: false
+        # putenv is the only reliable way to set env vars that PHP's getenv() reads.
+        # Tests need it to drive BOOST_SKIP_* fixtures; each call site is bracketed
+        # by a try/finally that restores the env.
+        -
+            identifier: disallowed.function
+            path: tests/*
+            message: '#Calling putenv\(\) is forbidden#'
+            reportUnmatched: false

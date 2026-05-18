@@ -65,6 +65,6 @@ it('every target plans at least one skill file when given one skill', function (
         $writes = $target->plan([$skill], []);
 
         expect($writes)->toHaveCount(1);
-        expect($writes[0]->relativePath)->toBe($skillsDir . '/foo.md');
+        expect($writes[0]->relativePath)->toBe($skillsDir . '/foo/SKILL.md');
     }
 });

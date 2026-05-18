@@ -67,10 +67,10 @@ it('user-scope sync fans skills into ~/.{agent}/skills/<package>/ under HOME', f
         expect($result->hasErrors())->toBeFalse();
         expect($result->packageName)->toBe('test-vendor/sample-tool');
         expect($result->homeRoot)->toBe($home);
-        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))->toBeTrue();
-        expect(file_exists($home . '/.cursor/skills/sample-tool/sample-skill.md'))->toBeTrue();
+        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md'))->toBeTrue();
+        expect(file_exists($home . '/.cursor/skills/sample-tool/sample-skill/SKILL.md'))->toBeTrue();
 
-        $written = (string) file_get_contents($home . '/.claude/skills/sample-tool/sample-skill.md');
+        $written = (string) file_get_contents($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md');
         expect($written)->toContain('Body.');
         expect($written)->toContain('name: sample-skill');
     } finally {
@@ -96,7 +96,7 @@ it('user-scope skips guideline files (CLAUDE.md, AGENTS.md) — no home-dir poll
             new ClaudeCodeTarget(),
         ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
 
-        expect(file_exists($home . '/.claude/skills/pkg/x.md'))->toBeTrue();
+        expect(file_exists($home . '/.claude/skills/pkg/x/SKILL.md'))->toBeTrue();
         expect(file_exists($home . '/CLAUDE.md'))->toBeFalse();
         expect(file_exists($home . '/AGENTS.md'))->toBeFalse();
         expect(file_exists($home . '/GEMINI.md'))->toBeFalse();

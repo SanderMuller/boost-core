@@ -71,7 +71,7 @@ it('auto-syncs user-scope skills for global-required packages', function (): voi
             throw new RuntimeException("composer global install failed (exit {$process->getExitCode()}):\n" . $outputStr);
         }
 
-        $expected = $fakeHome . '/.claude/skills/global-skill-pkg/hello.md';
+        $expected = $fakeHome . '/.claude/skills/global-skill-pkg/hello/SKILL.md';
 
         expect(is_file($expected))
             ->toBeTrue('expected ' . $expected . ' to exist. Composer output:' . PHP_EOL . $outputStr);
@@ -145,11 +145,11 @@ it('warns and skips on basename collision in global ctx', function (): void {
         // Install order isn't pinned; assert exactly one skill landed and
         // the loser was reported via the documented collision warning.
         $targetDir = $fakeHome . '/.claude/skills/dup-tool';
-        $hasA = is_file($targetDir . '/from-a.md');
-        $hasB = is_file($targetDir . '/from-b.md');
+        $hasA = is_file($targetDir . '/from-a/SKILL.md');
+        $hasB = is_file($targetDir . '/from-b/SKILL.md');
 
         expect($hasA xor $hasB)->toBeTrue(
-            sprintf('expected exactly one of from-a.md or from-b.md (a=%d b=%d). Output:%s%s', (int) $hasA, (int) $hasB, PHP_EOL, $outputStr),
+            sprintf('expected exactly one of from-a/SKILL.md or from-b/SKILL.md (a=%d b=%d). Output:%s%s', (int) $hasA, (int) $hasB, PHP_EOL, $outputStr),
         );
         expect($outputStr)
             ->toContain('basename "dup-tool" already claimed')

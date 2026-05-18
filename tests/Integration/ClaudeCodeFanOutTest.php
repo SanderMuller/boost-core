@@ -86,12 +86,12 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
         }
 
         // Verify expected files exist
-        expect(file_exists($root . '/.claude/skills/host-skill.md'))->toBeTrue();
-        expect(file_exists($root . '/.claude/skills/shared-name.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/host-skill/SKILL.md'))->toBeTrue();
+        expect(file_exists($root . '/.claude/skills/shared-name/SKILL.md'))->toBeTrue();
         expect(file_exists($root . '/CLAUDE.md'))->toBeTrue();
 
         // Skill content has frontmatter + body
-        $hostSkillContent = file_get_contents($root . '/.claude/skills/host-skill.md');
+        $hostSkillContent = file_get_contents($root . '/.claude/skills/host-skill/SKILL.md');
         expect($hostSkillContent)->toContain('name: host-skill');
         expect($hostSkillContent)->toContain('# Host skill');
 

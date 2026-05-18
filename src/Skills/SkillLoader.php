@@ -53,7 +53,6 @@ final class SkillLoader
                 body: $parsed->body,
                 sourcePath: $file->getRealPath() !== false ? $file->getRealPath() : $file->getPathname(),
                 sourceVendor: $sourceVendor,
-                isDirectoryForm: strtoupper($file->getFilename()) === 'SKILL.MD',
             );
         }
     }

@@ -1,7 +1,2 @@
 parameters:
-	ignoreErrors:
-		-
-			rawMessage: 'Return type (array<Symfony\Component\Console\Command\Command>) of method SanderMuller\BoostCore\BoostCoreCommandProvider::getCommands() should be covariant with return type (array<Composer\Command\BaseCommand>) of method Composer\Plugin\Capability\CommandProvider::getCommands()'
-			identifier: method.childReturnType
-			count: 1
-			path: src/BoostCoreCommandProvider.php
+	ignoreErrors: []

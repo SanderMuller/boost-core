@@ -4,23 +4,34 @@ declare(strict_types=1);
 
 namespace SanderMuller\BoostCore;
 
+use Composer\Command\BaseCommand;
 use Composer\Plugin\Capability\CommandProvider;
+use SanderMuller\BoostCore\Commands\BaseCommandAdapter;
 use SanderMuller\BoostCore\Commands\CommandRegistry;
 use Symfony\Component\Console\Command\Command;
 
 final class BoostCoreCommandProvider implements CommandProvider
 {
     /**
-     * Intentional variance with parent's `array<BaseCommand>` — our commands
-     * extend Symfony\Console\Command\Command (not Composer\Command\BaseCommand)
-     * so the same registry can power both the Composer plugin AND the
-     * standalone bin/boost entry point.
+     * Composer's CommandProvider capability runtime-validates that each
+     * returned command is a `Composer\Command\BaseCommand` — plain Symfony
+     * commands are rejected with "Plugin capability ... returned an invalid
+     * value". We keep CommandRegistry returning plain Symfony commands so
+     * the standalone `bin/boost` path stays Composer-free, then wrap each
+     * one in BaseCommandAdapter here.
      *
-     * @return array<Command>
+     * This file (and the adapter it references) is only autoloaded inside
+     * an active Composer process, where `Composer\Command\BaseCommand` is
+     * always available.
+     *
+     * @return array<BaseCommand>
      */
     #[\Override]
     public function getCommands(): array
     {
-        return CommandRegistry::commands();
+        return array_map(
+            static fn (Command $cmd): BaseCommand => new BaseCommandAdapter($cmd),
+            CommandRegistry::commands(),
+        );
     }
 }

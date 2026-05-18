@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stale user-scope skills on `composer global remove`.** Removing a globally-installed package does not clean up its previously emitted `~/.{agent}/skills/<package>/` files. Until manifest-based cleanup ships, delete the directory by hand after removing the package.
 - **Basename-only namespacing for user-scope paths.** Two packages sharing a basename collide (see above). Planned fix: switch `SyncEngine::packageSuffix()` to a vendor-namespaced slug (`vendor-name/package` → `vendor-name-package`) at the next minor bump; expect a one-time migration of existing `~/.{agent}/skills/<basename>/` directories.
 
+### Fixed
+
+- **`composer boost:*` commands (init/install/sync/scan/doctor/new) work again.** 0.1.2 made `CommandRegistry` return plain Symfony commands, which the standalone `bin/boost` accepts but Composer's plugin `CommandProvider` capability rejects at runtime — every `composer boost:*` invocation failed with `Plugin capability ... returned an invalid value, we expected an array of Composer\Command\BaseCommand objects`. The fix introduces a tiny `BaseCommandAdapter` that wraps each Symfony command as a `Composer\Command\BaseCommand`; the standalone bin path is unchanged and still consumes plain Symfony commands. New `PluginCommandSurfaceTest` runs a real `composer install` + `composer list` + `composer boost:init --help` in a tmp fixture project as a regression guard.
+
 ### Changed
 
 - **All skill outputs are now `<name>/SKILL.md`, regardless of source layout.** Earlier 0.2-dev builds mirrored the source layout (flat in, flat out; dir in, dir out), but Claude Code's skill discovery only auto-loads `<name>/SKILL.md` — flat `<name>.md` outputs were silently ignored, leaving flat-sourced host skills undiscoverable. Both flat (`.ai/skills/foo.md`) and dir-form (`.ai/skills/foo/SKILL.md`) sources now emit as `.{agent}/skills/foo/SKILL.md`. **Upgraders:** the sync prunes any obsolete sibling `<name>.md` when it writes the new `<name>/SKILL.md` for the same skill, so you don't need to manually clean up after the bump.

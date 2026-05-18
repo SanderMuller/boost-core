@@ -16,7 +16,7 @@ The `-boost` family stays on the **0.x line** until the planned breaking changes
 
 **Consumer constraint shape.** Every consumer (`package-boost-php`, `package-boost-laravel`, `project-boost`) pins `sandermuller/boost-core: ^0.3` (NOT `^1.0@dev`). The `^1.0@dev` pattern resolved only via dev-main + the old `1.x-dev` alias and never reached tagged releases — broken-by-design for any consumer trying to pin a stable version.
 
-**Constraint floors must match feature usage.** `^0.3` resolves to any 0.3.x tag (0.3.0, 0.3.1, …). If a consumer uses a feature introduced mid-minor — e.g. `BoostAutoSync::run` (shipped in 0.3.1) or `BoostAutoSync::runWithSummary` (shipped in 0.3.2) — the constraint floor must be bumped to that exact patch (`^0.3.1`, `^0.3.2`) so a consumer's lockfile can't resolve to a too-old patch that lacks the referenced class/method. Don't pin to `^0.3` if you reference a feature that wasn't in 0.3.0.
+**Constraint floors must match feature usage.** `^0.3` resolves to any 0.3.x tag (0.3.0, 0.3.1, …). If a consumer uses a feature introduced mid-minor — e.g. `BoostAutoSync::run` (shipped in 0.3.1) or `BoostAutoSync::runWithSummary` (queued for 0.3.2) — the constraint floor must be bumped to that exact patch (`^0.3.1`, `^0.3.2`) so a consumer's lockfile can't resolve to a too-old patch that lacks the referenced class/method. Don't pin to `^0.3` if you reference a feature that wasn't in 0.3.0.
 
 ---
 

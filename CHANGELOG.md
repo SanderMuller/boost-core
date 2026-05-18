@@ -5,7 +5,7 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.1...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.2...HEAD)
 
 ### Fixed
 
@@ -14,8 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`SanderMuller\BoostCore\Scripts\BoostAutoSync::runWithSummary` script callback** for user-invoked composer scripts (e.g. `composer sync-ai`) where silence on success reads as a no-op. Streams the binary's one-line success summary (`[OK] Sync done. wrote=X, unchanged=Y`) through Composer's IO. The existing `BoostAutoSync::run` callback stays silent on success — designed for the auto-firing `post-install-cmd` / `post-update-cmd` contexts where any per-install output is noise. Two callables, each self-documenting via name, no shared env-var knob.
-
+  
 - **`SanderMuller\BoostCore\Scripts\BoostAutoSync::run` script callback** for use in consumer packages' `post-install-cmd` / `post-update-cmd` hooks. Replaces the bash one-liner pattern (`if [ "$COMPOSER_DEV_MODE" = "1" ]; then vendor/bin/boost sync 2>/dev/null || true; fi`), which breaks on Windows cmd.exe. The PHP callback uses `Event::isDevMode()` (proper API instead of `$COMPOSER_DEV_MODE`), honors `composer config.bin-dir` overrides, and surfaces non-zero exits through Composer's IO instead of swallowing them. Add as a direct dep: `symfony/process: ^7.0`.
+  
 
 ### Fixed
 
@@ -59,6 +60,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Note:** `0.1.0` and `0.1.1` ship a broken standalone `bin/boost` for end-user installs (fatal at startup, as above). Use `0.1.2`+ if you invoke `vendor/bin/boost` directly. The `composer boost:*` plugin path is unaffected.
 
+## [0.3.2](https://github.com/sandermuller/boost-core/compare/0.3.1...0.3.2) - 2026-05-18
+
+### Added
+
+- **`SanderMuller\BoostCore\Scripts\BoostAutoSync::runWithSummary` script callback** for user-invoked Composer scripts (e.g. `composer sync-ai`) where silence on success reads as a no-op. Streams the binary's one-line success summary (`[OK] Sync done. wrote=X, unchanged=Y`) through Composer's IO. The existing `BoostAutoSync::run` callback (silent on success — designed for the auto-firing `post-install-cmd` / `post-update-cmd` contexts) is unchanged. Two callables, each self-documenting via name:
+  
+    ```json
+    "scripts": {
+      "post-install-cmd": ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"],
+      "post-update-cmd":  ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"],
+      "sync-ai":          ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::runWithSummary"]
+  }
+  
+    ```
+
+### Fixed
+
+- **`BOOST_SKIP_AUTOSYNC=1` is now honored by both `Scripts\BoostAutoSync::run` and `::runWithSummary`.** The plugin's `onPostAutoloadDump` hook honored the env var, but the 0.3.1 script callbacks didn't — so consumers wiring `BoostAutoSync::run` into their own `post-install-cmd` per the documented recommendation lost the escape hatch every README in the family advertised as working. The check now lives in a shared helper inside `BoostAutoSync` so both callables (and any future siblings) inherit it; CI runners + ephemeral Docker installs can disable auto-sync uniformly regardless of which entry point fires.
+
+### Internal
+
+- Branch-alias bumped `dev-main: 0.x-dev` → `dev-main: 0.3.x-dev` to match the actual tagged surface. Consumers should pin `sandermuller/boost-core: ^0.3` (NOT `^1.0@dev`).
+- `RELEASING.md` gains a "Version-stream policy" section documenting the 0.3.x → 0.4.0 (manifest cleanup + vendor-namespaced slugs) → 1.0.0 (FileEmitter stable) roadmap, plus a "Constraint floors must match feature usage" rule for downstream consumers who reference mid-minor features (e.g. `BoostAutoSync::run` needs `^0.3.1` floor; `::runWithSummary` needs `^0.3.2`).
+- Internal Rector + Pint sweep across the 0.3.1 → 0.3.2 surface. No behaviour change.
+
+### Upgrade notes
+
+`composer require sandermuller/boost-core:^0.3.2` to use `runWithSummary`. If you only need `run` and don't care about the env-var fix, `^0.3.1` is still fine.
+
+**Full changelog:** https://github.com/SanderMuller/boost-core/compare/0.3.1...0.3.2
+
 ## [0.3.1](https://github.com/sandermuller/boost-core/compare/0.3.0...0.3.1) - 2026-05-18
 
 ### Added
@@ -67,13 +99,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   
     ```json
     "scripts": {
-      "post-install-cmd": [
-          "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
-      ],
-      "post-update-cmd": [
-          "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
-      ]
+    "post-install-cmd": [
+        "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
+    ],
+    "post-update-cmd": [
+        "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
+    ]
   }
+  
   
     ```
   End-user installs already get auto-sync via the plugin's `onPostAutoloadDump` hook — this callback is specifically for plugin packages in the `boost-*` family that need their own explicit script entry. Adds `symfony/process: ^7.0` as a direct require (it was transitively present already; the new public API makes the dep explicit).

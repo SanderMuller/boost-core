@@ -1,23 +1,43 @@
 # boost-core
 
-> AI agent configuration sync for PHP projects. Author skills and guidelines once, publish to every agent.
+> AI agent configuration sync for PHP projects. Author skills and guidelines once in `.ai/`, publish to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). Framework-free PHP, allowlist-based vendor trust, Rector-style explicit commands.
 
-**Status:** Under construction. Not yet usable.
+## Install
 
-## Goals
+You don't usually install `boost-core` directly — it comes in as a dep of one of the bundle packages that match your role:
 
-- Author skills and guidelines once in `.ai/`, publish to nine AI agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp).
-- Vendor packages can ship their own skills/guidelines for opt-in adoption via an allowlist trust model.
-- Framework-free PHP — runs on any project (no Laravel runtime dep).
-- Rector-style operation: explicit commands, no Composer lifecycle hooks, generated files committed to git.
+```bash
+# PHP application developer
+composer require --dev sandermuller/project-boost
 
-## Installation
+# Framework-agnostic Composer package author
+composer require --dev sandermuller/package-boost-php
 
-Coming soon. Will be installed transitively via one of:
+# Laravel package author
+composer require --dev sandermuller/package-boost-laravel
+```
 
-- `sandermuller/project-boost` (PHP application devs)
-- `sandermuller/package-boost-php` (framework-agnostic Composer package authors)
-- `sandermuller/package-boost-laravel` (Laravel package authors)
+Direct install for tooling authors who want to ship their own skill bundle:
+
+```bash
+composer require --dev "sandermuller/boost-core:^1.0@dev"
+```
+
+## Usage
+
+```bash
+composer boost:init      # generate boost.php starter
+composer boost:install   # interactive picker: agents + vendor allowlist
+composer boost:sync      # fan out to selected agents
+```
+
+For tooling authors who want to publish their own skills to every AI agent on the user's machine:
+
+```bash
+composer boost:sync --scope=user   # ~/.{agent}/skills/<package>/<skill>.md
+```
+
+See [`RELEASING.md`](RELEASING.md) for the publish path. The FileEmitter plugin contract is `@experimental` — the shape will change before v1.0 stable.
 
 ## License
 

@@ -27,6 +27,8 @@ final class BoostConfigBuilder
     /** @var list<string> */
     private array $disabledEmitters = [];
 
+    private bool $manageGitignore = true;
+
     /**
      * @param  list<Agent>  $agents
      */
@@ -71,6 +73,17 @@ final class BoostConfigBuilder
         return $this;
     }
 
+    /**
+     * Control whether boost maintains a managed block in `.gitignore`. On by
+     * default — generated agent files are ignored, edited only via `.ai/`.
+     */
+    public function withGitignoreManagement(bool $manage = true): self
+    {
+        $this->manageGitignore = $manage;
+
+        return $this;
+    }
+
     public function build(string $projectRoot): BoostConfig
     {
         $projectRoot = rtrim($projectRoot, '/');
@@ -81,6 +94,7 @@ final class BoostConfigBuilder
             skillsPath: $this->skillsPath ?? $projectRoot . '/.ai/skills',
             guidelinesPath: $this->guidelinesPath ?? $projectRoot . '/.ai/guidelines',
             disabledEmitters: $this->disabledEmitters,
+            manageGitignore: $this->manageGitignore,
         );
     }
 }

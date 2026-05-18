@@ -69,10 +69,11 @@ it('end-to-end: host skill + guideline → Claude Code files committed to disk',
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
         expect($result->hasErrors())->toBeFalse();
-        expect($result->countByAction(WriteAction::WROTE))->toBe(2); // skill + guidelines
+        expect($result->countByAction(WriteAction::WROTE))->toBe(3); // skill + guidelines + managed .gitignore
 
         expect(file_exists($root . '/.claude/skills/foo.md'))->toBeTrue();
         expect(file_exists($root . '/CLAUDE.md'))->toBeTrue();
+        expect(file_get_contents($root . '/.gitignore'))->toContain('.claude/skills/');
 
         $skillContent = file_get_contents($root . '/.claude/skills/foo.md');
         expect($skillContent)->toContain('name: foo');

@@ -34,6 +34,7 @@ final readonly class BoostConfig
         public string $skillsPath,
         public string $guidelinesPath,
         public array $disabledEmitters,
+        public bool $manageGitignore = true,
     ) {}
 
     public static function configure(): BoostConfigBuilder

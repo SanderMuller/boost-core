@@ -34,6 +34,23 @@ abstract class AgentTarget
     abstract public function guidelinesFileRelative(): ?string;
 
     /**
+     * Paths this target owns, suitable for a managed `.gitignore` block.
+     * Returns directory entries with a trailing `/` and file entries verbatim.
+     *
+     * @return list<string>
+     */
+    public function gitignorePatterns(): array
+    {
+        $patterns = [$this->skillsDirectoryRelative() . '/'];
+        $guidelines = $this->guidelinesFileRelative();
+        if ($guidelines !== null) {
+            $patterns[] = $guidelines;
+        }
+
+        return $patterns;
+    }
+
+    /**
      * Produce the set of writes for the given skills + guidelines.
      *
      * @param  list<Skill>  $skills

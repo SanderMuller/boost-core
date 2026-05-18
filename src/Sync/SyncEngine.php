@@ -65,6 +65,7 @@ final class SyncEngine
         private readonly SkillResolver $skillResolver = new SkillResolver(),
         private readonly GuidelineResolver $guidelineResolver = new GuidelineResolver(),
         private readonly FileWriter $writer = new FileWriter(),
+        private readonly GitignoreManager $gitignoreManager = new GitignoreManager(),
         ?InstalledPackages $installedPackages = null,
     ) {
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -266,14 +267,61 @@ final class SyncEngine
 
         $emitterResults = $this->runEmitters($projectRoot, $config, $context, $checkOnly);
 
-        return $this->fanOut(
+        [$fanOutWrites, $fanOutErrors] = $this->fanOut(
             $projectRoot,
             $config,
             $resolvedSkills,
             $resolvedGuidelines,
-            $emitterResults,
             $checkOnly,
         );
+
+        $gitignoreWrite = $config->manageGitignore
+            ? $this->updateGitignore($projectRoot, $config, $checkOnly)
+            : null;
+
+        $writes = $fanOutWrites;
+        if ($gitignoreWrite !== null) {
+            $writes[] = $gitignoreWrite;
+        }
+
+        return new SyncResult(
+            writes: $writes,
+            emitters: $emitterResults,
+            errors: $fanOutErrors,
+            check: $checkOnly,
+        );
+    }
+
+    private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly): ?WrittenFile
+    {
+        $patterns = [];
+        foreach ($this->agentTargets as $target) {
+            if (! $config->hasAgent($target->agent())) {
+                continue;
+            }
+            foreach ($target->gitignorePatterns() as $pattern) {
+                $patterns[] = $pattern;
+            }
+        }
+
+        $absolute = $projectRoot . '/.gitignore';
+        $existing = is_file($absolute) ? @file_get_contents($absolute) : null;
+        $existing = $existing === false ? null : $existing;
+
+        $rendered = $this->gitignoreManager->render($existing, $patterns);
+        if ($rendered === null) {
+            return null;
+        }
+
+        try {
+            return $this->writer->write(
+                $projectRoot,
+                new PendingWrite('.gitignore', $rendered),
+                $checkOnly,
+            );
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -449,16 +497,15 @@ final class SyncEngine
     /**
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
-     * @param  list<EmitterResult>  $emitterResults
+     * @return array{0: list<WrittenFile>, 1: list<string>}
      */
     private function fanOut(
         string $projectRoot,
         BoostConfig $config,
         array $skills,
         array $guidelines,
-        array $emitterResults,
         bool $checkOnly,
-    ): SyncResult {
+    ): array {
         /** @var list<WrittenFile> $writes */
         $writes = [];
         /** @var list<string> $errors */
@@ -483,6 +530,6 @@ final class SyncEngine
             }
         }
 
-        return new SyncResult(writes: $writes, emitters: $emitterResults, errors: $errors, check: $checkOnly);
+        return [$writes, $errors];
     }
 }

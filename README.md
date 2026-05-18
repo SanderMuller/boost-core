@@ -34,10 +34,24 @@ composer boost:install   # interactive picker: agents + vendor allowlist
 composer boost:sync      # fan out to selected agents
 ```
 
+After install, every `composer install` / `composer update` re-runs `boost:sync` automatically (post-autoload-dump). Set `BOOST_SKIP_AUTOSYNC=1` to disable.
+
 For tooling authors who want to publish their own skills to every AI agent on the user's machine:
 
 ```bash
 composer boost:sync --scope=user   # ~/.{agent}/skills/<package>/<skill>.md
+```
+
+## Managed `.gitignore`
+
+`boost:sync` maintains a managed block in `.gitignore` so generated agent dirs (`.claude/skills/`, `.cursor/skills/`, `CLAUDE.md`, `AGENTS.md`, ...) stay out of version control. Edit skills in `.ai/` only; the fan-out regenerates on next install.
+
+Opt out per project:
+
+```php
+return BoostConfig::configure()
+    ->withGitignoreManagement(false)
+    ->withAgents([...]);
 ```
 
 See [`RELEASING.md`](RELEASING.md) for the publish path. The FileEmitter plugin contract is `@experimental` — the shape will change before v1.0 stable.

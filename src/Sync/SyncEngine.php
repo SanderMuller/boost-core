@@ -223,10 +223,21 @@ final readonly class SyncEngine
      * packages can publish user-scope skills without colliding. Returns null
      * for paths that aren't under a `skills/` directory (guideline files).
      *
+     * When the first component of the filename already matches the package
+     * suffix (common for single-skill tooling packages where the skill dir
+     * is named after the package, e.g. `sandermuller/repo-init` shipping
+     * `resources/boost/skills/repo-init/SKILL.md`), the redundant level is
+     * dropped — output stays `.claude/skills/repo-init/SKILL.md` instead of
+     * `.claude/skills/repo-init/repo-init/SKILL.md`. Multi-skill packages
+     * and packages whose skill name differs from the package basename are
+     * unaffected.
+     *
      * Examples:
-     *   `.claude/skills/foo.md` + `repo-init` → `.claude/skills/repo-init/foo.md`
-     *   `CLAUDE.md`                             → null
-     *   `.github/copilot-instructions.md`       → null
+     *   `.claude/skills/foo.md` + `repo-init`             → `.claude/skills/repo-init/foo.md`
+     *   `.claude/skills/foo/SKILL.md` + `repo-init`       → `.claude/skills/repo-init/foo/SKILL.md`
+     *   `.claude/skills/repo-init/SKILL.md` + `repo-init` → `.claude/skills/repo-init/SKILL.md`   (deduped)
+     *   `CLAUDE.md`                                       → null
+     *   `.github/copilot-instructions.md`                 → null
      */
     private function rewriteForUserScope(string $relativePath, string $packageSuffix): ?string
     {
@@ -238,6 +249,11 @@ final readonly class SyncEngine
 
         $prefix = substr($relativePath, 0, $pos + strlen($marker));
         $filename = substr($relativePath, $pos + strlen($marker));
+
+        $firstSlash = strpos($filename, '/');
+        if ($firstSlash !== false && substr($filename, 0, $firstSlash) === $packageSuffix) {
+            $filename = substr($filename, $firstSlash + 1);
+        }
 
         return $prefix . $packageSuffix . '/' . $filename;
     }

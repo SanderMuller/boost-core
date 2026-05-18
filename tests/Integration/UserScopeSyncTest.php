@@ -88,6 +88,40 @@ it('user-scope sync does NOT prune the legacy sibling if the new write fails', f
     }
 });
 
+it('user-scope sync does NOT double-nest when the skill dir name matches the package basename', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        // Common single-skill tooling shape: package `vendor/repo-init` ships its
+        // one skill at `resources/boost/skills/repo-init/SKILL.md`. Before the
+        // dedupe in rewriteForUserScope, this landed at
+        // `~/.claude/skills/repo-init/repo-init/SKILL.md` — package suffix and
+        // skill dir both injected. Expected shape is one level only.
+        file_put_contents(
+            $pkg . '/composer.json',
+            json_encode(['name' => 'vendor/repo-init'], JSON_THROW_ON_ERROR),
+        );
+        mkdir($pkg . '/resources/boost/skills/repo-init', 0o755, recursive: true);
+        file_put_contents(
+            $pkg . '/resources/boost/skills/repo-init/SKILL.md',
+            "---\nname: repo-init\n---\nBody.\n",
+        );
+
+        (new SyncEngine([
+            new ClaudeCodeTarget(),
+        ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
+
+        expect(file_exists($home . '/.claude/skills/repo-init/SKILL.md'))->toBeTrue()
+            ->and(file_exists($home . '/.claude/skills/repo-init/repo-init/SKILL.md'))
+            ->toBeFalse();
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
 it('user-scope sync prunes a legacy flat `<skill>.md` sibling alongside the new dir', function (): void {
     $dirs = makeUserScopeTempDirs();
     $pkg = $dirs['package'];

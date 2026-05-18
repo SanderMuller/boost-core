@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.0...HEAD)
 
+### Fixed
+
+- **User-scope sync no longer double-nests when the skill dir name matches the package basename.** Single-skill tooling packages (e.g. `sandermuller/repo-init` shipping `resources/boost/skills/repo-init/SKILL.md`) landed at `~/.{agent}/skills/repo-init/repo-init/SKILL.md` — the package suffix and the skill dir were both injected even when they were the same name. `SyncEngine::rewriteForUserScope` now strips the redundant first component when it equals the package suffix; output is `~/.{agent}/skills/repo-init/SKILL.md`. Multi-skill packages and packages whose skill name differs from the package basename are unaffected (the package/skill split still distinguishes them in the path).
+
+> **Note:** the section below was queued as Unreleased before 0.3.0 was cut and the contents shipped as part of that tag. Leaving it visible until the CI `update-changelog` workflow's "reset Unreleased on tag" behaviour catches up; treat the entries between this note and `## [0.3.0]` as historical.
+
 ### Removed (BREAKING — bump to 0.3.0)
 
 - **`composer boost:init` removed.** The command was a one-shot "write a starter `boost.php` and stop", expected to be followed by `composer boost:install` for the interactive picker. The two-step was friction with no upside — `boost:install` now detects a missing `boost.php` and generates the starter inline before opening the picker. Net usage drops from 3 commands (`init` + `install` + `sync`) to 2 (`install` + `sync`).

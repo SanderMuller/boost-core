@@ -275,7 +275,7 @@ final class SyncEngine
             $checkOnly,
         );
 
-        $gitignoreWrite = $config->manageGitignore
+        $gitignoreWrite = ($config->manageGitignore && getenv('BOOST_SKIP_GITIGNORE') === false)
             ? $this->updateGitignore($projectRoot, $config, $checkOnly)
             : null;
 

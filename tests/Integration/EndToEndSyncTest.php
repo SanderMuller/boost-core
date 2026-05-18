@@ -119,6 +119,24 @@ it('check mode reports no drift after a successful write', function (): void {
     }
 });
 
+it('BOOST_SKIP_GITIGNORE bypasses gitignore management even when boost.php enables it', function (): void {
+    $root = makeEndToEndProject();
+    putenv('BOOST_SKIP_GITIGNORE=1');
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nBody.");
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($result->hasErrors())->toBeFalse();
+        expect(file_exists($root . '/.claude/skills/foo.md'))->toBeTrue();
+        expect(file_exists($root . '/.gitignore'))->toBeFalse();
+    } finally {
+        putenv('BOOST_SKIP_GITIGNORE');
+        rmTreeE2E($root);
+    }
+});
+
 it('skips agent fan-out when no agents are configured', function (): void {
     $root = makeEndToEndProject();
     try {

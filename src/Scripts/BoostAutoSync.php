@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SanderMuller\BoostCore\Scripts;
 
 use Composer\Script\Event;
+use SanderMuller\BoostCore\Env;
 use Symfony\Component\Process\Process;
 
 /**
@@ -28,6 +29,10 @@ use Symfony\Component\Process\Process;
  * the leaky `$COMPOSER_DEV_MODE` env var instead of `Event::isDevMode()`.
  *
  * Both callables share the same skip/error/exit semantics:
+ *  - Skip silently when `BOOST_SKIP_AUTOSYNC` env var is set (matches
+ *    the plugin's `onPostAutoloadDump` escape hatch). Lets a single
+ *    env-var disable auto-sync across every entry point — plugin hook,
+ *    `post-install-cmd` script, `post-update-cmd` script.
  *  - Skip silently when `Event::isDevMode()` is false (`--no-dev` install).
  *  - Skip silently when the resolved binary at `config.bin-dir/boost` is
  *    not executable (e.g. boost-core not installed in this project).
@@ -80,6 +85,10 @@ final class BoostAutoSync
      */
     private static function resolveAndRun(Event $event): ?Process
     {
+        if (getenv(Env::SKIP_AUTOSYNC) !== false) {
+            return null;
+        }
+
         if (! $event->isDevMode()) {
             return null;
         }

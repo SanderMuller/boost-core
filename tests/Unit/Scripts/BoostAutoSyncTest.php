@@ -70,6 +70,38 @@ it('invokes the boost binary when present and dev-mode', function (): void {
     }
 });
 
+it('honors BOOST_SKIP_AUTOSYNC env var (run + runWithSummary)', function (): void {
+    // Build a fake bin-dir with a `boost` script that would touch a sentinel
+    // file if invoked. If skip-autosync is honored, neither callable should
+    // touch the sentinel.
+    $binDir = sys_get_temp_dir() . '/boost-autosync-skip-' . bin2hex(random_bytes(6));
+    mkdir($binDir, 0o755, recursive: true);
+    $sentinel = $binDir . '/sentinel.flag';
+    $fakeBoost = $binDir . '/boost';
+
+    putenv('BOOST_SKIP_AUTOSYNC=1');
+    try {
+        file_put_contents(
+            $fakeBoost,
+            sprintf("#!/usr/bin/env sh\ntouch %s\n", escapeshellarg($sentinel)),
+        );
+        chmod($fakeBoost, 0o755);
+
+        $eventRun = makeAutoSyncEvent(devMode: true, binDir: $binDir);
+        BoostAutoSync::run($eventRun);
+        expect(file_exists($sentinel))->toBeFalse();
+
+        $eventSum = makeAutoSyncEvent(devMode: true, binDir: $binDir);
+        BoostAutoSync::runWithSummary($eventSum);
+        expect(file_exists($sentinel))->toBeFalse();
+    } finally {
+        putenv('BOOST_SKIP_AUTOSYNC');
+        @unlink($sentinel);
+        @unlink($fakeBoost);
+        @rmdir($binDir);
+    }
+});
+
 it('logs warning on non-zero binary exit', function (): void {
     $binDir = sys_get_temp_dir() . '/boost-autosync-fail-' . bin2hex(random_bytes(6));
     mkdir($binDir, 0o755, recursive: true);

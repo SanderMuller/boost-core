@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.1...HEAD)
 
+### Fixed
+
+- **`BOOST_SKIP_AUTOSYNC` env var now honored by `Scripts\BoostAutoSync::run` and `::runWithSummary`.** The plugin's `onPostAutoloadDump` hook honored the env var, but the script callbacks shipped in 0.3.1 didn't — so consumers wiring `BoostAutoSync::run` into their own `post-install-cmd` per the documented recommendation lost the escape hatch the env var was supposed to provide. The check now lives in the shared `resolveAndRun` helper so both callables (and any future siblings) inherit it; CI runners + ephemeral Docker installs can disable auto-sync uniformly regardless of which entry point fires.
+
 ### Added
 
 - **`SanderMuller\BoostCore\Scripts\BoostAutoSync::runWithSummary` script callback** for user-invoked composer scripts (e.g. `composer sync-ai`) where silence on success reads as a no-op. Streams the binary's one-line success summary (`[OK] Sync done. wrote=X, unchanged=Y`) through Composer's IO. The existing `BoostAutoSync::run` callback stays silent on success — designed for the auto-firing `post-install-cmd` / `post-update-cmd` contexts where any per-install output is noise. Two callables, each self-documenting via name, no shared env-var knob.

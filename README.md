@@ -10,6 +10,9 @@ You don't usually install `boost-core` directly — it comes in as a dep of one 
 # PHP application developer
 composer require --dev sandermuller/project-boost
 
+# Laravel application developer — use the original, this family doesn't replace it
+composer require --dev laravel/boost
+
 # Framework-agnostic Composer package author
 composer require --dev sandermuller/package-boost-php
 

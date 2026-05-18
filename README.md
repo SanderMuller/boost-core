@@ -39,8 +39,10 @@ After install, every `composer install` / `composer update` re-runs `boost:sync`
 For tooling authors who want to publish their own skills to every AI agent on the user's machine:
 
 ```bash
-composer boost:sync --scope=user   # ~/.{agent}/skills/<package>/<skill>.md
+composer boost:sync --scope=user   # ~/.{agent}/skills/<package>/<skill>/SKILL.md
 ```
+
+In `composer global` context (`composer global require <skill-bearing-package>`), the plugin auto-detects the global install and runs user-scope sync for every globally-installed package shipping `resources/boost/skills/` — no manual `--scope=user` invocation required. If two globally-installed packages share a basename (`vendor-a/foo` + `vendor-b/foo`), the first one syncs and the second is skipped with a warning naming the conflict.
 
 ## Managed `.gitignore`
 
@@ -52,6 +54,12 @@ Opt out per project:
 return BoostConfig::configure()
     ->withGitignoreManagement(false)
     ->withAgents([...]);
+```
+
+Or one-off via env var (useful for CI / ephemeral Docker installs):
+
+```bash
+BOOST_SKIP_GITIGNORE=1 composer install
 ```
 
 See [`RELEASING.md`](RELEASING.md) for the publish path. The FileEmitter plugin contract is `@experimental` — the shape will change before v1.0 stable.

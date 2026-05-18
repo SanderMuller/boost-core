@@ -138,6 +138,31 @@ it('prunes a legacy flat `<name>.md` sibling when emitting `<name>/SKILL.md`', f
     }
 });
 
+it('does NOT prune the legacy flat sibling if the new write fails', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nNew body.\n");
+
+        // Pre-existing flat skill we'd be migrating from.
+        mkdir($root . '/.claude/skills', 0o755, recursive: true);
+        file_put_contents($root . '/.claude/skills/foo.md', "last good copy\n");
+
+        // Make the new target unwritable: replace foo/ with a regular file so
+        // FileWriter can't mkdir/write inside it.
+        file_put_contents($root . '/.claude/skills/foo', "blocker\n");
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Write failed → the legacy copy MUST still be there. The fix lives in
+        // SyncEngine::fanOut: prune only runs in the success branch of the try.
+        expect(file_exists($root . '/.claude/skills/foo.md'))->toBeTrue();
+        expect(file_get_contents($root . '/.claude/skills/foo.md'))->toContain('last good copy');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('directory-form source skill is emitted as <name>/SKILL.md, not flattened', function (): void {
     $root = makeEndToEndProject();
     try {

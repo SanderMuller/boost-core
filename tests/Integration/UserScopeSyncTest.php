@@ -44,6 +44,38 @@ function rmTreeUserScope(string $path): void
     rmdir($path);
 }
 
+it('user-scope sync prunes a legacy flat `<skill>.md` sibling alongside the new dir', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        file_put_contents(
+            $pkg . '/composer.json',
+            json_encode(['name' => 'test-vendor/sample-tool'], JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $pkg . '/resources/boost/skills/sample-skill.md',
+            "---\nname: sample-skill\n---\nNew body.\n",
+        );
+
+        // Pre-existing flat output from an earlier sync — should be deleted
+        // when the new `<skill>/SKILL.md` is written successfully.
+        mkdir($home . '/.claude/skills/sample-tool', 0o755, recursive: true);
+        file_put_contents($home . '/.claude/skills/sample-tool/sample-skill.md', "stale\n");
+
+        (new SyncEngine([
+            new ClaudeCodeTarget(),
+        ], installedPackages: new InstalledPackages([])))->syncUser($pkg, homeRoot: $home);
+
+        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill/SKILL.md'))->toBeTrue();
+        expect(file_exists($home . '/.claude/skills/sample-tool/sample-skill.md'))->toBeFalse();
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
 it('user-scope sync fans skills into ~/.{agent}/skills/<package>/ under HOME', function (): void {
     $dirs = makeUserScopeTempDirs();
     $pkg = $dirs['package'];

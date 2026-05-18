@@ -161,6 +161,9 @@ final class SyncEngine
                         new PendingWrite($rewritten, $pending->content),
                         $checkOnly,
                     );
+                    if (! $checkOnly) {
+                        $this->pruneLegacyFlatSibling($home, $rewritten);
+                    }
                 } catch (Throwable $e) {
                     $errors[] = sprintf(
                         'Failed to write %s for %s: %s',
@@ -520,6 +523,9 @@ final class SyncEngine
             foreach ($target->plan($skills, $guidelines) as $pending) {
                 try {
                     $writes[] = $this->writer->write($projectRoot, $pending, $checkOnly);
+                    if (! $checkOnly) {
+                        $this->pruneLegacyFlatSibling($projectRoot, $pending->relativePath);
+                    }
                 } catch (Throwable $e) {
                     $errors[] = sprintf(
                         'Failed to write %s for %s: %s',
@@ -527,10 +533,6 @@ final class SyncEngine
                         $target->agent()->value,
                         $e->getMessage(),
                     );
-                }
-
-                if (! $checkOnly) {
-                    $this->pruneLegacyFlatSibling($projectRoot, $pending->relativePath);
                 }
             }
         }

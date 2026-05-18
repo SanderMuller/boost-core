@@ -129,6 +129,66 @@ it('check mode reports no drift after a successful write', function (): void {
     }
 });
 
+it('prunes dead symlinks in managed agent skills dirs (vendor-rename migration)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        // Simulate the pre-migration shape: package-boost's testbench sync
+        // (or an earlier boost-core run) left symlinks under
+        // .claude/skills/oldvendor/ pointing into a vendor dir that's now
+        // gone. find -L -type l would catch these as dead links.
+        mkdir($root . '/.claude/skills/oldvendor', 0o755, recursive: true);
+        $nonexistentTarget = sys_get_temp_dir() . '/boost-e2e-nonexistent-' . bin2hex(random_bytes(6));
+        $deadLink1 = $root . '/.claude/skills/oldvendor/skill-one';
+        $deadLink2 = $root . '/.claude/skills/oldvendor/skill-two';
+        symlink($nonexistentTarget, $deadLink1);
+        symlink($nonexistentTarget, $deadLink2);
+
+        // Sanity: PHP confirms they're dead links right now.
+        expect(is_link($deadLink1))->toBeTrue()
+            ->and(file_exists($deadLink1))->toBeFalse();
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(is_link($deadLink1))->toBeFalse('dead symlink #1 should be pruned')
+            ->and(is_link($deadLink2))->toBeFalse('dead symlink #2 should be pruned')
+            ->and(file_exists($root . '/.claude/skills/foo/SKILL.md'))
+            ->toBeTrue('new skill should still emit cleanly alongside the prune');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('leaves live symlinks alone (does not chase or unlink valid links)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        // Plant a LIVE symlink in the managed dir. It points at a real
+        // file outside the project — sync must not unlink it.
+        mkdir($root . '/.claude/skills/livevendor', 0o755, recursive: true);
+        $liveTarget = sys_get_temp_dir() . '/boost-live-target-' . bin2hex(random_bytes(6));
+        file_put_contents($liveTarget, "real content\n");
+        $liveLink = $root . '/.claude/skills/livevendor/skill';
+        symlink($liveTarget, $liveLink);
+
+        try {
+            SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+            expect(is_link($liveLink))->toBeTrue('live symlink must survive the prune')
+                ->and(file_exists($liveLink))->toBeTrue();
+        } finally {
+            @unlink($liveTarget);
+        }
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('prunes a legacy flat `<name>.md` sibling when emitting `<name>/SKILL.md`', function (): void {
     $root = makeEndToEndProject();
     try {

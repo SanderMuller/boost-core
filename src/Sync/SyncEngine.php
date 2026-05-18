@@ -531,12 +531,63 @@ final readonly class SyncEngine
                 continue;
             }
 
+            if (! $checkOnly) {
+                $this->pruneDeadSymlinks($projectRoot . '/' . $target->skillsDirectoryRelative());
+            }
+
             foreach ($target->plan($skills, $guidelines) as $pending) {
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
         }
 
         return [$writes, $errors];
+    }
+
+    /**
+     * Best-effort: walk a managed agent skills dir, unlink every dead
+     * symlink (link whose target no longer exists).
+     *
+     * Migrations that remove a previously-installed vendor (e.g. swapping
+     * `sandermuller/package-boost` for the renamed `package-boost-php`)
+     * leave behind dangling symlinks under `.{agent}/skills/<old-pkg>/`
+     * that point into the now-absent `vendor/<old-pkg>/`. Earlier sync
+     * runs stumbled over them; this prune treats dead links in managed
+     * dirs as stale state that sync owns and cleans up.
+     *
+     * Live symlinks (target exists) are left alone and not recursed into,
+     * so the prune is safe against link loops and against legitimate
+     * symlinks the consumer may have placed there intentionally.
+     */
+    private function pruneDeadSymlinks(string $dir): void
+    {
+        if (! is_dir($dir)) {
+            return;
+        }
+
+        $entries = @scandir($dir);
+        if ($entries === false) {
+            return;
+        }
+
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') {
+                continue;
+            }
+
+            $path = $dir . '/' . $entry;
+
+            if (is_link($path)) {
+                if (! file_exists($path)) {
+                    @unlink($path);
+                }
+
+                continue;
+            }
+
+            if (is_dir($path)) {
+                $this->pruneDeadSymlinks($path);
+            }
+        }
     }
 
     /**

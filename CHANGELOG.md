@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`boost sync` no longer chokes on dead symlinks under managed agent skill dirs.** Consumer projects migrating between renamed vendor packages (e.g. `sandermuller/package-boost` → `sandermuller/package-boost-php`) ended up with dangling symlinks under `.{agent}/skills/<old-pkg>/` pointing into the now-uninstalled `vendor/<old-pkg>/` tree. Previous sync runs stumbled over them and required a manual `find -L -type l -delete` to recover. `SyncEngine` now walks each managed agent skills dir at sync time and unlinks dead symlinks before writing fresh state — live symlinks (target exists) are left alone and not recursed into. Same `composer install` → `boost sync` flow now self-heals across vendor renames.
+
+### Fixed (historical — already shipped, awaiting CHANGELOG cleanup)
+
 - **`BOOST_SKIP_AUTOSYNC` env var now honored by `Scripts\BoostAutoSync::run` and `::runWithSummary`.** The plugin's `onPostAutoloadDump` hook honored the env var, but the script callbacks shipped in 0.3.1 didn't — so consumers wiring `BoostAutoSync::run` into their own `post-install-cmd` per the documented recommendation lost the escape hatch the env var was supposed to provide. The check now lives in the shared `resolveAndRun` helper so both callables (and any future siblings) inherit it; CI runners + ephemeral Docker installs can disable auto-sync uniformly regardless of which entry point fires.
   
 - **`BoostAutoSync` callbacks now resolve `bin/boost` at the project root as a fallback** when `config.bin-dir/boost` isn't present. Composer only symlinks dependency bins into `vendor/bin/`, never the root package's own bins — so boost-core's own dev tree (and any future package that self-references its own bin) couldn't use `BoostAutoSync::run` for its own `post-install-cmd`. The fallback closes that gap while keeping all the existing guards (`--no-dev`, `BOOST_SKIP_AUTOSYNC`) intact — one callable, both contexts.

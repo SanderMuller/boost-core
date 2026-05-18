@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`SanderMuller\BoostCore\Scripts\BoostAutoSync::runWithSummary` script callback** for user-invoked composer scripts (e.g. `composer sync-ai`) where silence on success reads as a no-op. Streams the binary's one-line success summary (`[OK] Sync done. wrote=X, unchanged=Y`) through Composer's IO. The existing `BoostAutoSync::run` callback stays silent on success — designed for the auto-firing `post-install-cmd` / `post-update-cmd` contexts where any per-install output is noise. Two callables, each self-documenting via name, no shared env-var knob.
+
 - **`SanderMuller\BoostCore\Scripts\BoostAutoSync::run` script callback** for use in consumer packages' `post-install-cmd` / `post-update-cmd` hooks. Replaces the bash one-liner pattern (`if [ "$COMPOSER_DEV_MODE" = "1" ]; then vendor/bin/boost sync 2>/dev/null || true; fi`), which breaks on Windows cmd.exe. The PHP callback uses `Event::isDevMode()` (proper API instead of `$COMPOSER_DEV_MODE`), honors `composer config.bin-dir` overrides, and surfaces non-zero exits through Composer's IO instead of swallowing them. Add as a direct dep: `symfony/process: ^7.0`.
 
 ### Fixed

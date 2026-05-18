@@ -89,7 +89,75 @@ it('logs warning on non-zero binary exit', function (): void {
         BoostAutoSync::run($event);
 
         expect($io->getOutput())
-            ->toContain('boost: auto-sync via post-install-cmd exited 42');
+            ->toContain('boost: auto-sync exited 42');
+    } finally {
+        @unlink($fakeBoost);
+        @rmdir($binDir);
+    }
+});
+
+it('runWithSummary streams the binary stdout through Composer IO on success', function (): void {
+    $binDir = sys_get_temp_dir() . '/boost-autosync-sum-' . bin2hex(random_bytes(6));
+    mkdir($binDir, 0o755, recursive: true);
+    $fakeBoost = $binDir . '/boost';
+
+    try {
+        file_put_contents(
+            $fakeBoost,
+            "#!/usr/bin/env sh\necho '[OK] Sync done. wrote=3, unchanged=42.'\n",
+        );
+        chmod($fakeBoost, 0o755);
+
+        $io = new BufferIO();
+        $config = new Config(useEnvironment: false);
+        $config->merge(['config' => ['bin-dir' => $binDir]]);
+        $composer = new Composer();
+        $composer->setConfig($config);
+        $event = new Event('sync-ai', $composer, $io, devMode: true);
+
+        BoostAutoSync::runWithSummary($event);
+
+        expect($io->getOutput())
+            ->toContain('[OK] Sync done. wrote=3, unchanged=42.');
+    } finally {
+        @unlink($fakeBoost);
+        @rmdir($binDir);
+    }
+});
+
+it('runWithSummary still no-ops when --no-dev', function (): void {
+    $io = new BufferIO();
+    $config = new Config(useEnvironment: false);
+    $config->merge(['config' => ['bin-dir' => sys_get_temp_dir()]]);
+    $composer = new Composer();
+    $composer->setConfig($config);
+    $event = new Event('sync-ai', $composer, $io, devMode: false);
+
+    BoostAutoSync::runWithSummary($event);
+
+    expect($io->getOutput())->toBe('');
+});
+
+it('runWithSummary emits same warning on non-zero exit as run()', function (): void {
+    $binDir = sys_get_temp_dir() . '/boost-autosync-sum-fail-' . bin2hex(random_bytes(6));
+    mkdir($binDir, 0o755, recursive: true);
+    $fakeBoost = $binDir . '/boost';
+
+    try {
+        file_put_contents($fakeBoost, "#!/usr/bin/env sh\nexit 7\n");
+        chmod($fakeBoost, 0o755);
+
+        $io = new BufferIO();
+        $config = new Config(useEnvironment: false);
+        $config->merge(['config' => ['bin-dir' => $binDir]]);
+        $composer = new Composer();
+        $composer->setConfig($config);
+        $event = new Event('sync-ai', $composer, $io, devMode: true);
+
+        BoostAutoSync::runWithSummary($event);
+
+        expect($io->getOutput())
+            ->toContain('boost: auto-sync exited 7');
     } finally {
         @unlink($fakeBoost);
         @rmdir($binDir);

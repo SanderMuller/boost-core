@@ -8,59 +8,104 @@ use Composer\Script\Event;
 use Symfony\Component\Process\Process;
 
 /**
- * Cross-platform Composer script callback for `post-install-cmd` /
- * `post-update-cmd` hooks in consumer packages.
+ * Cross-platform Composer script callbacks for boost-core's sync command,
+ * wired from consumer packages' `composer.json` `scripts` block.
  *
- * Wire it into a consumer's composer.json:
+ * Two callables, differing only in success-path output:
  *
- *     "scripts": {
- *         "post-install-cmd": [
- *             "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
- *         ],
- *         "post-update-cmd": [
- *             "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
- *         ]
- *     }
+ *  - {@see run()} — silent on success. Designed for `post-install-cmd` /
+ *    `post-update-cmd` hooks where any per-install output is noise.
+ *  - {@see runWithSummary()} — streams the binary's one-line success
+ *    summary through Composer's IO. Designed for user-invoked scripts
+ *    like `composer sync-ai` where silence reads as a no-op.
  *
- * Replaces the bash one-liner:
+ * Both replace the bash one-liner:
  *
  *     "if [ \"$COMPOSER_DEV_MODE\" = \"1\" ]; then vendor/bin/boost sync 2>/dev/null || true; fi"
  *
- * Why the PHP shape wins:
- *  - Cross-platform (the bash form breaks on Windows cmd.exe).
- *  - `Event::isDevMode()` is the official Composer API for `--no-dev`
- *    detection, more reliable than reading `$COMPOSER_DEV_MODE`.
- *  - `Composer\Config::get('bin-dir')` honors a project's
- *    `config.bin-dir` override (default `vendor/bin/` is hardcoded in
- *    the bash form).
- *  - Errors surface through Composer's IO instead of being swallowed
- *    by `2>/dev/null || true`.
+ * which breaks on Windows cmd.exe, swallows real errors via `2>/dev/null`,
+ * hardcodes `vendor/bin/` (ignoring `config.bin-dir` overrides), and reads
+ * the leaky `$COMPOSER_DEV_MODE` env var instead of `Event::isDevMode()`.
+ *
+ * Both callables share the same skip/error/exit semantics:
+ *  - Skip silently when `Event::isDevMode()` is false (`--no-dev` install).
+ *  - Skip silently when the resolved binary at `config.bin-dir/boost` is
+ *    not executable (e.g. boost-core not installed in this project).
+ *  - On non-zero exit, emit a warning via `$event->getIO()->writeError()`
+ *    pointing the user at the manual `vendor/bin/boost sync` for details.
  */
 final class BoostAutoSync
 {
+    /**
+     * Silent on success. Wire into auto-firing hooks
+     * (`post-install-cmd` / `post-update-cmd`).
+     */
     public static function run(Event $event): void
     {
-        if (! $event->isDevMode()) {
+        $process = self::resolveAndRun($event);
+        if ($process === null) {
             return;
         }
 
-        $config = $event->getComposer()->getConfig();
-        $binary = $config->get('bin-dir') . '/boost';
+        self::reportFailureIfAny($event, $process);
+    }
+
+    /**
+     * Emits the binary's one-line success summary through Composer's IO.
+     * Wire into user-invoked scripts (`composer sync-ai`, etc.) where
+     * silence on success would read as a no-op.
+     */
+    public static function runWithSummary(Event $event): void
+    {
+        $process = self::resolveAndRun($event);
+        if ($process === null) {
+            return;
+        }
+
+        if ($process->getExitCode() === 0) {
+            $output = trim($process->getOutput());
+            if ($output !== '') {
+                $event->getIO()->write($output);
+            }
+
+            return;
+        }
+
+        self::reportFailureIfAny($event, $process);
+    }
+
+    /**
+     * Returns the completed Process, or null if the run was skipped
+     * (not dev mode, or binary not present).
+     */
+    private static function resolveAndRun(Event $event): ?Process
+    {
+        if (! $event->isDevMode()) {
+            return null;
+        }
+
+        $binary = $event->getComposer()->getConfig()->get('bin-dir') . '/boost';
 
         if (! is_executable($binary)) {
-            return;
+            return null;
         }
 
         $process = new Process([$binary, 'sync']);
-        $exit = $process->run();
+        $process->run();
 
+        return $process;
+    }
+
+    private static function reportFailureIfAny(Event $event, Process $process): void
+    {
+        $exit = $process->getExitCode();
         if ($exit === 0) {
             return;
         }
 
         $event->getIO()->writeError(sprintf(
-            '<warning>boost: auto-sync via post-install-cmd exited %d. Run `vendor/bin/boost sync` manually for details.</warning>',
-            $exit,
+            '<warning>boost: auto-sync exited %d. Run `vendor/bin/boost sync` manually for details.</warning>',
+            $exit ?? -1,
         ));
     }
 }

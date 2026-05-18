@@ -144,6 +144,15 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
 
         $engine = SyncEngine::default();
 
+        // Track which package "claimed" each user-scope suffix so we can warn
+        // (and skip) on collisions like `acme/repo-init` vs `vendor/repo-init`
+        // both targeting `~/.{agent}/skills/repo-init/`. Suffix collisions are
+        // a known limitation of the current basename-only scheme in
+        // SyncEngine::packageSuffix(); detection here prevents silent
+        // file-overwrites until that scheme moves to a vendor-namespaced slug.
+        /** @var array<string, string> $claimedSuffixes suffix => package name */
+        $claimedSuffixes = [];
+
         foreach ($localRepo->getPackages() as $package) {
             if (! $package instanceof PackageInterface) {
                 continue;
@@ -156,6 +165,20 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
             if (! is_dir($installPath . '/resources/boost/skills')) {
                 continue;
             }
+
+            $suffix = $this->packageSuffix($package->getName());
+            if (isset($claimedSuffixes[$suffix])) {
+                $io->writeError(sprintf(
+                    '<warning>boost: skipping global auto-sync of %s — basename "%s" already claimed by %s. '
+                    . 'Remove one of the packages or run `composer boost:sync --scope=user --working-dir=<pkg>` manually.</warning>',
+                    $package->getName(),
+                    $suffix,
+                    $claimedSuffixes[$suffix],
+                ));
+
+                continue;
+            }
+            $claimedSuffixes[$suffix] = $package->getName();
 
             try {
                 $result = $engine->syncUser($installPath);
@@ -192,5 +215,12 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
                 ));
             }
         }
+    }
+
+    private function packageSuffix(string $packageName): string
+    {
+        $slash = strrpos($packageName, '/');
+
+        return $slash === false ? $packageName : substr($packageName, $slash + 1);
     }
 }

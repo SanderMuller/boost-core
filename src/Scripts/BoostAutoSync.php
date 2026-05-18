@@ -48,7 +48,7 @@ final class BoostAutoSync
     public static function run(Event $event): void
     {
         $process = self::resolveAndRun($event);
-        if ($process === null) {
+        if (! $process instanceof Process) {
             return;
         }
 
@@ -63,7 +63,7 @@ final class BoostAutoSync
     public static function runWithSummary(Event $event): void
     {
         $process = self::resolveAndRun($event);
-        if ($process === null) {
+        if (! $process instanceof Process) {
             return;
         }
 

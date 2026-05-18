@@ -63,7 +63,7 @@ In `composer global` context (`composer global require <skill-bearing-package>`)
 }
 ```
 
-It checks `Event::isDevMode()`, resolves `composer config.bin-dir`, runs `vendor/bin/boost sync` and surfaces non-zero exits through Composer's IO. Works on Windows + Unix. The plugin's `onPostAutoloadDump` already runs sync for end-user installs — this callback is for plugin packages in the `boost-*` family that want an explicit, cross-platform script entry of their own.
+It checks `Event::isDevMode()`, resolves `composer config.bin-dir`, runs `vendor/bin/boost sync` and surfaces non-zero exits through Composer's IO. Works on Windows + Unix. Honors `BOOST_SKIP_AUTOSYNC=1` (same escape hatch as the plugin's auto-sync hook). The plugin's `onPostAutoloadDump` already runs sync for end-user installs — this callback is for plugin packages in the `boost-*` family that want an explicit, cross-platform script entry of their own.
 
 For user-invoked scripts (`composer sync-ai`, etc.) where silence on success reads as a no-op, use `BoostAutoSync::runWithSummary` instead — same behaviour but streams the binary's one-line success summary through Composer's IO:
 

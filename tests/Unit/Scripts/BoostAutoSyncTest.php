@@ -161,13 +161,16 @@ it('runWithSummary still no-ops when --no-dev', function (): void {
     $io = new BufferIO();
     $config = new Config(useEnvironment: false);
     $config->merge(['config' => ['bin-dir' => sys_get_temp_dir()]]);
+
     $composer = new Composer();
     $composer->setConfig($config);
+
     $event = new Event('sync-ai', $composer, $io, devMode: false);
 
     BoostAutoSync::runWithSummary($event);
 
-    expect($io->getOutput())->toBe('');
+    expect($io->getOutput())
+        ->toBeEmpty();
 });
 
 it('runWithSummary emits same warning on non-zero exit as run()', function (): void {

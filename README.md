@@ -48,6 +48,23 @@ composer boost:sync --scope=user   # ~/.{agent}/skills/<package>/<skill>/SKILL.m
 
 In `composer global` context (`composer global require <skill-bearing-package>`), the plugin auto-detects the global install and runs user-scope sync for every globally-installed package shipping `resources/boost/skills/` — no manual `--scope=user` invocation required. If two globally-installed packages share a basename (`vendor-a/foo` + `vendor-b/foo`), the first one syncs and the second is skipped with a warning naming the conflict.
 
+### Composer script callback (for plugin-package authors)
+
+`SanderMuller\BoostCore\Scripts\BoostAutoSync::run` is a cross-platform Composer script callback that consumer packages can wire into their own `post-install-cmd` / `post-update-cmd` hooks:
+
+```json
+"scripts": {
+    "post-install-cmd": [
+        "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
+    ],
+    "post-update-cmd": [
+        "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
+    ]
+}
+```
+
+It checks `Event::isDevMode()`, resolves `composer config.bin-dir`, runs `vendor/bin/boost sync` and surfaces non-zero exits through Composer's IO. Works on Windows + Unix. The plugin's `onPostAutoloadDump` already runs sync for end-user installs — this callback is for plugin packages in the `boost-*` family that want an explicit, cross-platform script entry of their own.
+
 ## Managed `.gitignore`
 
 `boost:sync` maintains a managed block in `.gitignore` so generated agent dirs (`.claude/skills/`, `.cursor/skills/`, `CLAUDE.md`, `AGENTS.md`, ...) stay out of version control. Edit skills in `.ai/` only; the fan-out regenerates on next install.

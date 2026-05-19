@@ -140,11 +140,12 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
 
         $engine = SyncEngine::default();
 
-        // Track which package "claimed" each user-scope suffix so we can warn
-        // (and skip) on collisions. Basename-only namespacing in
-        // SyncEngine::packageSuffix is the underlying limitation; collision
-        // detection here prevents silent file-overwrites until that scheme
-        // moves to a vendor-namespaced slug.
+        // Defensive: track which package "claimed" each user-scope suffix.
+        // Since 0.4 SyncEngine::packageSuffix maps `/` to `__` — a sequence
+        // disallowed by the Composer name spec — the mapping is injective
+        // and two distinct package names cannot collide here for any valid
+        // Composer name. The detection stays as a guardrail against future
+        // regressions in the suffix scheme.
         /** @var array<string, string> $claimedSuffixes suffix => package name */
         $claimedSuffixes = [];
 

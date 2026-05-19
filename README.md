@@ -43,10 +43,10 @@ After install, every `composer install` / `composer update` re-runs `boost:sync`
 For tooling authors who want to publish their own skills to every AI agent on the user's machine:
 
 ```bash
-composer boost:sync --scope=user   # ~/.{agent}/skills/<package>/<skill>/SKILL.md
+composer boost:sync --scope=user   # ~/.{agent}/skills/<vendor>__<package>/<skill>/SKILL.md
 ```
 
-In `composer global` context (`composer global require <skill-bearing-package>`), the plugin auto-detects the global install and runs user-scope sync for every globally-installed package shipping `resources/boost/skills/` — no manual `--scope=user` invocation required. If two globally-installed packages share a basename (`vendor-a/foo` + `vendor-b/foo`), the first one syncs and the second is skipped with a warning naming the conflict.
+In `composer global` context (`composer global require <skill-bearing-package>`), the plugin auto-detects the global install and runs user-scope sync for every globally-installed package shipping `resources/boost/skills/` — no manual `--scope=user` invocation required. Paths are namespaced by the full `vendor/package` slug (with `/` replaced by `__`, a sequence forbidden by the Composer name spec so distinct packages always produce distinct slugs), so `vendor-a/foo` and `vendor-b/foo` coexist cleanly under their own dirs.
 
 ### Composer script callback (for plugin-package authors)
 

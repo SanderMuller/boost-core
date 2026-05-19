@@ -6,23 +6,26 @@ Breaking changes per major/minor bump.
 
 ### User-scope skill paths now vendor-namespaced
 
-Pre-0.4, user-scope skills landed at `~/.{agent}/skills/<package-basename>/...` — so `acme/repo-init` and `vendor-b/repo-init` would collide on `~/.{agent}/skills/repo-init/`. The 0.3 line shipped graceful warn-and-skip behaviour for collisions; 0.4 fixes the underlying cause by namespacing paths by the full `vendor/package` slug.
+Pre-0.4, user-scope skills landed at `~/.{agent}/skills/<package-basename>/...` — so `acme/repo-init` and `vendor-b/repo-init` would collide on `~/.{agent}/skills/repo-init/`. The 0.3 line shipped graceful warn-and-skip behaviour for collisions; 0.4 fixes the underlying cause by namespacing paths by the full `vendor/package` slug. The `/` is replaced with `__` (double underscore) — a sequence that the Composer name spec forbids inside vendor or project parts, which makes the slug mapping injective (no two distinct package names can produce the same slug).
 
 | Was (0.3) | Now (0.4) |
 |---|---|
-| `~/.{agent}/skills/repo-init/...` (from `acme/repo-init`) | `~/.{agent}/skills/acme-repo-init/...` |
-| `~/.{agent}/skills/repo-init/...` (from `vendor-b/repo-init` — would have warn-and-skip-collided in 0.3) | `~/.{agent}/skills/vendor-b-repo-init/...` (now coexists) |
+| `~/.{agent}/skills/repo-init/...` (from `acme/repo-init`) | `~/.{agent}/skills/acme__repo-init/...` |
+| `~/.{agent}/skills/repo-init/...` (from `vendor-b/repo-init` — would have warn-and-skip-collided in 0.3) | `~/.{agent}/skills/vendor-b__repo-init/...` (now coexists) |
 
-**Migration steps:** none required by hand. The first `syncUser()` invocation against each installed package after the 0.4 bump runs a one-time auto-migration:
+**Migration steps:** none required by hand for the common case. The first `syncUser()` invocation against each installed package after the 0.4 bump runs a one-time auto-migration:
 
 1. Detects `~/.{agent}/skills/<old-basename>/` for the package being synced
-2. If the new `~/.{agent}/skills/<vendor>-<basename>/` dir does NOT already exist, renames
-3. Idempotent: subsequent syncs find no old dir and no-op
-4. Safe: if both old and new dirs exist (manually-created new dir, partial migration), skips the rename rather than clobbering
+2. Verifies the legacy dir's contents are reproducible from THIS package's `resources/boost/skills/` tree (ownership check)
+3. If the new `~/.{agent}/skills/<vendor>__<basename>/` dir does NOT already exist, renames
+4. Idempotent: subsequent syncs find no old dir and no-op
+5. Safe: if both old and new dirs exist (manually-created new dir, partial migration), skips the rename rather than clobbering
 
 The migration is per-package and triggers naturally as each `composer global require`'d package's plugin / manual `composer boost:sync --scope=user` invocation happens. Packages uninstalled before their migration would have run leave their old basename dirs behind — same as the existing "stale-skills-on-`composer global remove`" known limitation.
 
-**For scripts / docs referencing user-scope paths**: update any hard-coded `~/.{agent}/skills/<basename>/` references to `~/.{agent}/skills/<vendor>-<basename>/`. Boost-core's collision-detection code path stays in place defensively but is unreachable in practice now (different vendors can't collide).
+**Pre-0.2 collision states require manual cleanup.** The collision-detection guard in `BoostCorePlugin::runGlobalSync` shipped in 0.2.0; pre-0.2, two installed packages with the same basename both wrote to `~/.{agent}/skills/<basename>/`, last-writer wins. Post-0.4, the auto-migration's ownership check refuses to rename such a dir (foreign files mean mis-attribution risk), and the legacy dir is left in place. To resolve: inspect `~/.{agent}/skills/<basename>/`, copy any wanted files to the right `~/.{agent}/skills/<vendor>__<basename>/` dir manually, then `rm -rf ~/.{agent}/skills/<basename>/`.
+
+**For scripts / docs referencing user-scope paths**: update any hard-coded `~/.{agent}/skills/<basename>/` references to `~/.{agent}/skills/<vendor>__<basename>/`. Boost-core's collision-detection code path stays in place defensively but is unreachable for any valid Composer package name.
 
 ## 0.2 → 0.3
 

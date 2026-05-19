@@ -150,7 +150,7 @@ final readonly class SyncEngine
         $errors = [];
 
         if (! $checkOnly) {
-            $this->migrateLegacyBasenameDirs($home, $packageName);
+            (new UserScopeMigrator())->run($home, $packageName, $skills, $this->agentTargets);
         }
 
         foreach ($this->agentTargets as $target) {
@@ -218,17 +218,22 @@ final readonly class SyncEngine
      * Vendor-namespaced slug used as the user-scope path segment under
      * `~/.{agent}/skills/<suffix>/`.
      *
-     * `acme/foo` → `acme-foo`. Names without a `/` (rare; non-Composer
-     * packages) pass through unchanged. This shape guarantees no
-     * cross-vendor collisions: `vendor-a/foo` and `vendor-b/foo` get
-     * distinct slugs and coexist cleanly.
+     * `acme/foo` → `acme__foo`. Names without a `/` (rare; non-Composer
+     * packages) pass through unchanged.
+     *
+     * Separator choice: `__` (double underscore) is disallowed by the
+     * Composer name spec — both vendor and project parts only permit a
+     * single `_` between alphanumerics. So `__` cannot appear inside a
+     * valid Composer name, which makes this mapping injective: distinct
+     * package names always produce distinct slugs (no `vendor-a/foo` vs
+     * `vendor/a-foo` style ambiguity that a `-` separator would admit).
      *
      * @see packageBasename for the bare-basename form used by the
      *   rewriteForUserScope dedupe.
      */
     public static function packageSuffix(string $packageName): string
     {
-        return str_replace('/', '-', $packageName);
+        return str_replace('/', '__', $packageName);
     }
 
     /**
@@ -242,49 +247,6 @@ final readonly class SyncEngine
         $slash = strrpos($packageName, '/');
 
         return $slash === false ? $packageName : substr($packageName, $slash + 1);
-    }
-
-    /**
-     * One-time migration from pre-0.4 basename-only user-scope paths to the
-     * 0.4+ vendor-namespaced slugs.
-     *
-     * Pre-0.4: `$home/.{agent}/skills/<basename>/...` (e.g.
-     * `~/.claude/skills/repo-init/...`).
-     * Post-0.4: `$home/.{agent}/skills/<vendor>-<basename>/...` (e.g.
-     * `~/.claude/skills/sandermuller-repo-init/...`).
-     *
-     * For each enabled agent, if the old basename dir exists AND the new
-     * slug dir does NOT, rename. Idempotent: subsequent runs find the old
-     * dir gone and no-op. Safe: skipped when the new dir already exists
-     * (don't overwrite a fresh sync's output with stale data).
-     *
-     * Only fires when `packageBasename != packageSuffix` — packages
-     * without a `vendor/` prefix have identical old + new paths and
-     * never need migration.
-     */
-    private function migrateLegacyBasenameDirs(string $home, string $packageName): void
-    {
-        $basename = self::packageBasename($packageName);
-        $slug = self::packageSuffix($packageName);
-
-        if ($basename === $slug) {
-            return;
-        }
-
-        foreach ($this->agentTargets as $target) {
-            $skillsDir = $home . '/' . $target->skillsDirectoryRelative();
-            $oldPath = $skillsDir . '/' . $basename;
-            $newPath = $skillsDir . '/' . $slug;
-
-            if (! is_dir($oldPath) || is_link($oldPath)) {
-                continue;
-            }
-            if (is_dir($newPath) || is_link($newPath)) {
-                continue;
-            }
-
-            @rename($oldPath, $newPath);
-        }
     }
 
     /**
@@ -640,7 +602,11 @@ final readonly class SyncEngine
         }
 
         foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..') {
+            if ($entry === '.') {
+                continue;
+            }
+
+            if ($entry === '..') {
                 continue;
             }
 

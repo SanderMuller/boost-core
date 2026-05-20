@@ -14,9 +14,7 @@ description: Author a boost.php config file. Covers all five with* methods, when
 ## The fluent shape
 
 ```php
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Enums\Agent;
@@ -42,6 +40,15 @@ return BoostConfig::configure()
 - `withDisabledEmitters([])` — FQCNs of FileEmitter classes to skip even
   if their vendor is allowlisted. Use for opting out of optional emissions
   (e.g. you want skills from `package-boost-laravel` but not `.mcp.json`).
+- `withTags(Tag::Php, 'jira', ...)` — variadic; the project's skill tags.
+  A vendor skill ships only when every tag in its `metadata.boost-tags`
+  frontmatter is declared here (`skillTags ⊆ projectTags`). Untagged
+  skills always ship. Accepts `Tag` enum cases (autocomplete) or raw
+  strings (the vocabulary is open). Omit it entirely to receive every
+  untagged skill and filter out every tagged one.
+- `withExcludedSkills([])` — `vendor/package:skill-name` entries to drop
+  regardless of tags. A per-skill deny-list for vendor skills you don't
+  want without shipping a shadowing host copy.
 - `withSkillsPath(...)` / `withGuidelinesPath(...)` — host-authored content
   locations. Default to `<project-root>/.ai/skills` and
   `<project-root>/.ai/guidelines`. Override only if your project uses a

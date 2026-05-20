@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
@@ -76,3 +74,26 @@ it('defaults `load($root)` to looking at $root/boost.php', function (): void {
     // No fixture exists at /fake/project/boost.php — should hit the not-found path.
     (new BoostConfigLoader())->load('/fake/project');
 })->throws(BoostConfigNotFoundException::class, '/fake/project/boost.php');
+
+it('round-trips withTags and withExcludedSkills through a boost.php', function (): void {
+    $path = sys_get_temp_dir() . '/boost-tags-roundtrip-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($path, <<<'PHP'
+        <?php declare(strict_types=1);
+
+        use SanderMuller\BoostCore\Config\BoostConfig;
+        use SanderMuller\BoostCore\Enums\Tag;
+
+        return BoostConfig::configure()
+            ->withTags(Tag::Php, 'jira')
+            ->withExcludedSkills(['acme/pack:unwanted']);
+        PHP);
+
+    try {
+        $config = (new BoostConfigLoader())->load(dirname($path), $path);
+
+        expect($config->tags)->toBe(['php', 'jira'])
+            ->and($config->excludedSkills)->toBe(['acme/pack:unwanted']);
+    } finally {
+        @unlink($path);
+    }
+});

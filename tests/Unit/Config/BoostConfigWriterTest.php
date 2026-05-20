@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Config\BoostConfigBuilder;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
@@ -135,6 +133,81 @@ PHP);
         // Loadable as a BoostConfigBuilder when required directly.
         $builder = require $path;
         expect($builder)->toBeInstanceOf(BoostConfigBuilder::class);
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('preserves the header docblock, inline comments, and use imports', function (): void {
+    $path = tempConfigPath(<<<'PHP'
+<?php declare(strict_types=1);
+
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Agent;
+
+/**
+ * boost-core configuration.
+ *
+ * Docs: https://github.com/sandermuller/boost-core
+ */
+return BoostConfig::configure()
+    // Which AI agents to publish to.
+    ->withAgents([])
+
+    // Vendors allowed to publish.
+    ->withAllowedVendors([])
+
+    ->withDisabledEmitters([])
+;
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update($path, [Agent::CLAUDE_CODE], ['acme/foo'], []);
+
+        $written = (string) file_get_contents($path);
+
+        expect($written)->toContain('* boost-core configuration.')
+            ->toContain('* Docs: https://github.com/sandermuller/boost-core')
+            ->toContain('// Which AI agents to publish to.')
+            ->toContain('// Vendors allowed to publish.')
+            ->toContain('use SanderMuller\BoostCore\Config\BoostConfig;')
+            ->toContain('use SanderMuller\BoostCore\Enums\Agent;');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('expands a non-empty array one item per line with a trailing comma', function (): void {
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+return BoostConfig::configure()
+    ->withAgents([])
+    ->withAllowedVendors([])
+    ->withDisabledEmitters([]);
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update(
+            $path,
+            [Agent::CLAUDE_CODE, Agent::COPILOT],
+            ['acme/foo', 'acme/bar'],
+            [],
+        );
+
+        $written = (string) file_get_contents($path);
+
+        // Each item on its own line, trailing comma after the last.
+        // The writer emits the Agent enum fully-qualified (leading `\`).
+        expect($written)
+            ->toContain("->withAgents([\n")
+            ->toContain('\\' . Agent::class . "::CLAUDE_CODE,\n")
+            ->toContain('\\' . Agent::class . "::COPILOT,\n")
+            ->toContain("'acme/foo',\n")
+            ->toContain("'acme/bar',\n")
+            // Empty array stays inline.
+            ->toContain('->withDisabledEmitters([])');
     } finally {
         @unlink($path);
     }

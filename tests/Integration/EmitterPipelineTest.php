@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Sync\EmitterAction;
 use SanderMuller\BoostCore\Sync\InstalledPackages;

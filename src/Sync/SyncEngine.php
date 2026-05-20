@@ -1,10 +1,9 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Sync;
 
 use JsonException;
+use LogicException;
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
@@ -30,6 +29,7 @@ use SanderMuller\BoostCore\Skills\GuidelineResolver;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
+use SanderMuller\BoostCore\Skills\SkillTagFilter;
 use Throwable;
 
 /**
@@ -68,6 +68,8 @@ final readonly class SyncEngine
         private GuidelineResolver $guidelineResolver = new GuidelineResolver(),
         private FileWriter $writer = new FileWriter(),
         private GitignoreManager $gitignoreManager = new GitignoreManager(),
+        private SkillTagFilter $skillTagFilter = new SkillTagFilter(),
+        private FilteredSkillPruner $filteredSkillPruner = new FilteredSkillPruner(),
         ?InstalledPackages $installedPackages = null,
     ) {
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -298,11 +300,14 @@ final readonly class SyncEngine
         $allowedVendors = $this->discoverAllowedVendors($config);
 
         try {
-            $resolvedSkills = $this->resolveSkills($config, $allowedVendors, $force);
+            $skillResolution = $this->resolveSkills($config, $allowedVendors, $force);
             $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force);
         } catch (CollidingSkillsException $collidingSkillsException) {
             return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
         }
+
+        $resolvedSkills = $skillResolution['skills'];
+        $droppedSkillNames = $skillResolution['droppedNames'];
 
         $context = new SyncContext(
             projectRoot: $projectRoot,
@@ -317,6 +322,7 @@ final readonly class SyncEngine
             $config,
             $resolvedSkills,
             $resolvedGuidelines,
+            $droppedSkillNames,
             $checkOnly,
         );
 
@@ -386,8 +392,13 @@ final readonly class SyncEngine
     }
 
     /**
+     * Load host + vendor skills, tag-filter each vendor's set, resolve
+     * collisions. Vendor skills are filtered BEFORE resolution so only
+     * shippable skills compete (see SkillTagFilter docblock); host skills
+     * are never filtered — the project authored them.
+     *
      * @param  list<DiscoveredVendor>  $allowedVendors
-     * @return list<Skill>
+     * @return array{skills: list<Skill>, droppedNames: list<string>}
      */
     private function resolveSkills(BoostConfig $config, array $allowedVendors, bool $force): array
     {
@@ -395,15 +406,29 @@ final readonly class SyncEngine
             ? $this->skillLoader->load($config->skillsPath)
             : [];
 
-        /** @var array<string, iterable<Skill>> $vendorSkills */
+        /** @var array<string, list<Skill>> $vendorSkills */
         $vendorSkills = [];
+        /** @var list<string> $droppedNames */
+        $droppedNames = [];
         foreach ($allowedVendors as $vendor) {
-            if ($vendor->skillsPath !== null) {
-                $vendorSkills[$vendor->name] = $this->skillLoader->load($vendor->skillsPath, $vendor->name);
+            if ($vendor->skillsPath === null) {
+                continue;
+            }
+
+            $filtered = $this->skillTagFilter->filter(
+                $this->skillLoader->load($vendor->skillsPath, $vendor->name),
+                $config,
+            );
+            $vendorSkills[$vendor->name] = $filtered['kept'];
+            foreach ($filtered['droppedNames'] as $name) {
+                $droppedNames[] = $name;
             }
         }
 
-        return $this->skillResolver->resolve($hostSkills, $vendorSkills, $force);
+        return [
+            'skills' => $this->skillResolver->resolve($hostSkills, $vendorSkills, $force),
+            'droppedNames' => array_values(array_unique($droppedNames)),
+        ];
     }
 
     /**
@@ -538,12 +563,16 @@ final readonly class SyncEngine
             WriteAction::WROTE => EmitterAction::WROTE,
             WriteAction::UNCHANGED => EmitterAction::UNCHANGED,
             WriteAction::WOULD_WRITE => EmitterAction::WOULD_WRITE,
+            WriteAction::DELETED, WriteAction::WOULD_DELETE => throw new LogicException(
+                'Emitter writes never produce a delete action.',
+            ),
         };
     }
 
     /**
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
+     * @param  list<string>  $droppedSkillNames  Names dropped by SkillTagFilter — candidates for pruning.
      * @return array{0: list<WrittenFile>, 1: list<string>}
      */
     private function fanOut(
@@ -551,12 +580,15 @@ final readonly class SyncEngine
         BoostConfig $config,
         array $skills,
         array $guidelines,
+        array $droppedSkillNames,
         bool $checkOnly,
     ): array {
         /** @var list<WrittenFile> $writes */
         $writes = [];
         /** @var list<string> $errors */
         $errors = [];
+
+        $toPrune = $this->filteredSkillPruner->candidates($skills, $droppedSkillNames);
 
         foreach ($this->agentTargets as $target) {
             if (! $config->hasAgent($target->agent())) {
@@ -565,6 +597,13 @@ final readonly class SyncEngine
 
             if (! $checkOnly) {
                 $this->pruneDeadSymlinks($projectRoot . '/' . $target->skillsDirectoryRelative());
+            }
+
+            foreach ($toPrune as $name) {
+                $pruned = $this->filteredSkillPruner->prune($projectRoot, $target, $name, $checkOnly);
+                if ($pruned instanceof WrittenFile) {
+                    $writes[] = $pruned;
+                }
             }
 
             foreach ($target->plan($skills, $guidelines) as $pending) {

@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Config;
 
@@ -15,10 +13,13 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Scalar\String_;
+use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
+use PhpParser\Node\Stmt\Use_;
 use PhpParser\NodeFinder;
+use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\CloningVisitor;
 use PhpParser\ParserFactory;
-use PhpParser\PrettyPrinter\Standard;
 use SanderMuller\BoostCore\Enums\Agent;
 
 /**
@@ -34,28 +35,36 @@ use SanderMuller\BoostCore\Enums\Agent;
  * If a method isn't already in the chain, it's inserted between the static
  * `BoostConfig::configure()` and the rest of the chain.
  *
- * ## Known limitations
+ * ## Format preservation
  *
- * **Comments are not preserved.** PHP-Parser's `Standard` pretty-printer
- * strips non-attached comments. A header docblock above the `return`
- * statement, inline comments inside the chain, or comments above the
- * `use` imports will be silently removed on the next `boost:install` or
- * `boost:scan`. Commit `boost.php` before running interactive commands
- * so the loss surfaces as a diff in version control.
+ * Printing is format-preserving (php-parser's `printFormatPreserving` mode):
+ * the original file is parsed into a pristine `$oldStmts` tree and a cloned
+ * `$newStmts` tree, the clone is modified, and the printer diffs the two so
+ * every untouched node is reproduced byte-for-byte from the original tokens.
  *
- * **Formatting may change.** Pretty-printing applies its own style (quote
- * conventions, indentation, trailing commas). Re-running against a file
- * not originally produced by this writer will yield a noisy diff even
- * when semantics are unchanged.
- *
- * Format-preserving printing (php-parser's `printFormatPreserving` mode)
- * is a future improvement. For v1.0 this is straight parse → modify →
- * pretty-print, and the deviations are accepted.
+ * Consequences:
+ * - The header docblock, inline comments, `use` imports, and the fluent
+ *   chain's line layout all survive a `boost:install` / `boost:scan` rewrite.
+ * - Only the three arrays this writer rebuilds (`withAgents`,
+ *   `withAllowedVendors`, `withDisabledEmitters`) are re-printed —
+ *   {@see BoostConfigPrinter} expands a non-empty one to the multi-line,
+ *   trailing-comma shape; an empty one stays `[]`.
+ * - The chain's line layout is whatever the source already had: the
+ *   starter template ships it multi-line, so a starter-generated config
+ *   round-trips cleanly. A chain that reaches the writer collapsed onto
+ *   one line (e.g. a config last written by a pre-format-preserving
+ *   boost-core) stays collapsed — re-running the picker won't reflow it.
+ *   Regenerate via `boost:install` (delete `boost.php` first) for the
+ *   canonical layout.
+ * - A method *inserted* into a chain that didn't already contain it (only
+ *   happens for hand-stripped configs — the starter ships all three) is
+ *   printed by php-parser's insertion heuristic; the result is clean when
+ *   the surrounding chain is already multi-line.
  */
 final readonly class BoostConfigWriter
 {
     public function __construct(
-        private Standard $printer = new Standard(),
+        private BoostConfigPrinter $printer = new BoostConfigPrinter(),
     ) {}
 
     /**
@@ -79,16 +88,27 @@ final readonly class BoostConfigWriter
 
         $parser = (new ParserFactory())->createForNewestSupportedVersion();
         try {
-            $stmts = $parser->parse($source);
+            $oldStmts = $parser->parse($source);
         } catch (Error $error) {
             throw new BoostConfigWriteException($configPath, 'parse error: ' . $error->getMessage());
         }
 
-        if ($stmts === null) {
+        if ($oldStmts === null) {
             throw new BoostConfigWriteException($configPath, 'parser returned no statements.');
         }
 
-        $return = (new NodeFinder())->findFirstInstanceOf($stmts, Return_::class);
+        $oldTokens = $parser->getTokens();
+
+        // Emit `Agent::X` short when the host config imports the enum (the
+        // starter does), fully-qualified otherwise.
+        $agentAlias = $this->importedAgentName($oldStmts);
+
+        // Clone the tree so $oldStmts stays pristine — printFormatPreserving
+        // diffs the modified clone against it to reproduce untouched nodes
+        // verbatim from the original tokens.
+        $newStmts = (new NodeTraverser(new CloningVisitor()))->traverse($oldStmts);
+
+        $return = (new NodeFinder())->findFirstInstanceOf($newStmts, Return_::class);
         if (! $return instanceof Return_) {
             throw new BoostConfigWriteException($configPath, 'no `return` statement found.');
         }
@@ -99,7 +119,7 @@ final readonly class BoostConfigWriter
             $return->expr = new MethodCall(
                 var: $return->expr,
                 name: new Identifier('withAgents'),
-                args: [new Arg($this->agentsToArray([]))],
+                args: [new Arg($this->agentsToArray([], $agentAlias))],
             );
         }
 
@@ -110,11 +130,11 @@ final readonly class BoostConfigWriter
             );
         }
 
-        $this->setOrInsert($return, 'withAgents', $this->agentsToArray($agents));
+        $this->setOrInsert($return, 'withAgents', $this->agentsToArray($agents, $agentAlias));
         $this->setOrInsert($return, 'withAllowedVendors', $this->stringsToArray($allowedVendors));
         $this->setOrInsert($return, 'withDisabledEmitters', $this->stringsToArray($disabledEmitters));
 
-        $newSource = $this->printer->prettyPrintFile($stmts);
+        $newSource = $this->printer->printFormatPreserving($newStmts, $oldStmts, $oldTokens);
 
         if (file_put_contents($configPath, $newSource) === false) {
             throw new BoostConfigWriteException($configPath, 'failed to write updated file.');
@@ -209,19 +229,49 @@ final readonly class BoostConfigWriter
     }
 
     /**
+     * The local name the file uses for the {@see Agent} enum — the alias of
+     * a `use SanderMuller\BoostCore\Enums\Agent [as X];` import, or `null`
+     * when the enum is not imported (caller then emits it fully-qualified).
+     *
+     * @param  Stmt[]  $stmts
+     */
+    private function importedAgentName(array $stmts): ?string
+    {
+        foreach ($stmts as $stmt) {
+            if (! $stmt instanceof Use_) {
+                continue;
+            }
+
+            if ($stmt->type !== Use_::TYPE_NORMAL) {
+                continue;
+            }
+
+            foreach ($stmt->uses as $useItem) {
+                if ($useItem->name->toString() === Agent::class) {
+                    return $useItem->alias?->toString() ?? $useItem->name->getLast();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param  list<Agent>  $agents
      */
-    private function agentsToArray(array $agents): Array_
+    private function agentsToArray(array $agents, ?string $agentAlias): Array_
     {
         $items = [];
         foreach ($agents as $agent) {
-            // Use fully-qualified name so the file works regardless of whether
-            // the host config imports the Agent enum.
+            // Short `Agent::X` when the host config imports the enum (the
+            // starter template does); fully-qualified otherwise so a
+            // hand-written config lacking the import still resolves.
+            $class = $agentAlias !== null
+                ? new Name($agentAlias)
+                : new FullyQualified(Agent::class);
+
             $items[] = new ArrayItem(
-                new ClassConstFetch(
-                    class: new FullyQualified(Agent::class),
-                    name: new Identifier(strtoupper($agent->name)),
-                ),
+                new ClassConstFetch($class, new Identifier(strtoupper($agent->name))),
             );
         }
 

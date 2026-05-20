@@ -1,10 +1,9 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Config;
 
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Enums\Tag;
 
 /**
  * Fluent builder used in `boost.php`. Mutable — call chain accumulates state.
@@ -28,6 +27,12 @@ final class BoostConfigBuilder
     private array $disabledEmitters = [];
 
     private bool $manageGitignore = true;
+
+    /** @var list<string> */
+    private array $tags = [];
+
+    /** @var list<string> */
+    private array $excludedSkills = [];
 
     /**
      * @param  list<Agent>  $agents
@@ -84,6 +89,39 @@ final class BoostConfigBuilder
         return $this;
     }
 
+    /**
+     * Declare the project's skill tags. A vendor skill ships only when every
+     * tag in its `metadata.boost-tags` is declared here. Accepts {@see Tag}
+     * enum cases (autocomplete) and/or raw strings (the vocabulary is open).
+     */
+    public function withTags(Tag|string ...$tags): self
+    {
+        $normalized = array_map(
+            static fn (Tag|string $tag): string => Tag::normalize($tag instanceof Tag ? $tag->value : $tag),
+            $tags,
+        );
+
+        $this->tags = array_values(array_unique(array_filter(
+            $normalized,
+            static fn (string $tag): bool => $tag !== '',
+        )));
+
+        return $this;
+    }
+
+    /**
+     * Exclude specific vendor skills regardless of tags. Each entry is a
+     * `vendor/package:skill-name` string.
+     *
+     * @param  list<string>  $skills
+     */
+    public function withExcludedSkills(array $skills): self
+    {
+        $this->excludedSkills = array_values($skills);
+
+        return $this;
+    }
+
     public function build(string $projectRoot): BoostConfig
     {
         $projectRoot = rtrim($projectRoot, '/');
@@ -95,6 +133,8 @@ final class BoostConfigBuilder
             guidelinesPath: $this->guidelinesPath ?? $projectRoot . '/.ai/guidelines',
             disabledEmitters: $this->disabledEmitters,
             manageGitignore: $this->manageGitignore,
+            tags: $this->tags,
+            excludedSkills: $this->excludedSkills,
         );
     }
 }

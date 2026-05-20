@@ -1,9 +1,8 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Config\BoostConfigBuilder;
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Enums\Tag;
 
 it('builds a config with all explicit values', function (): void {
     $config = (new BoostConfigBuilder())
@@ -48,4 +47,37 @@ it('starts with empty agents, vendors, and disabled emitters', function (): void
         ->toBeEmpty()
         ->and($config->disabledEmitters)
         ->toBeEmpty();
+});
+
+it('starts with empty tags and excluded skills', function (): void {
+    $config = (new BoostConfigBuilder())->build('/x');
+
+    expect($config->tags)->toBeEmpty()
+        ->and($config->excludedSkills)->toBeEmpty();
+});
+
+it('withTags accepts Tag enum cases and raw strings, normalized and deduped', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withTags(Tag::Php, 'JIRA', '  laravel  ', 'php')
+        ->build('/x');
+
+    expect($config->tags)->toBe(['php', 'jira', 'laravel'])
+        ->and($config->hasTag('jira'))->toBeTrue()
+        ->and($config->hasTag('frontend'))->toBeFalse();
+});
+
+it('withTags drops values that normalize to empty', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withTags('php', '   ', '')
+        ->build('/x');
+
+    expect($config->tags)->toBe(['php']);
+});
+
+it('withExcludedSkills carries vendor:skill deny-list entries', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withExcludedSkills(['acme/repo-init:deploy', 'acme/lint-pack:phpcs'])
+        ->build('/x');
+
+    expect($config->excludedSkills)->toBe(['acme/repo-init:deploy', 'acme/lint-pack:phpcs']);
 });

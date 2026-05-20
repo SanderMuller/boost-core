@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
@@ -146,12 +144,16 @@ final class SyncCommand extends BoostBaseCommand
         if ($checkOnly && $result->hasDrift()) {
             $io->warning(sprintf(
                 'Drift detected: %d file(s) would change.',
-                $result->countByAction(WriteAction::WOULD_WRITE),
+                $result->countWouldChange(),
             ));
 
             foreach ($result->writes as $write) {
                 if ($write->action === WriteAction::WOULD_WRITE) {
                     $io->writeln('  ~ ' . $write->relativePath);
+                }
+
+                if ($write->action === WriteAction::WOULD_DELETE) {
+                    $io->writeln('  - ' . $write->relativePath);
                 }
             }
 

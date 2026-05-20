@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;

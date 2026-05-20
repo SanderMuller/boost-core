@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
@@ -181,9 +179,7 @@ it('round-trip survives starter-template shape (auto-init format)', function ():
     // Header docblock is known-lossy (TODO #10 docs that) — pin behaviour
     // only, not formatting.
     $initial = <<<'PHP'
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Enums\Agent;

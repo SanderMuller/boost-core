@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
@@ -362,6 +360,201 @@ it('respects the allowlist: non-allowlisted vendor skills are skipped', function
         $result = SyncEngine::default($fakePackages)->sync($root);
 
         expect(file_exists($root . '/.claude/skills/should-not-appear/SKILL.md'))->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+/**
+ * Create a one-skill vendor package under $root/vendor and return its PackageInfo.
+ * `$extraFrontmatter` is appended after the `name:` line (e.g. a metadata block).
+ */
+function makeTagVendor(string $root, string $vendor, string $skillName, string $extraFrontmatter = ''): PackageInfo
+{
+    $path = $root . '/vendor/' . $vendor;
+    mkdir($path . '/resources/boost/skills', 0o755, recursive: true);
+    file_put_contents($path . '/composer.json', '{"name":"' . $vendor . '","type":"library"}');
+    file_put_contents(
+        $path . '/resources/boost/skills/' . $skillName . '.md',
+        "---\nname: {$skillName}\n{$extraFrontmatter}---\nBody.\n",
+    );
+
+    return new PackageInfo($vendor, '1.0.0', $path);
+}
+
+it('tag-filters out a vendor skill whose tag the consumer has not declared', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeTagVendor($root, 'acme/jira-pack', 'jira-skill', "metadata:\n  boost-tags: jira\n");
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/jira-pack"]);',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/jira-pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/jira-skill/SKILL.md'))->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('ships a tagged vendor skill once the consumer declares the tag', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeTagVendor($root, 'acme/jira-pack', 'jira-skill', "metadata:\n  boost-tags: jira\n");
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/jira-pack"])' . "\n"
+            . '    ->withTags("jira");',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/jira-pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/jira-skill/SKILL.md'))->toBeTrue();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('fails closed: a vendor skill with malformed metadata.boost-tags ships nowhere', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        // boost-tags as a YAML list where a string is required → tag-invalid.
+        $pkg = makeTagVendor($root, 'acme/bad-pack', 'bad-skill', "metadata:\n  boost-tags:\n    - php\n");
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/bad-pack"])' . "\n"
+            . '    ->withTags("php");',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/bad-pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/bad-skill/SKILL.md'))->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('drops a vendor skill named in withExcludedSkills', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeTagVendor($root, 'acme/pack', 'unwanted');
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/pack"])' . "\n"
+            . '    ->withExcludedSkills(["acme/pack:unwanted"]);',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/unwanted/SKILL.md'))->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('prunes a previously-synced skill that a re-sync now tag-filters out', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeTagVendor($root, 'acme/jira-pack', 'jira-skill', "metadata:\n  boost-tags: jira\n");
+        $packages = new InstalledPackages(['acme/jira-pack' => $pkg]);
+
+        // Sync 1: consumer declares `jira` → the skill ships.
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/jira-pack"])' . "\n"
+            . '    ->withTags("jira");',
+        );
+        SyncEngine::default($packages)->sync($root);
+        expect(file_exists($root . '/.claude/skills/jira-skill/SKILL.md'))->toBeTrue();
+
+        // Sync 2: consumer drops the tag → the skill is filtered and pruned.
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/jira-pack"]);',
+        );
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(is_dir($root . '/.claude/skills/jira-skill'))->toBeFalse()
+            ->and($result->countByAction(WriteAction::DELETED))->toBeGreaterThan(0);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('check mode reports a would-be prune as drift without deleting', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeTagVendor($root, 'acme/jira-pack', 'jira-skill', "metadata:\n  boost-tags: jira\n");
+        $packages = new InstalledPackages(['acme/jira-pack' => $pkg]);
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/jira-pack"])' . "\n"
+            . '    ->withTags("jira");',
+        );
+        SyncEngine::default($packages)->sync($root);
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/jira-pack"]);',
+        );
+        $result = SyncEngine::default($packages)->sync($root, checkOnly: true);
+
+        expect($result->hasDrift())->toBeTrue()
+            ->and($result->countByAction(WriteAction::WOULD_DELETE))->toBeGreaterThan(0)
+            ->and(is_dir($root . '/.claude/skills/jira-skill'))->toBeTrue();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('tag filtering disambiguates a would-be vendor-vs-vendor skill collision', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        // Two vendors both ship a skill named `deploy`. vendor-a's is jira-tagged.
+        $pkgA = makeTagVendor($root, 'vendor-a/pack', 'deploy', "metadata:\n  boost-tags: jira\n");
+        $pkgB = makeTagVendor($root, 'vendor-b/pack', 'deploy');
+        $packages = new InstalledPackages([
+            'vendor-a/pack' => $pkgA,
+            'vendor-b/pack' => $pkgB,
+        ]);
+
+        // Consumer declares no tags → vendor-a's `deploy` is filtered out, so
+        // only vendor-b's `deploy` remains and there is no collision to throw.
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["vendor-a/pack", "vendor-b/pack"]);',
+        );
+
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/deploy/SKILL.md'))->toBeTrue();
     } finally {
         rmTreeE2E($root);
     }

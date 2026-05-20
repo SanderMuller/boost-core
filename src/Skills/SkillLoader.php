@@ -1,9 +1,8 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Skills;
 
+use SanderMuller\BoostCore\Enums\Tag;
 use Symfony\Component\Finder\Finder;
 
 /**
@@ -61,6 +60,8 @@ final readonly class SkillLoader
                 ? $parsed->frontmatter['description']
                 : null;
 
+            [$tags, $tagsValid] = $this->parseTags($parsed->frontmatter);
+
             yield new Skill(
                 name: $name,
                 description: $description,
@@ -68,8 +69,55 @@ final readonly class SkillLoader
                 body: $parsed->body,
                 sourcePath: $file->getRealPath() !== false ? $file->getRealPath() : $file->getPathname(),
                 sourceVendor: $sourceVendor,
+                tags: $tags,
+                tagsValid: $tagsValid,
             );
         }
+    }
+
+    /**
+     * Extract conditional-filtering tags from a skill's frontmatter.
+     *
+     * Tags live under the Agent Skills standard's sanctioned extension
+     * point — the optional `metadata` string→string map — as a single
+     * space-delimited `boost-tags` value (the namespaced-key recommendation;
+     * mirrors the standard's own space-separated `allowed-tools`):
+     *
+     *     metadata:
+     *       boost-tags: "php jira"
+     *
+     * Fails closed: when `boost-tags` is present but not a string, the skill
+     * is marked tag-invalid (`valid` = false) and ships nowhere — a typo
+     * must not silently leave the skill untagged (= ships everywhere) and
+     * leak a scoped skill. A missing `metadata`, a `metadata` that is not a
+     * map, or an absent `boost-tags` key is untagged-valid.
+     *
+     * @param  array<string, mixed>  $frontmatter
+     * @return array{0: list<string>, 1: bool}  [normalized tags, valid]
+     */
+    private function parseTags(array $frontmatter): array
+    {
+        $metadata = $frontmatter['metadata'] ?? null;
+        if (! is_array($metadata) || ! array_key_exists('boost-tags', $metadata)) {
+            return [[], true];
+        }
+
+        $raw = $metadata['boost-tags'];
+        if (! is_string($raw)) {
+            return [[], false];
+        }
+
+        $tokens = preg_split('/\s+/', trim($raw), -1, PREG_SPLIT_NO_EMPTY);
+
+        $tags = [];
+        foreach ($tokens === false ? [] : $tokens as $token) {
+            $normalized = Tag::normalize($token);
+            if ($normalized !== '') {
+                $tags[] = $normalized;
+            }
+        }
+
+        return [array_values(array_unique($tags)), true];
     }
 
     /**

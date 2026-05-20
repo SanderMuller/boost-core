@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Sync;
 
@@ -21,7 +19,7 @@ final readonly class SyncResult
     public function hasDrift(): bool
     {
         foreach ($this->writes as $write) {
-            if ($write->action === WriteAction::WOULD_WRITE) {
+            if ($write->action === WriteAction::WOULD_WRITE || $write->action === WriteAction::WOULD_DELETE) {
                 return true;
             }
         }
@@ -60,6 +58,16 @@ final readonly class SyncResult
         }
 
         return $count;
+    }
+
+    /**
+     * Files a real (non-check) sync would change — both rewrites and the
+     * deletions tag-filtering prunes. The number a `--check` run reports.
+     */
+    public function countWouldChange(): int
+    {
+        return $this->countByAction(WriteAction::WOULD_WRITE)
+            + $this->countByAction(WriteAction::WOULD_DELETE);
     }
 
     public function countEmittersByAction(EmitterAction $action): int

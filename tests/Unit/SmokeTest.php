@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 use Composer\Plugin\Capability\CommandProvider;
 use SanderMuller\BoostCore\BoostCorePlugin;

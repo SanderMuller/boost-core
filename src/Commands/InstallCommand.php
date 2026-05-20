@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
@@ -169,12 +167,11 @@ final class InstallCommand extends BoostBaseCommand
     private function starterContents(): string
     {
         return <<<'PHP'
-            <?php
-
-            declare(strict_types=1);
+            <?php declare(strict_types=1);
 
             use SanderMuller\BoostCore\Config\BoostConfig;
             use SanderMuller\BoostCore\Enums\Agent;
+            use SanderMuller\BoostCore\Enums\Tag;
 
             /**
              * boost-core configuration.
@@ -196,6 +193,15 @@ final class InstallCommand extends BoostBaseCommand
 
                 // Optionally disable specific FileEmitter implementations by FQCN.
                 ->withDisabledEmitters([])
+
+                // Skill tags: a vendor skill ships only when every tag in its
+                // `metadata.boost-tags` is declared here. Unset = receive every
+                // (untagged) skill. Accepts Tag enum cases or raw strings.
+                // ->withTags(Tag::Php, Tag::Laravel)
+
+                // Exclude specific vendor skills regardless of tags.
+                // Each entry is a `vendor/package:skill-name` string.
+                // ->withExcludedSkills(['acme/some-pack:unwanted-skill'])
 
                 // Source paths (relative or absolute). Defaults shown — uncomment to override.
                 // ->withSkillsPath(__DIR__ . '/.ai/skills')

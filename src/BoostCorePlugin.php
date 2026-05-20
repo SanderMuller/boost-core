@@ -1,12 +1,11 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore;
 
 use Composer\Composer;
 use Composer\EventDispatcher\EventSubscriberInterface;
 use Composer\IO\IOInterface;
+use Composer\Package\AliasPackage;
 use Composer\Package\PackageInterface;
 use Composer\Plugin\Capability\CommandProvider;
 use Composer\Plugin\Capable;
@@ -151,6 +150,14 @@ final class BoostCorePlugin implements Capable, EventSubscriberInterface, Plugin
 
         foreach ($localRepo->getPackages() as $package) {
             if (! $package instanceof PackageInterface) {
+                continue;
+            }
+
+            // A branch-alias (e.g. boost-core's own `dev-main → 0.x-dev`)
+            // materializes an AliasPackage alongside the real package — same
+            // name, same install path. Processing it would sync twice and
+            // trip the suffix-collision guard against the package itself.
+            if ($package instanceof AliasPackage) {
                 continue;
             }
 

@@ -1,0 +1,91 @@
+<?php declare(strict_types=1);
+
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Tag;
+use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\SkillTagDiagnostics;
+
+/**
+ * @param  list<string>  $tags
+ */
+function diagSkill(string $name, array $tags = [], bool $tagsValid = true, ?string $vendor = 'acme/pack'): Skill
+{
+    return new Skill(
+        name: $name,
+        description: null,
+        frontmatter: [],
+        body: 'body',
+        sourcePath: '/src/' . $name,
+        sourceVendor: $vendor,
+        tags: $tags,
+        tagsValid: $tagsValid,
+    );
+}
+
+/**
+ * @param  list<Tag|string>  $tags
+ * @param  list<string>  $excluded
+ */
+function diagConfig(array $tags = [], array $excluded = []): BoostConfig
+{
+    return BoostConfig::configure()
+        ->withTags(...$tags)
+        ->withExcludedSkills($excluded)
+        ->build('/project');
+}
+
+it('reports a tag-eligible skill', function (): void {
+    $status = (new SkillTagDiagnostics())->status(diagSkill('a', ['php']), diagConfig([Tag::Php]));
+
+    expect($status)->toBe('tag-eligible');
+});
+
+it('reports an untagged skill as tag-eligible', function (): void {
+    $status = (new SkillTagDiagnostics())->status(diagSkill('a'), diagConfig());
+
+    expect($status)->toBe('tag-eligible');
+});
+
+it('reports a filtered skill with the tags to declare', function (): void {
+    $status = (new SkillTagDiagnostics())->status(diagSkill('a', ['php', 'jira']), diagConfig([Tag::Php]));
+
+    expect($status)->toContain('filtered')
+        ->and($status)->toContain('jira');
+});
+
+it('reports a tag-invalid skill', function (): void {
+    $status = (new SkillTagDiagnostics())->status(diagSkill('a', [], tagsValid: false), diagConfig([Tag::Php]));
+
+    expect($status)->toContain('invalid tags');
+});
+
+it('reports an excluded skill', function (): void {
+    $status = (new SkillTagDiagnostics())->status(
+        diagSkill('deploy', vendor: 'acme/pack'),
+        diagConfig(excluded: ['acme/pack:deploy']),
+    );
+
+    expect($status)->toContain('excluded');
+});
+
+it('surfaces declared tags matched by no installed skill', function (): void {
+    $unused = (new SkillTagDiagnostics())->declaredButUnusedTags(
+        diagConfig([Tag::Php, Tag::Jira]),
+        ['php'],
+    );
+
+    expect($unused)->toBe(['jira']);
+});
+
+it('flags near-duplicate tag pairs by containment', function (): void {
+    $pairs = (new SkillTagDiagnostics())->nearDuplicates(['jira', 'jira-cloud', 'php']);
+
+    expect($pairs)->toBe([['jira', 'jira-cloud']]);
+});
+
+it('reports no near-duplicates for distinct tags', function (): void {
+    $pairs = (new SkillTagDiagnostics())->nearDuplicates(['php', 'jira', 'frontend']);
+
+    expect($pairs)
+        ->toBeEmpty();
+});

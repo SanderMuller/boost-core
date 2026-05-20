@@ -9,23 +9,15 @@
 
 ## Install
 
-You don't usually install `boost-core` directly — it comes in as a dep of one of the bundle packages that match your role:
+`boost-core` is the engine. You rarely install it directly — you install the family package that matches what you're building, and it pulls `boost-core` in.
 
-```bash
-# PHP application developer
-composer require --dev sandermuller/project-boost
-
-# Laravel application developer — use the original, this family doesn't replace it
-composer require --dev laravel/boost
-
-# Framework-agnostic Composer package author
-composer require --dev sandermuller/package-boost-php
-
-# Laravel package author
-composer require --dev sandermuller/package-boost-laravel
-```
-
-Direct install for tooling authors who want to ship their own skill bundle:
+| You're building                          | Install                                                                                       | Ships                                                                                      |
+|------------------------------------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| A PHP application (not a package)        | [`sandermuller/project-boost`](https://github.com/sandermuller/project-boost)                 | App-dev skills — DDD layering, repository pattern, DI, domain modeling, legacy coexistence |
+| A Laravel application                    | [`laravel/boost`](https://github.com/laravel/boost)                                           | The original — this family doesn't replace it                                              |
+| A framework-agnostic Composer package    | [`sandermuller/package-boost-php`](https://github.com/sandermuller/package-boost-php)         | Package-author skills + `lean` / `gitattributes` commands                                  |
+| A Laravel package                        | [`sandermuller/package-boost-laravel`](https://github.com/sandermuller/package-boost-laravel) | Laravel-package skills + `McpJsonEmitter`                                                  |
+| Your own skill bundle, or custom tooling | `sandermuller/boost-core` directly                                                            | Just the sync engine — you supply the skills                                               |
 
 ```bash
 composer require --dev sandermuller/boost-core
@@ -92,6 +84,39 @@ Or one-off via env var (useful for CI / ephemeral Docker installs):
 ```bash
 BOOST_SKIP_GITIGNORE=1 composer install
 ```
+
+## Conditional skill filtering
+
+Vendor skills can be scoped to projects that want them, so a project with no Jira work never receives a `jira-triage` skill (and its `description` never pollutes the agent's skill-selection index).
+
+A skill declares tags in its `SKILL.md` frontmatter, under the Agent Skills standard's `metadata` field:
+
+```yaml
+---
+name: jira-triage
+description: Triage and label incoming Jira issues.
+metadata:
+  boost-tags: "php jira"
+---
+```
+
+A project declares the tags it wants in `boost.php`:
+
+```php
+use SanderMuller\BoostCore\Enums\Tag;
+
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE])
+    ->withTags(Tag::Php, Tag::Jira)        // Tag enum cases or raw strings
+    ->withExcludedSkills(['acme/pack:unwanted-skill']);
+```
+
+A vendor skill is synced only when **every** tag in its `boost-tags` is among the project's `withTags()` — `skillTags ⊆ projectTags`. An untagged skill carries the empty set and always ships (so the feature is inert until skills and projects opt in). `withExcludedSkills()` drops a specific `vendor/package:skill-name` regardless of tags.
+
+The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `composer boost:doctor` reports every tag in use across installed skills and flags likely typos.
+
+> [!WARNING]
+> Adding a tag to an **already-shipped** skill is consumer-breaking: every project that has not declared that tag loses the skill. Vendors should treat it as a breaking change (or a loud release-note callout), not a minor tweak.
 
 ## Testing
 

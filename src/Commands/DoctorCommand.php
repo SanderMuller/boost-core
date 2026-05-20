@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Commands;
 
@@ -9,9 +7,11 @@ use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Skills\FrontmatterParser;
+use SanderMuller\BoostCore\Skills\SkillLoader;
+use SanderMuller\BoostCore\Skills\SkillTagDiagnostics;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
-use SanderMuller\BoostCore\Sync\WriteAction;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
@@ -49,6 +49,7 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportAgents($io, $config);
         $this->reportSourcePaths($io, $config);
         $this->reportAllowlist($io, $config);
+        $this->reportTags($io, $config);
         $this->reportDrift($io, $projectRoot);
 
         return self::SUCCESS;
@@ -136,6 +137,78 @@ final class DoctorCommand extends BoostBaseCommand
         $io->listing($items);
     }
 
+    private function reportTags(SymfonyStyle $io, BoostConfig $config): void
+    {
+        $io->section('Skill tags');
+
+        if ($config->tags === []) {
+            $io->writeln('<comment>No tags declared. Every untagged skill ships; a tagged vendor skill is filtered out until you `withTags()` its tag.</comment>');
+        } else {
+            $io->writeln('Declared tags: <info>' . implode(', ', $config->tags) . '</info>');
+        }
+
+        $loader = new SkillLoader(new FrontmatterParser());
+        $scanner = new VendorScanner(InstalledPackages::fromComposer());
+        $diagnostics = new SkillTagDiagnostics();
+
+        /** @var list<array{0: string, 1: string, 2: string}> $rows */
+        $rows = [];
+        /** @var array<string, true> $skillTagUnion */
+        $skillTagUnion = [];
+
+        foreach ($scanner->discover() as $vendor) {
+            if (! $config->isVendorAllowed($vendor->name)) {
+                continue;
+            }
+
+            if ($vendor->skillsPath === null) {
+                continue;
+            }
+
+            foreach ($loader->load($vendor->skillsPath, $vendor->name) as $skill) {
+                foreach ($skill->tags as $tag) {
+                    $skillTagUnion[$tag] = true;
+                }
+
+                $rows[] = [$vendor->name, $skill->name, $diagnostics->status($skill, $config)];
+            }
+        }
+
+        if ($rows === []) {
+            $io->writeln('<info>No allowlisted vendor skills installed.</info>');
+
+            return;
+        }
+
+        $io->table(['Vendor', 'Skill', 'Tag status'], $rows);
+        $this->reportTagHygiene($io, $config, array_keys($skillTagUnion), $diagnostics);
+    }
+
+    /**
+     * @param  list<string>  $skillTagUnion  Every tag declared by an installed allowlisted skill.
+     */
+    private function reportTagHygiene(
+        SymfonyStyle $io,
+        BoostConfig $config,
+        array $skillTagUnion,
+        SkillTagDiagnostics $diagnostics,
+    ): void {
+        if ($skillTagUnion !== []) {
+            $io->writeln('Tags in use by installed skills: <info>' . implode(', ', $skillTagUnion) . '</info>');
+        }
+
+        $declaredButUnused = $diagnostics->declaredButUnusedTags($config, $skillTagUnion);
+        if ($declaredButUnused !== []) {
+            $io->writeln('<comment>Declared tags matched by no installed skill (possible typo): '
+                . implode(', ', $declaredButUnused) . '</comment>');
+        }
+
+        foreach ($diagnostics->nearDuplicates([...$skillTagUnion, ...$config->tags]) as $pair) {
+            $io->writeln('<comment>Possible tag typo — these look alike: '
+                . $pair[0] . ' / ' . $pair[1] . '</comment>');
+        }
+    }
+
     private function reportDrift(SymfonyStyle $io, string $projectRoot): void
     {
         $io->section('Drift');
@@ -151,7 +224,7 @@ final class DoctorCommand extends BoostBaseCommand
         if ($result->hasDrift()) {
             $io->warning(sprintf(
                 '%d file(s) would change. Run `composer boost:sync`.',
-                $result->countByAction(WriteAction::WOULD_WRITE),
+                $result->countWouldChange(),
             ));
 
             return;

@@ -1,6 +1,4 @@
-<?php
-
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
 namespace SanderMuller\BoostCore\Config;
 
@@ -27,6 +25,8 @@ final readonly class BoostConfig
      * @param  list<Agent>  $agents
      * @param  list<string>  $allowedVendors  Composer vendor/package names
      * @param  list<string>  $disabledEmitters  Fully-qualified class names
+     * @param  list<string>  $tags  Project tags — a vendor skill ships only when its `skill.yaml` tags ⊆ these
+     * @param  list<string>  $excludedSkills  `vendor/package:skill-name` entries excluded regardless of tags
      */
     public function __construct(
         public array $agents,
@@ -35,6 +35,8 @@ final readonly class BoostConfig
         public string $guidelinesPath,
         public array $disabledEmitters,
         public bool $manageGitignore = true,
+        public array $tags = [],
+        public array $excludedSkills = [],
     ) {}
 
     public static function configure(): BoostConfigBuilder
@@ -47,6 +49,11 @@ final readonly class BoostConfig
         return in_array($agent, $this->agents, true);
     }
 
+    public function hasTag(string $tag): bool
+    {
+        return in_array($tag, $this->tags, true);
+    }
+
     public function isVendorAllowed(string $packageName): bool
     {
         return in_array($packageName, $this->allowedVendors, true);
@@ -55,5 +62,16 @@ final readonly class BoostConfig
     public function isEmitterDisabled(string $fqcn): bool
     {
         return in_array($fqcn, $this->disabledEmitters, true);
+    }
+
+    /**
+     * Whether a skill is on the `withExcludedSkills()` deny-list. The key is
+     * a skill's `vendor/package:skill-name` identifier — `Skill::excludeKey()`
+     * builds it (kept as a plain reference, not an `@see`, so this Config
+     * class needs no `use` of the Skills namespace).
+     */
+    public function excludesSkill(string $excludeKey): bool
+    {
+        return in_array($excludeKey, $this->excludedSkills, true);
     }
 }

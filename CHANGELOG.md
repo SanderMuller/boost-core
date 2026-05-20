@@ -5,7 +5,7 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.3.4...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.4.0...HEAD)
 
 ### Changed (BREAKING — bump to 0.4.0)
 
@@ -78,6 +78,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Note:** `0.1.0` and `0.1.1` ship a broken standalone `bin/boost` for end-user installs (fatal at startup, as above). Use `0.1.2`+ if you invoke `vendor/bin/boost` directly. The `composer boost:*` plugin path is unaffected.
 
+## [0.4.0](https://github.com/sandermuller/boost-core/compare/0.3.4...0.4.0) - 2026-05-20
+
+### Breaking changes
+
+- **User-scope skill paths now vendor-namespaced.** Pre-0.4 layout: `~/.{agent}/skills/<package-basename>/...`. Post-0.4: `~/.{agent}/skills/<vendor>__<package>/...`. The `/` is replaced with `__` (double underscore) — a sequence the Composer name spec forbids inside vendor or project parts, so the slug mapping is injective: distinct valid package names always produce distinct slugs (no `vendor-a/foo` vs `vendor/a-foo` style ambiguity that a `-` separator would admit).
+  - **Auto-migration:** first `syncUser()` against each installed package post-upgrade detects `~/.{agent}/skills/<basename>/`, verifies its contents are reproducible from THIS package's `resources/boost/skills/` tree (ownership check), and renames to the new slug. Idempotent — subsequent syncs find no old dir and no-op. Safe — skipped when the new-slug dir already exists (don't overwrite a fresh sync's output with stale data).
+  - **Pre-0.2 collision states require manual cleanup.** The collision-detection guard in `BoostCorePlugin::runGlobalSync` shipped in 0.2.0; pre-0.2, two installed packages with the same basename both wrote to `~/.{agent}/skills/<basename>/` (last-writer wins). The ownership check refuses to migrate such a dir (foreign files mean mis-attribution risk), and the legacy dir is left in place for the user to triage. To resolve: inspect `~/.{agent}/skills/<basename>/`, copy any wanted files to the right `~/.{agent}/skills/<vendor>__<basename>/` dir manually, then `rm -rf ~/.{agent}/skills/<basename>/`.
+  - **For scripts / docs referencing user-scope paths:** update any hard-coded `~/.{agent}/skills/<basename>/` references to `~/.{agent}/skills/<vendor>__<basename>/`. Boost-core's collision-detection code path stays in place defensively but is unreachable for any valid Composer package name.
+  - `SyncEngine::packageSuffix(string)` (a public static helper exposed for the plugin's collision tracking) now returns the slug rather than the basename. Adjust any direct callers; the existing `packageBasename(string)` helper preserves the old behaviour.
+  
+
+### Internal
+
+- **Migration logic extracted to `Sync\UserScopeMigrator`.** Keeps `SyncEngine`'s cognitive complexity under PHPStan's class-level threshold and gives the ownership-check semantics a clear home with its own unit-test surface.
+- **Three new integration tests** under `tests/Integration/UserScopeSyncTest.php`: happy-path migration (legacy dir → new slug, fresh sync overwrites in place), idempotency (second sync no-ops cleanly), and the new ownership-skip case (foreign content in legacy dir leaves it untouched). Total suite: 153 tests / 437 assertions; CI green across the matrix.
+- **README + UPGRADING refreshed** with the new path shape and the manual-cleanup steps for pre-0.2 collision states.
+
+### Upgrade notes
+
+`composer require sandermuller/boost-core:^0.4.0`. Bundle packages (`sandermuller/project-boost`, `sandermuller/package-boost-php`, `sandermuller/package-boost-laravel`) will roll the new boost-core through transitively as they re-tag.
+
+For consumers without pre-0.2 install history, the upgrade is hands-off — the auto-migration moves legacy dirs the first time each `composer global require`'d package re-syncs. Pre-0.2 collision states (two same-basename packages installed before 0.2 shipped the warn-and-skip guard) are the only case requiring manual triage; see the `UPGRADING.md` section above.
+
+**Full changelog:** https://github.com/SanderMuller/boost-core/compare/0.3.4...0.4.0
+
 ## [0.3.4](https://github.com/sandermuller/boost-core/compare/0.3.3...0.3.4) - 2026-05-18
 
 ### Fixed
@@ -124,6 +149,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   
   
   
+  
     ```
 
 ### Fixed
@@ -151,12 +177,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     ```json
     "scripts": {
   "post-install-cmd": [
-    "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
+  "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ],
   "post-update-cmd": [
-    "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
+  "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
   
   
   

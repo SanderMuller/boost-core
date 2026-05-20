@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.5.0...HEAD)
 
-### Added
-
-- **Conditional skill filtering by tags.** A skill declares tags in its `SKILL.md` frontmatter under the Agent Skills standard's sanctioned `metadata` extension point — `metadata.boost-tags`, a space-delimited string. A project declares the tags it wants in `boost.php` via `->withTags(Tag::Php, 'jira', ...)`. During project-scope `boost:sync` a vendor skill is fanned out only when every tag it declares is among the project's tags (`skillTags ⊆ projectTags`), so a project never receives — and the AI agent's skill-selection index never sees the `description` of — skills irrelevant to it. Untagged skills carry the empty set and always ship, so the feature is fully backward-compatible and inert until skills and projects opt in. A malformed `metadata.boost-tags` **fails closed** (the skill ships nowhere) rather than silently becoming untagged and leaking. `->withExcludedSkills(['vendor/package:skill-name'])` drops specific vendor skills regardless of tags. A new non-authoritative `SanderMuller\BoostCore\Enums\Tag` enum gives `boost.php` authors autocomplete without closing the (open, free-string) tag vocabulary. When a skill stops shipping, its previously-synced agent-directory output is pruned — safely: only directories boost-core itself wrote, never through symlinks, and `--check` reports the deletion as drift without performing it. `composer boost:doctor` gains a tag report: declared tags, the runtime union of tags across installed skills, per-skill tag status, and likely-typo hints.
-
 ## [0.5.0](https://github.com/sandermuller/boost-core/compare/0.4.0...0.5.0) - 2026-05-20
 
 ### Added

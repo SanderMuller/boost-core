@@ -23,6 +23,20 @@ jobs:
           latest-version: ${{ github.event.release.tag_name }}
           release-notes: ${{ github.event.release.body }}
 
+      # changelog-updater-action inserts the new `## [x.y.z]` section but
+      # leaves `## [Unreleased]` untouched, so dev-time entries accumulate
+      # there and duplicate the release section. Drop everything between the
+      # Unreleased heading and the next version heading.
+      - name: Clear Unreleased section
+        run: |
+          awk '
+            /^## \[Unreleased\]/ { print; print ""; skip = 1; next }
+            skip && /^## \[/     { skip = 0 }
+            skip                 { next }
+            { print }
+          ' CHANGELOG.md > CHANGELOG.md.tmp
+          mv CHANGELOG.md.tmp CHANGELOG.md
+
       - name: Commit updated CHANGELOG
         uses: stefanzweifel/git-auto-commit-action@v7
         with:

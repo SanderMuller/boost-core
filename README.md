@@ -1,6 +1,6 @@
 # boost-core
 
-> AI agent configuration sync for PHP projects. Author skills and guidelines once in `.ai/`, publish to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). Framework-free PHP, allowlist-based vendor trust, Rector-style explicit commands.
+> AI agent configuration sync for PHP projects. Write skills and guidelines once in `.ai/`; boost-core publishes them to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). No framework dependency, and vendor skills sync only from an allowlist you control.
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/sandermuller/boost-core.svg?style=flat-square)](https://packagist.org/packages/sandermuller/boost-core)
 [![Tests](https://img.shields.io/github/actions/workflow/status/sandermuller/boost-core/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/sandermuller/boost-core/actions/workflows/run-tests.yml)
@@ -38,7 +38,7 @@ For tooling authors who want to publish their own skills to every AI agent on th
 composer boost:sync --scope=user   # ~/.{agent}/skills/<vendor>__<package>/<skill>/SKILL.md
 ```
 
-In `composer global` context (`composer global require <skill-bearing-package>`), the plugin auto-detects the global install and runs user-scope sync for every globally-installed package shipping `resources/boost/skills/` — no manual `--scope=user` invocation required. Paths are namespaced by the full `vendor/package` slug (with `/` replaced by `__`, a sequence forbidden by the Composer name spec so distinct packages always produce distinct slugs), so `vendor-a/foo` and `vendor-b/foo` coexist cleanly under their own dirs.
+In `composer global` context (`composer global require <skill-bearing-package>`), the plugin auto-detects the global install and runs user-scope sync for every globally-installed package shipping `resources/boost/skills/`, so no manual `--scope=user` is needed. Each package's paths are namespaced by its full `vendor/package` slug, with `/` replaced by `__`. That sequence can't occur inside a Composer package name, so two packages never produce the same slug — `vendor-a/foo` and `vendor-b/foo` land in separate directories.
 
 ### Composer script callback (for plugin-package authors)
 

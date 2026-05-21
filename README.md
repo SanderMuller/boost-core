@@ -67,6 +67,26 @@ For user-invoked scripts (`composer sync-ai`, etc.) where silence on success rea
 }
 ```
 
+### Self-sync for globally-installed CLI tools
+
+A tool installed with `composer global require` can keep its own bundled skills current by self-syncing from its bin script — no Composer plugin, no manual `boost sync --scope=user`:
+
+```php
+#!/usr/bin/env php
+<?php declare(strict_types=1);
+
+require __DIR__ . '/../vendor/autoload.php';
+
+\SanderMuller\BoostCore\Scripts\BoostAutoSync::syncUserScopeOnce(
+    packageRoot: dirname(__DIR__),
+    packageName: 'your-vendor/your-tool',
+);
+
+// ... the tool's own dispatch ...
+```
+
+`syncUserScopeOnce()` runs a user-scope sync (into `~/.{agent}/skills/<vendor>__<package>/`) the first time it sees a given version of the tool, then writes a per-version sentinel so later runs are free. `syncUserScope()` is the ungated form. Both honor `BOOST_SKIP_AUTOSYNC=1` and never throw — the tool keeps running even if its sync fails.
+
 ## Managed `.gitignore`
 
 `boost:sync` maintains a managed block in `.gitignore` so generated agent dirs (`.claude/skills/`, `.cursor/skills/`, `CLAUDE.md`, `AGENTS.md`, ...) stay out of version control. Edit skills in `.ai/` only; the fan-out regenerates on next install.

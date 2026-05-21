@@ -64,8 +64,8 @@ return BoostConfig::configure()
 
 Setting up or reviewing `withAllowedVendors()` / `withTags()` / `withExcludedSkills()`? Don't guess — discover, then propose:
 
-1. **What's available.** `composer boost:scan` lists installed packages publishing skills/guidelines; `composer boost:doctor` shows which are allowlisted vs discovered-but-not. Allowlist the vendors the project should trust.
-2. **What tags exist.** `composer boost:tags` lists every tag the installed skills declare and, per missing tag, which skills it would unlock.
+1. **Discover vendors.** `composer boost:doctor` (read-only) lists installed packages that publish skills/guidelines, split into allowlisted vs discovered-but-not-allowlisted. Decide which vendors the project should trust and add them to `withAllowedVendors()`. (`composer boost:scan` does the same opt-in **interactively but rewrites `boost.php`** — it's the apply step, not a read-only probe.)
+2. **Discover tags.** Once the relevant vendors are allowlisted, `composer boost:tags` lists every tag their skills declare and, per missing tag, which skills it would unlock. `boost:tags` only sees *allowlisted* vendors — a vendor's tags stay invisible until step 1 admits it, so do step 1 first.
 3. **Suggest tags from project context.** Match those tags against what the project *is* — read `composer.json` (Laravel app? framework-agnostic package?), the issue tracker, the CI host — and propose the `withTags()` entries that unlock relevant skills, each with a one-line reason. Only suggest tags an installed skill actually declares; an undeclared tag unlocks nothing.
 4. **Suggest individual excludes.** Tags filter in bulk; when an allowlisted vendor ships one specific skill the project doesn't want — irrelevant to the stack, or redundant with how the project already works — and no tag cleanly singles it out, propose a `withExcludedSkills(['vendor/package:skill-name'])` entry for exactly that skill. The `vendor/package:skill-name` keys are the ones `boost:tags` and `boost:doctor` already print. Reserve it for genuine one-offs — broad filtering is the tags' job.
 

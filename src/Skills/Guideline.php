@@ -7,6 +7,8 @@ final readonly class Guideline
     /**
      * @param  array<string, mixed>  $frontmatter  Loose v1 schema — pass-through.
      * @param  string|null  $sourceVendor  Composer vendor/package name. `null` = host-authored.
+     * @param  list<string>  $tags  Normalized tags from the `metadata.boost-tags` frontmatter field. Empty = untagged = ships everywhere.
+     * @param  bool  $tagsValid  False when `metadata.boost-tags` is present but malformed — the guideline then fails closed (ships nowhere).
      */
     public function __construct(
         public string $name,
@@ -15,6 +17,8 @@ final readonly class Guideline
         public string $body,
         public string $sourcePath,
         public ?string $sourceVendor,
+        public array $tags = [],
+        public bool $tagsValid = true,
     ) {}
 
     public function isHostAuthored(): bool

@@ -26,6 +26,7 @@ use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\GuidelineLoader;
 use SanderMuller\BoostCore\Skills\GuidelineResolver;
+use SanderMuller\BoostCore\Skills\GuidelineTagFilter;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
@@ -69,6 +70,7 @@ final readonly class SyncEngine
         private FileWriter $writer = new FileWriter(),
         private GitignoreManager $gitignoreManager = new GitignoreManager(),
         private SkillTagFilter $skillTagFilter = new SkillTagFilter(),
+        private GuidelineTagFilter $guidelineTagFilter = new GuidelineTagFilter(),
         private FilteredSkillPruner $filteredSkillPruner = new FilteredSkillPruner(),
         ?InstalledPackages $installedPackages = null,
     ) {
@@ -432,6 +434,11 @@ final readonly class SyncEngine
     }
 
     /**
+     * Load host + vendor guidelines, tag-filter each vendor's set, resolve
+     * collisions. Vendor guidelines are filtered BEFORE resolution so only
+     * shippable ones compete; host guidelines are never filtered — the
+     * project authored them. Mirrors `resolveSkills()`.
+     *
      * @param  list<DiscoveredVendor>  $allowedVendors
      * @return list<Guideline>
      */
@@ -445,7 +452,10 @@ final readonly class SyncEngine
         $vendorGuidelines = [];
         foreach ($allowedVendors as $vendor) {
             if ($vendor->guidelinesPath !== null) {
-                $vendorGuidelines[$vendor->name] = $this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name);
+                $vendorGuidelines[$vendor->name] = $this->guidelineTagFilter->filter(
+                    $this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name),
+                    $config,
+                );
             }
         }
 

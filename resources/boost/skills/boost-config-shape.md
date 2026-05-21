@@ -44,10 +44,10 @@ return BoostConfig::configure()
 - `withDisabledEmitters([])` — FQCNs of FileEmitter classes to skip even
   if their vendor is allowlisted. Use for opting out of optional emissions
   (e.g. you want skills from `package-boost-laravel` but not `.mcp.json`).
-- `withTags(Tag::Php, 'jira', ...)` — variadic; the project's skill tags.
-  A vendor skill ships only when every tag in its `metadata.boost-tags`
-  frontmatter is declared here (`skillTags ⊆ projectTags`). Untagged
-  skills always ship. Accepts `Tag` enum cases (autocomplete) or raw
+- `withTags(Tag::Php, 'jira', ...)` — variadic; the project's tags.
+  A vendor skill *or guideline* ships only when every tag in its
+  `metadata.boost-tags` frontmatter is declared here
+  (`itemTags ⊆ projectTags`). Untagged skills and guidelines always ship. Accepts `Tag` enum cases (autocomplete) or raw
   strings (the vocabulary is open). Omit it entirely to receive every
   untagged skill and filter out every tagged one. `composer boost:tags`
   lists the tags installed skills declare and which ones a missing tag

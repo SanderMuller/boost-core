@@ -36,6 +36,8 @@ final readonly class GuidelineLoader
                 ? $parsed->frontmatter['description']
                 : null;
 
+            [$tags, $tagsValid] = BoostTags::parse($parsed->frontmatter);
+
             yield new Guideline(
                 name: $name,
                 description: $description,
@@ -43,6 +45,8 @@ final readonly class GuidelineLoader
                 body: $parsed->body,
                 sourcePath: $file->getRealPath() !== false ? $file->getRealPath() : $file->getPathname(),
                 sourceVendor: $sourceVendor,
+                tags: $tags,
+                tagsValid: $tagsValid,
             );
         }
     }

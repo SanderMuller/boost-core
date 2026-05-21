@@ -5,6 +5,8 @@ namespace SanderMuller\BoostCore\Commands;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
+use SanderMuller\BoostCore\Skills\Guideline;
+use SanderMuller\BoostCore\Skills\GuidelineLoader;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillTagDiagnostics;
@@ -12,10 +14,10 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * Renders the skill-tag report shared by `boost:tags` and `boost:doctor`:
- * the project's declared tags, per-skill tag status, the tag vocabulary in
- * use across installed skills, hygiene hints, and the "declare tag X to
- * enable skills Y" roll-up.
+ * Renders the tag report shared by `boost:tags` and `boost:doctor`: the
+ * project's declared tags, per-skill and per-guideline tag status, the tag
+ * vocabulary in use across installed skills + guidelines, hygiene hints, and
+ * the "declare tag X to enable skills Y" roll-up.
  *
  * Header-agnostic — the caller frames it (`boost:doctor` as one of its
  * sections, `boost:tags` under its own title).
@@ -29,56 +31,72 @@ final readonly class TagReporter
     public function report(SymfonyStyle $io, BoostConfig $config): void
     {
         if ($config->tags === []) {
-            $io->writeln('<comment>No tags declared. Every untagged skill ships; a tagged vendor skill is filtered out until you `withTags()` its tag.</comment>');
+            $io->writeln('<comment>No tags declared. Every untagged skill and guideline ships; a tagged vendor item is filtered out until you `withTags()` its tags.</comment>');
         } else {
             $io->writeln('Declared tags: <info>' . implode(', ', $config->tags) . '</info>');
         }
 
-        $skills = $this->collectSkills($config);
+        ['skills' => $skills, 'guidelines' => $guidelines] = $this->collect($config);
 
-        if ($skills === []) {
-            $io->writeln('<info>No allowlisted vendor skills installed.</info>');
+        if ($skills === [] && $guidelines === []) {
+            $io->writeln('<info>No allowlisted vendor skills or guidelines installed.</info>');
 
             return;
         }
 
-        $this->renderStatusTable($io, $config, $skills);
-        $this->renderHygiene($io, $config, $skills);
+        if ($skills !== []) {
+            $this->renderSkillTable($io, $config, $skills);
+        }
+
+        if ($guidelines !== []) {
+            $this->renderGuidelineTable($io, $config, $guidelines);
+        }
+
+        $this->renderHygiene($io, $config, $skills, $guidelines);
         $this->renderEnableable($io, $config, $skills);
     }
 
     /**
-     * Every skill published by an allowlisted, installed vendor package.
+     * Skills and guidelines published by allowlisted, installed vendor
+     * packages — gathered in a single vendor-discovery pass. Each
+     * `DiscoveredVendor` already exposes both `skillsPath` and
+     * `guidelinesPath`, so one `discover()` walk covers both.
      *
-     * @return list<Skill>
+     * @return array{skills: list<Skill>, guidelines: list<Guideline>}
      */
-    private function collectSkills(BoostConfig $config): array
+    private function collect(BoostConfig $config): array
     {
-        $loader = new SkillLoader(new FrontmatterParser());
+        $skillLoader = new SkillLoader(new FrontmatterParser());
+        $guidelineLoader = new GuidelineLoader(new FrontmatterParser());
         $scanner = new VendorScanner(InstalledPackages::fromComposer());
 
         $skills = [];
+        $guidelines = [];
         foreach ($scanner->discover() as $vendor) {
             if (! $config->isVendorAllowed($vendor->name)) {
                 continue;
             }
 
-            if ($vendor->skillsPath === null) {
-                continue;
+            if ($vendor->skillsPath !== null) {
+                foreach ($skillLoader->load($vendor->skillsPath, $vendor->name) as $skill) {
+                    $skills[] = $skill;
+                }
             }
 
-            foreach ($loader->load($vendor->skillsPath, $vendor->name) as $skill) {
-                $skills[] = $skill;
+            if ($vendor->guidelinesPath !== null) {
+                foreach ($guidelineLoader->load($vendor->guidelinesPath, $vendor->name) as $guideline) {
+                    $guidelines[] = $guideline;
+                }
             }
         }
 
-        return $skills;
+        return ['skills' => $skills, 'guidelines' => $guidelines];
     }
 
     /**
      * @param  list<Skill>  $skills
      */
-    private function renderStatusTable(SymfonyStyle $io, BoostConfig $config, array $skills): void
+    private function renderSkillTable(SymfonyStyle $io, BoostConfig $config, array $skills): void
     {
         /** @var list<array{0: string, 1: string, 2: string}> $rows */
         $rows = [];
@@ -94,19 +112,38 @@ final readonly class TagReporter
     }
 
     /**
-     * @param  list<Skill>  $skills
+     * @param  list<Guideline>  $guidelines
      */
-    private function renderHygiene(SymfonyStyle $io, BoostConfig $config, array $skills): void
+    private function renderGuidelineTable(SymfonyStyle $io, BoostConfig $config, array $guidelines): void
     {
-        $tagUnion = $this->tagUnion($skills);
+        /** @var list<array{0: string, 1: string, 2: string}> $rows */
+        $rows = [];
+        foreach ($guidelines as $guideline) {
+            $rows[] = [
+                $guideline->sourceVendor ?? '(host)',
+                $guideline->name,
+                $this->diagnostics->guidelineStatus($guideline, $config),
+            ];
+        }
+
+        $io->table(['Vendor', 'Guideline', 'Tag status'], $rows);
+    }
+
+    /**
+     * @param  list<Skill>  $skills
+     * @param  list<Guideline>  $guidelines
+     */
+    private function renderHygiene(SymfonyStyle $io, BoostConfig $config, array $skills, array $guidelines): void
+    {
+        $tagUnion = $this->tagUnion($skills, $guidelines);
 
         if ($tagUnion !== []) {
-            $io->writeln('Tags in use by installed skills: <info>' . implode(', ', $tagUnion) . '</info>');
+            $io->writeln('Tags in use by installed skills and guidelines: <info>' . implode(', ', $tagUnion) . '</info>');
         }
 
         $declaredButUnused = $this->diagnostics->declaredButUnusedTags($config, $tagUnion);
         if ($declaredButUnused !== []) {
-            $io->writeln('<comment>Declared tags matched by no installed skill (possible typo): '
+            $io->writeln('<comment>Declared tags matched by no installed skill or guideline (possible typo): '
                 . implode(', ', $declaredButUnused) . '</comment>');
         }
 
@@ -117,8 +154,10 @@ final readonly class TagReporter
     }
 
     /**
-     * The "add tag → unlock skills" roll-up: turns the per-skill `filtered`
-     * rows into a direct list of which tags to declare for which skills.
+     * The "add tag → unlock skills" roll-up. Skills only — a filtered
+     * guideline's missing tags already show in the guideline table's
+     * `filtered (declare: ...)` status, and guidelines have no exclude
+     * layer that would complicate the grouping.
      *
      * @param  list<Skill>  $skills
      */
@@ -142,17 +181,24 @@ final readonly class TagReporter
     }
 
     /**
-     * Distinct tags declared across every collected skill.
+     * Distinct tags declared across every collected skill and guideline.
      *
      * @param  list<Skill>  $skills
+     * @param  list<Guideline>  $guidelines
      * @return list<string>
      */
-    private function tagUnion(array $skills): array
+    private function tagUnion(array $skills, array $guidelines): array
     {
         /** @var array<string, true> $union */
         $union = [];
         foreach ($skills as $skill) {
             foreach ($skill->tags as $tag) {
+                $union[$tag] = true;
+            }
+        }
+
+        foreach ($guidelines as $guideline) {
+            foreach ($guideline->tags as $tag) {
                 $union[$tag] = true;
             }
         }

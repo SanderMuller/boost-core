@@ -126,7 +126,9 @@ return BoostConfig::configure()
 
 A vendor skill is synced only when **every** tag in its `boost-tags` is among the project's `withTags()` — `skillTags ⊆ projectTags`. An untagged skill carries the empty set and always ships (so the feature is inert until skills and projects opt in). `withExcludedSkills()` drops a specific `vendor/package:skill-name` regardless of tags.
 
-The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `composer boost:tags` lists every tag installed skills declare, which skills your `withTags()` currently filters out, and the tags to add to receive them — `boost:doctor` carries the same report as one of its sections.
+Vendor **guidelines** filter by the same rule: a guideline declares `metadata.boost-tags` in its own frontmatter and ships only when its tags are a subset of the project's. One portability caveat — a guideline carrying frontmatter is fine for boost-core but not for every consumer (`laravel/boost` expects frontmatter-free guideline Markdown); tag a guideline only when boost-core is its sole delivery path.
+
+The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `composer boost:tags` lists every tag installed skills and guidelines declare, which of them your `withTags()` currently filters out, and the tags to add to receive them — `boost:doctor` carries the same report as one of its sections.
 
 > [!WARNING]
 > Adding a tag to an **already-shipped** skill is consumer-breaking: every project that has not declared that tag loses the skill. Vendors should treat it as a breaking change (or a loud release-note callout), not a minor tweak.

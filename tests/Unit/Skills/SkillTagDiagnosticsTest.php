@@ -2,6 +2,7 @@
 
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Enums\Tag;
+use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillTagDiagnostics;
 
@@ -137,4 +138,46 @@ it('returns nothing when every tagged skill is already eligible', function (): v
     );
 
     expect($groups)->toBeEmpty();
+});
+
+/**
+ * @param  list<string>  $tags
+ */
+function diagGuideline(string $name, array $tags = [], bool $tagsValid = true): Guideline
+{
+    return new Guideline(
+        name: $name,
+        description: null,
+        frontmatter: [],
+        body: 'body',
+        sourcePath: '/src/' . $name,
+        sourceVendor: 'acme/pack',
+        tags: $tags,
+        tagsValid: $tagsValid,
+    );
+}
+
+it('reports a guideline with a declared tag as tag-eligible', function (): void {
+    $status = (new SkillTagDiagnostics())->guidelineStatus(diagGuideline('g', ['php']), diagConfig([Tag::Php]));
+
+    expect($status)->toBe('tag-eligible');
+});
+
+it('reports an untagged guideline as tag-eligible', function (): void {
+    $status = (new SkillTagDiagnostics())->guidelineStatus(diagGuideline('g'), diagConfig());
+
+    expect($status)->toBe('tag-eligible');
+});
+
+it('reports a filtered guideline with the tags to declare', function (): void {
+    $status = (new SkillTagDiagnostics())->guidelineStatus(diagGuideline('g', ['php', 'jira']), diagConfig([Tag::Php]));
+
+    expect($status)->toContain('filtered')
+        ->and($status)->toContain('jira');
+});
+
+it('reports a tag-invalid guideline', function (): void {
+    $status = (new SkillTagDiagnostics())->guidelineStatus(diagGuideline('g', [], tagsValid: false), diagConfig([Tag::Php]));
+
+    expect($status)->toContain('invalid tags');
 });

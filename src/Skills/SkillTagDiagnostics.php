@@ -37,6 +37,25 @@ final class SkillTagDiagnostics
     }
 
     /**
+     * The tag-layer verdict for one vendor guideline — `status()`'s
+     * guideline counterpart. Guidelines have no exclude-list, so there is
+     * no `excluded` verdict.
+     */
+    public function guidelineStatus(Guideline $guideline, BoostConfig $config): string
+    {
+        if (! $guideline->tagsValid) {
+            return 'invalid tags (ships nowhere — fix metadata.boost-tags)';
+        }
+
+        $missing = array_values(array_diff($guideline->tags, $config->tags));
+        if ($missing !== []) {
+            return 'filtered (declare: ' . implode(', ', $missing) . ')';
+        }
+
+        return 'tag-eligible';
+    }
+
+    /**
      * Skills currently filtered out purely because the consumer has not
      * declared one or more of their tags, grouped by the exact tag set that
      * `withTags()` would need to add to make each group ship.

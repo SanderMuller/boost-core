@@ -25,7 +25,7 @@ final readonly class BoostConfig
      * @param  list<Agent>  $agents
      * @param  list<string>  $allowedVendors  Composer vendor/package names
      * @param  list<string>  $disabledEmitters  Fully-qualified class names
-     * @param  list<string>  $tags  Project tags — a vendor skill ships only when its `skill.yaml` tags ⊆ these
+     * @param  list<string>  $tags  Project tags — a vendor skill ships only when its `metadata.boost-tags` ⊆ these
      * @param  list<string>  $excludedSkills  `vendor/package:skill-name` entries excluded regardless of tags
      */
     public function __construct(

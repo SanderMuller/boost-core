@@ -19,12 +19,13 @@ enum Tag: string
     case Laravel = 'laravel';
     case Frontend = 'frontend';
     case Jira = 'jira';
+    case Github = 'github';
     case GithubIssues = 'github-issues';
 
     /**
      * Canonical tag normalization, applied identically to a skill's declared
-     * tags (`skill.yaml`) and a consumer's `withTags()` declaration so the
-     * two always compare like-for-like.
+     * tags (`metadata.boost-tags`) and a consumer's `withTags()` declaration
+     * so the two always compare like-for-like.
      */
     public static function normalize(string $tag): string
     {

@@ -64,6 +64,7 @@ it('composer boost:* commands are registered through the plugin capability', fun
             ->toContain('boost:install')
             ->toContain('boost:scan')
             ->toContain('boost:doctor')
+            ->toContain('boost:tags')
             ->toContain('boost:new');
 
         // Drive a real, non-interactive command (not --help, which short-circuits

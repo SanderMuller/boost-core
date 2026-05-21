@@ -89,3 +89,52 @@ it('reports no near-duplicates for distinct tags', function (): void {
     expect($pairs)
         ->toBeEmpty();
 });
+
+it('groups filtered skills by the tag needed to enable them', function (): void {
+    $groups = (new SkillTagDiagnostics())->filteredSkillsByMissingTags(
+        [
+            diagSkill('jira-triage', ['jira']),
+            diagSkill('jira-sync', ['jira']),
+            diagSkill('frontend-lint', ['frontend']),
+            diagSkill('ships', ['php']),
+        ],
+        diagConfig([Tag::Php]),
+    );
+
+    expect($groups)->toBe([
+        ['tags' => ['frontend'], 'skills' => ['acme/pack:frontend-lint']],
+        ['tags' => ['jira'], 'skills' => ['acme/pack:jira-sync', 'acme/pack:jira-triage']],
+    ]);
+});
+
+it('groups a multi-tag skill under its full missing-tag set', function (): void {
+    $groups = (new SkillTagDiagnostics())->filteredSkillsByMissingTags(
+        [diagSkill('jira-rework', ['jira', 'github'])],
+        diagConfig(),
+    );
+
+    expect($groups)->toBe([
+        ['tags' => ['github', 'jira'], 'skills' => ['acme/pack:jira-rework']],
+    ]);
+});
+
+it('omits invalid-tag and excluded skills from the enable roll-up', function (): void {
+    $groups = (new SkillTagDiagnostics())->filteredSkillsByMissingTags(
+        [
+            diagSkill('broken', [], tagsValid: false),
+            diagSkill('deploy', ['jira']),
+        ],
+        diagConfig(excluded: ['acme/pack:deploy']),
+    );
+
+    expect($groups)->toBeEmpty();
+});
+
+it('returns nothing when every tagged skill is already eligible', function (): void {
+    $groups = (new SkillTagDiagnostics())->filteredSkillsByMissingTags(
+        [diagSkill('a', ['php']), diagSkill('b')],
+        diagConfig([Tag::Php]),
+    );
+
+    expect($groups)->toBeEmpty();
+});

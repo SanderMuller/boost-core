@@ -85,6 +85,19 @@ Or one-off via env var (useful for CI / ephemeral Docker installs):
 BOOST_SKIP_GITIGNORE=1 composer install
 ```
 
+## Skills from packages
+
+Skills aren't only authored in a project's own `.ai/skills/`. Any Composer package can ship them: it places skills at `resources/boost/skills/<name>/SKILL.md`, and a consuming project picks them up by allowlisting the vendor in `boost.php`:
+
+```php
+return BoostConfig::configure()
+    ->withAllowedVendors(['vendor/package']);
+```
+
+On the next `boost:sync`, that package's skills fan out to every selected agent alongside the project's own. This is how a team distributes one curated skill set across many repos — author once in a package, allowlist everywhere.
+
+[`sandermuller/boost-skills`](https://github.com/sandermuller/boost-skills) is built this way: a package of skills and nothing else, several of them tagged for conditional sync (see below).
+
 ## Conditional skill filtering
 
 Vendor skills can be scoped to projects that want them, so a project with no Jira work never receives a `jira-triage` skill (and its `description` never pollutes the agent's skill-selection index).
@@ -113,7 +126,7 @@ return BoostConfig::configure()
 
 A vendor skill is synced only when **every** tag in its `boost-tags` is among the project's `withTags()` — `skillTags ⊆ projectTags`. An untagged skill carries the empty set and always ships (so the feature is inert until skills and projects opt in). `withExcludedSkills()` drops a specific `vendor/package:skill-name` regardless of tags.
 
-The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `composer boost:doctor` reports every tag in use across installed skills and flags likely typos.
+The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `composer boost:tags` lists every tag installed skills declare, which skills your `withTags()` currently filters out, and the tags to add to receive them — `boost:doctor` carries the same report as one of its sections.
 
 > [!WARNING]
 > Adding a tag to an **already-shipped** skill is consumer-breaking: every project that has not declared that tag loses the skill. Vendors should treat it as a breaking change (or a loud release-note callout), not a minor tweak.

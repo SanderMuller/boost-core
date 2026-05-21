@@ -37,6 +37,58 @@ final class SkillTagDiagnostics
     }
 
     /**
+     * Skills currently filtered out purely because the consumer has not
+     * declared one or more of their tags, grouped by the exact tag set that
+     * `withTags()` would need to add to make each group ship.
+     *
+     * Invalid-tag and excluded skills are omitted — neither becomes shippable
+     * by declaring a tag (a malformed `metadata.boost-tags` is fixed at the
+     * skill; an exclude is removed from `withExcludedSkills()`).
+     *
+     * @param  iterable<Skill>  $skills
+     * @return list<array{tags: list<string>, skills: list<string>}>
+     *         One entry per distinct missing-tag set, sorted; each `skills`
+     *         holds the sorted `vendor/package:name` keys the set unlocks.
+     */
+    public function filteredSkillsByMissingTags(iterable $skills, BoostConfig $config): array
+    {
+        /** @var array<string, list<string>> $groups */
+        $groups = [];
+
+        foreach ($skills as $skill) {
+            if (! $skill->tagsValid) {
+                continue;
+            }
+
+            $excludeKey = $skill->excludeKey();
+            if ($excludeKey !== null && $config->excludesSkill($excludeKey)) {
+                continue;
+            }
+
+            $missing = array_values(array_diff($skill->tags, $config->tags));
+            if ($missing === []) {
+                continue;
+            }
+
+            sort($missing);
+            $groups[implode(' ', $missing)][] = $excludeKey ?? $skill->name;
+        }
+
+        ksort($groups);
+
+        $result = [];
+        foreach ($groups as $key => $skillKeys) {
+            sort($skillKeys);
+            $result[] = [
+                'tags' => explode(' ', $key),
+                'skills' => array_values(array_unique($skillKeys)),
+            ];
+        }
+
+        return $result;
+    }
+
+    /**
      * Tags a consumer declared (`withTags()`) that no installed skill uses —
      * a likely typo or a tag for a not-yet-installed package.
      *

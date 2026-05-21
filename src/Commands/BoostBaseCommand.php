@@ -2,9 +2,14 @@
 
 namespace SanderMuller\BoostCore\Commands;
 
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Config\BoostConfigLoader;
+use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
 
 /**
  * Shared base for boost-family commands.
@@ -38,5 +43,25 @@ abstract class BoostBaseCommand extends Command
         $cwd = getcwd();
 
         return rtrim($cwd === false ? '.' : $cwd, '/');
+    }
+
+    /**
+     * Load and build the project's `boost.php`. Renders the failure to `$io`
+     * and returns null on a missing or broken config — callers return
+     * `self::FAILURE` on null.
+     */
+    protected function loadConfig(SymfonyStyle $io, string $projectRoot): ?BoostConfig
+    {
+        try {
+            return (new BoostConfigLoader())->load($projectRoot);
+        } catch (BoostConfigNotFoundException $e) {
+            $io->error($e->getMessage());
+
+            return null;
+        } catch (Throwable $e) {
+            $io->error('boost.php failed to load: ' . $e->getMessage());
+
+            return null;
+        }
     }
 }

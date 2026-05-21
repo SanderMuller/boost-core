@@ -36,7 +36,11 @@ return BoostConfig::configure()
 - `withAllowedVendors([])` — Composer package names whose
   `resources/boost/{skills,guidelines}/` boost-core may read from. Empty
   = host-only. Non-allowlisted vendors are silently ignored even if they
-  publish.
+  publish. The `boost:install` / `boost:scan` picker pre-checks
+  first-party packages as a convenience, but that is picker UX only —
+  `boost:sync` gates purely on this exact list. A hand-written
+  `boost.php` with an empty array syncs zero vendor skills, first-party
+  or not.
 - `withDisabledEmitters([])` — FQCNs of FileEmitter classes to skip even
   if their vendor is allowlisted. Use for opting out of optional emissions
   (e.g. you want skills from `package-boost-laravel` but not `.mcp.json`).
@@ -45,7 +49,9 @@ return BoostConfig::configure()
   frontmatter is declared here (`skillTags ⊆ projectTags`). Untagged
   skills always ship. Accepts `Tag` enum cases (autocomplete) or raw
   strings (the vocabulary is open). Omit it entirely to receive every
-  untagged skill and filter out every tagged one.
+  untagged skill and filter out every tagged one. `composer boost:tags`
+  lists the tags installed skills declare and which ones a missing tag
+  would unlock.
 - `withExcludedSkills([])` — `vendor/package:skill-name` entries to drop
   regardless of tags. A per-skill deny-list for vendor skills you don't
   want without shipping a shadowing host copy.

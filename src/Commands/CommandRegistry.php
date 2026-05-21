@@ -24,6 +24,7 @@ final class CommandRegistry
             new ScanCommand(),
             new SyncCommand(),
             new DoctorCommand(),
+            new TagsCommand(),
             new NewCommand(),
         ];
     }

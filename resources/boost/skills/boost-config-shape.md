@@ -60,6 +60,17 @@ return BoostConfig::configure()
   `<project-root>/.ai/guidelines`. Override only if your project uses a
   non-conventional layout.
 
+## Configuring filtering — discover, then suggest
+
+Setting up or reviewing `withAllowedVendors()` / `withTags()` / `withExcludedSkills()`? Don't guess — discover, then propose:
+
+1. **What's available.** `composer boost:scan` lists installed packages publishing skills/guidelines; `composer boost:doctor` shows which are allowlisted vs discovered-but-not. Allowlist the vendors the project should trust.
+2. **What tags exist.** `composer boost:tags` lists every tag the installed skills declare and, per missing tag, which skills it would unlock.
+3. **Suggest tags from project context.** Match those tags against what the project *is* — read `composer.json` (Laravel app? framework-agnostic package?), the issue tracker, the CI host — and propose the `withTags()` entries that unlock relevant skills, each with a one-line reason. Only suggest tags an installed skill actually declares; an undeclared tag unlocks nothing.
+4. **Suggest individual excludes.** Tags filter in bulk; when an allowlisted vendor ships one specific skill the project doesn't want — irrelevant to the stack, or redundant with how the project already works — and no tag cleanly singles it out, propose a `withExcludedSkills(['vendor/package:skill-name'])` entry for exactly that skill. The `vendor/package:skill-name` keys are the ones `boost:tags` and `boost:doctor` already print. Reserve it for genuine one-offs — broad filtering is the tags' job.
+
+Present every suggestion with its reasoning — the maintainer decides. Declaring a tag is opt-in (it only ever *adds* skills); an exclude only ever *removes* one.
+
 ## What NOT to put here
 
 - **Environment branching.** `if (env('CI')) { ... }` works, but

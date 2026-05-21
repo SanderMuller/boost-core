@@ -5,7 +5,19 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.5.1...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.5.2...HEAD)
+
+## [0.5.2](https://github.com/sandermuller/boost-core/compare/0.5.1...0.5.2) - 2026-05-21
+
+### Changed
+
+- **The shipped `boost-config-shape` skill gains a discover-then-suggest workflow.** When an agent works on a project's `boost.php`, the skill now directs it to: run `boost:doctor` to discover which vendor packages publish skills (allowlisted vs discovered-but-not), allowlist the relevant ones, run `boost:tags` to see the tag vocabulary the allowlisted skills declare, then propose `withTags()` entries matched to the project's actual stack (framework, issue tracker, CI host) and `withExcludedSkills()` entries for specific unwanted vendor skills — each suggestion carrying its reasoning, for the maintainer to decide. Only tags an installed skill actually declares are suggested.
+
+### Upgrade notes
+
+`composer require sandermuller/boost-core:^0.5.2` — or nothing at all if you already allow `^0.5`. Docs-only: no code, no behaviour change. The updated skill reaches a project on its next `boost:sync` after the upgrade.
+
+**Full changelog:** https://github.com/SanderMuller/boost-core/compare/0.5.1...0.5.2
 
 ## [0.5.1](https://github.com/sandermuller/boost-core/compare/0.5.0...0.5.1) - 2026-05-21
 
@@ -136,6 +148,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   
   
   
+  
     ```
 
 ### Fixed
@@ -169,6 +182,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
   
   
   

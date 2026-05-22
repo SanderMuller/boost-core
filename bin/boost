@@ -19,13 +19,18 @@ use Symfony\Component\Console\Application;
 
     $app = new Application('boost', '0.1.0-dev');
 
+    $commands = [];
     foreach (CommandRegistry::commands() as $command) {
         $name = $command->getName();
         if (is_string($name) && str_starts_with($name, 'boost:')) {
             $command->setName(substr($name, strlen('boost:')));
         }
-        $app->add($command);
+        $commands[] = $command;
     }
+
+    // addCommands() is stable across symfony/console ^7.0||^8.0; the
+    // per-command add() it replaced was removed in Symfony 8.
+    $app->addCommands($commands);
 
     $app->run();
 })();

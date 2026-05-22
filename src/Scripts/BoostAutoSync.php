@@ -16,11 +16,13 @@ use Throwable;
  *
  * Two callables, differing only in success-path output:
  *
- *  - {@see run()} — silent on success. Designed for `post-install-cmd` /
- *    `post-update-cmd` hooks where any per-install output is noise.
- *  - {@see runWithSummary()} — streams the binary's one-line success
- *    summary through Composer's IO. Designed for user-invoked scripts
- *    like `composer sync-ai` where silence reads as a no-op.
+ *  - {@see run()} — streams the binary's one-line summary only when the
+ *    sync wrote at least one file; silent on a no-op (`wrote=0`) install.
+ *    Designed for `post-install-cmd` / `post-update-cmd` hooks, where a
+ *    summary on every install would be noise.
+ *  - {@see runWithSummary()} — always streams the summary, including on a
+ *    no-op install. Designed for user-invoked scripts like `composer
+ *    sync-ai` where silence on success reads as a no-op.
  *
  * Both replace the bash one-liner:
  *
@@ -31,10 +33,10 @@ use Throwable;
  * the leaky `$COMPOSER_DEV_MODE` env var instead of `Event::isDevMode()`.
  *
  * Both callables share the same skip/error/exit semantics:
- *  - Skip silently when `BOOST_SKIP_AUTOSYNC` env var is set (matches
- *    the plugin's `onPostAutoloadDump` escape hatch). Lets a single
- *    env-var disable auto-sync across every entry point — plugin hook,
- *    `post-install-cmd` script, `post-update-cmd` script.
+ *  - Skip silently when `BOOST_SKIP_AUTOSYNC` env var is set. Lets a
+ *    single env-var disable auto-sync across every entry point — the
+ *    `post-install-cmd` / `post-update-cmd` script callbacks and the
+ *    `syncUserScope*` helpers.
  *  - Skip silently when `Event::isDevMode()` is false (`--no-dev` install).
  *  - Skip silently when the resolved binary at `config.bin-dir/boost` is
  *    not executable (e.g. boost-core not installed in this project).
@@ -50,41 +52,61 @@ use Throwable;
 final class BoostAutoSync
 {
     /**
-     * Silent on success. Wire into auto-firing hooks
-     * (`post-install-cmd` / `post-update-cmd`).
+     * Streams the one-line sync summary only when the sync wrote at least
+     * one file; silent on a no-op (`wrote=0`) install. Wire into auto-firing
+     * hooks (`post-install-cmd` / `post-update-cmd`).
      */
     public static function run(Event $event): void
     {
-        $process = self::resolveAndRun($event);
-        if (! $process instanceof Process) {
-            return;
-        }
-
-        self::reportFailureIfAny($event, $process);
+        self::runAndReport($event, alwaysSummary: false);
     }
 
     /**
-     * Emits the binary's one-line success summary through Composer's IO.
-     * Wire into user-invoked scripts (`composer sync-ai`, etc.) where
-     * silence on success would read as a no-op.
+     * Always emits the binary's one-line success summary through Composer's
+     * IO, including on a no-op install. Wire into user-invoked scripts
+     * (`composer sync-ai`, etc.) where silence on success reads as a no-op.
      */
     public static function runWithSummary(Event $event): void
+    {
+        self::runAndReport($event, alwaysSummary: true);
+    }
+
+    /**
+     * Shared body of the two script callbacks. On a clean exit the binary's
+     * one-line summary is streamed through Composer's IO — always when
+     * `$alwaysSummary`, otherwise only when the summary reports a non-zero
+     * write count, so a routine no-op `composer install` stays quiet.
+     * Failure handling is identical for both callbacks.
+     */
+    private static function runAndReport(Event $event, bool $alwaysSummary): void
     {
         $process = self::resolveAndRun($event);
         if (! $process instanceof Process) {
             return;
         }
 
-        if ($process->getExitCode() === 0) {
-            $output = trim($process->getOutput());
-            if ($output !== '') {
-                $event->getIO()->write($output);
-            }
+        if ($process->getExitCode() !== 0) {
+            self::reportFailureIfAny($event, $process);
 
             return;
         }
 
-        self::reportFailureIfAny($event, $process);
+        $summary = trim($process->getOutput());
+        if ($summary !== '' && ($alwaysSummary || self::summaryReportsWrites($summary))) {
+            $event->getIO()->write($summary);
+        }
+    }
+
+    /**
+     * True when a `boost sync` success summary reports a non-zero write
+     * count (`wrote=<n>`, n > 0) — the signal that lets {@see run()} stay
+     * silent on a no-op install yet still surface the summary when files
+     * actually changed. Couples to the binary's `wrote=%d` summary
+     * phrasing; kept in lockstep with `SyncCommand`'s report output.
+     */
+    private static function summaryReportsWrites(string $summary): bool
+    {
+        return preg_match('/\bwrote=[1-9]\d*\b/', $summary) === 1;
     }
 
     /**

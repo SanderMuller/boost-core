@@ -237,3 +237,60 @@ it('runWithSummary emits same warning on non-zero exit as run()', function (): v
         @rmdir($binDir);
     }
 });
+
+it('run() streams the summary when the sync wrote files', function (): void {
+    $binDir = sys_get_temp_dir() . '/boost-autosync-wrote-' . bin2hex(random_bytes(6));
+    mkdir($binDir, 0o755, recursive: true);
+    $fakeBoost = $binDir . '/boost';
+
+    try {
+        file_put_contents(
+            $fakeBoost,
+            "#!/usr/bin/env sh\necho '[OK] Sync done. wrote=3, unchanged=42.'\n",
+        );
+        chmod($fakeBoost, 0o755);
+
+        $io = new BufferIO();
+        $config = new Config(useEnvironment: false);
+        $config->merge(['config' => ['bin-dir' => $binDir]]);
+        $composer = new Composer();
+        $composer->setConfig($config);
+        $event = new Event('post-install-cmd', $composer, $io, devMode: true);
+
+        BoostAutoSync::run($event);
+
+        expect($io->getOutput())
+            ->toContain('[OK] Sync done. wrote=3, unchanged=42.');
+    } finally {
+        @unlink($fakeBoost);
+        @rmdir($binDir);
+    }
+});
+
+it('run() stays silent on a no-op sync (wrote=0)', function (): void {
+    $binDir = sys_get_temp_dir() . '/boost-autosync-noop-' . bin2hex(random_bytes(6));
+    mkdir($binDir, 0o755, recursive: true);
+    $fakeBoost = $binDir . '/boost';
+
+    try {
+        file_put_contents(
+            $fakeBoost,
+            "#!/usr/bin/env sh\necho '[OK] Sync done. wrote=0, unchanged=162.'\n",
+        );
+        chmod($fakeBoost, 0o755);
+
+        $io = new BufferIO();
+        $config = new Config(useEnvironment: false);
+        $config->merge(['config' => ['bin-dir' => $binDir]]);
+        $composer = new Composer();
+        $composer->setConfig($config);
+        $event = new Event('post-install-cmd', $composer, $io, devMode: true);
+
+        BoostAutoSync::run($event);
+
+        expect($io->getOutput())->toBeEmpty();
+    } finally {
+        @unlink($fakeBoost);
+        @rmdir($binDir);
+    }
+});

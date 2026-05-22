@@ -2,6 +2,7 @@
 
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Enums\Tag;
 
 return BoostConfig::configure()
     ->withAgents([
@@ -15,5 +16,13 @@ return BoostConfig::configure()
         Agent::OPENCODE,
         Agent::AMP,
     ])
-    ->withAllowedVendors([])
+    ->withAllowedVendors(['sandermuller/boost-skills'])
+    ->withTags(Tag::Php, Tag::Github)
+    ->withExcludedGuidelines([
+        // boost-core is a framework-free Composer plugin — no database, no
+        // migrations. These ship from boost-skills untagged, so the deny-list
+        // is the only lever; `verification-before-completion` is universal.
+        'sandermuller/boost-skills:database-safety',
+        'sandermuller/boost-skills:migrations',
+    ])
     ->withDisabledEmitters([]);

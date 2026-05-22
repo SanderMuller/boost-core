@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Agents;
 
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Skills\Command;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Sync\PendingWrite;
@@ -39,6 +40,26 @@ abstract class AgentTarget
     abstract public function guidelinesFileRelative(): ?string;
 
     /**
+     * Where command files are written, relative to project root — or null
+     * when the agent has no dedicated command directory boost-core targets.
+     * Example: `.claude/commands`. Base default is null (no command surface);
+     * the command-capable targets override.
+     */
+    public function commandsDirectoryRelative(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * File extension for an emitted command, without the leading dot.
+     * Copilot overrides → `prompt.md`.
+     */
+    public function commandFileExtension(): string
+    {
+        return 'md';
+    }
+
+    /**
      * Paths this target owns, suitable for a managed `.gitignore` block.
      * Returns directory entries with a trailing `/` and file entries verbatim.
      *
@@ -50,6 +71,11 @@ abstract class AgentTarget
         $guidelines = $this->guidelinesFileRelative();
         if ($guidelines !== null) {
             $patterns[] = $guidelines;
+        }
+
+        $commands = $this->commandsDirectoryRelative();
+        if ($commands !== null) {
+            $patterns[] = $commands . '/';
         }
 
         return $patterns;
@@ -85,6 +111,32 @@ abstract class AgentTarget
     }
 
     /**
+     * Produce the set of writes for the given commands — one file per command
+     * in the agent's command directory. Empty when the agent has no command
+     * directory ({@see commandsDirectoryRelative()} null).
+     *
+     * @param  list<Command>  $commands
+     * @return list<PendingWrite>
+     */
+    public function planCommands(array $commands): array
+    {
+        $directory = $this->commandsDirectoryRelative();
+        if ($directory === null) {
+            return [];
+        }
+
+        $writes = [];
+        foreach ($commands as $command) {
+            $writes[] = new PendingWrite(
+                relativePath: $directory . '/' . $command->name . '.' . $this->commandFileExtension(),
+                content: $this->formatCommandContent($command),
+            );
+        }
+
+        return $writes;
+    }
+
+    /**
      * Where the rendered skill lives, relative to `skillsDirectoryRelative()`.
      *
      * Always emits the directory form `<name>/SKILL.md`. Claude Code (and
@@ -100,6 +152,18 @@ abstract class AgentTarget
     public function formatSkillContent(Skill $skill): string
     {
         return $this->renderFrontmatter($skill->frontmatter) . $skill->body;
+    }
+
+    /**
+     * Render one command to its on-disk form. Default: frontmatter + body, as
+     * the frontmatter-aware agents (Claude Code, Copilot, Junie, OpenCode)
+     * expect. Cursor and Amp override to body-only — their command formats
+     * treat the whole file as the prompt, so a frontmatter block would leak
+     * into it.
+     */
+    public function formatCommandContent(Command $command): string
+    {
+        return $this->renderFrontmatter($command->frontmatter) . $command->body;
     }
 
     /**

@@ -23,6 +23,8 @@ final class BoostConfigBuilder
 
     private ?string $guidelinesPath = null;
 
+    private ?string $commandsPath = null;
+
     /** @var list<string> */
     private array $disabledEmitters = [];
 
@@ -67,6 +69,13 @@ final class BoostConfigBuilder
     public function withGuidelinesPath(string $path): self
     {
         $this->guidelinesPath = $path;
+
+        return $this;
+    }
+
+    public function withCommandsPath(string $path): self
+    {
+        $this->commandsPath = $path;
 
         return $this;
     }
@@ -151,6 +160,7 @@ final class BoostConfigBuilder
             allowedVendors: $this->allowedVendors,
             skillsPath: $this->skillsPath ?? $projectRoot . '/.ai/skills',
             guidelinesPath: $this->guidelinesPath ?? $projectRoot . '/.ai/guidelines',
+            commandsPath: $this->commandsPath ?? $projectRoot . '/.ai/commands',
             disabledEmitters: $this->disabledEmitters,
             manageGitignore: $this->manageGitignore,
             tags: $this->tags,

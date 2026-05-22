@@ -34,6 +34,7 @@ final readonly class BoostConfig
         public array $allowedVendors,
         public string $skillsPath,
         public string $guidelinesPath,
+        public string $commandsPath,
         public array $disabledEmitters,
         public bool $manageGitignore = true,
         public array $tags = [],

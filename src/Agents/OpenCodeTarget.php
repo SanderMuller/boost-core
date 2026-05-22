@@ -20,4 +20,9 @@ final class OpenCodeTarget extends AgentTarget
     {
         return 'AGENTS.md';
     }
+
+    public function commandsDirectoryRelative(): string
+    {
+        return '.opencode/commands';
+    }
 }

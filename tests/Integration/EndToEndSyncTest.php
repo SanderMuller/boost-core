@@ -559,3 +559,34 @@ it('tag filtering disambiguates a would-be vendor-vs-vendor skill collision', fu
         rmTreeE2E($root);
     }
 });
+
+it('end-to-end: host command fans out to per-agent command files, gitignored', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        mkdir($root . '/.ai/commands', 0o755, recursive: true);
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE, Agent::COPILOT, Agent::GEMINI]);',
+        );
+        file_put_contents(
+            $root . '/.ai/commands/deploy.md',
+            "---\ndescription: Ship it.\n---\nRun the deploy.\n",
+        );
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            // Markdown command-dir agents receive the command...
+            ->and(file_exists($root . '/.claude/commands/deploy.md'))->toBeTrue()
+            ->and(file_exists($root . '/.github/prompts/deploy.prompt.md'))->toBeTrue()
+            // ...Gemini has no Phase 1 command surface — nothing emitted.
+            ->and(is_dir($root . '/.gemini/commands'))->toBeFalse()
+            // the command directory joins the managed .gitignore block.
+            ->and(file_get_contents($root . '/.gitignore'))->toContain('.claude/commands/')
+            ->and(file_get_contents($root . '/.claude/commands/deploy.md'))
+            ->toContain('Run the deploy.');
+    } finally {
+        rmTreeE2E($root);
+    }
+});

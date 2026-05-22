@@ -14,6 +14,7 @@ it('reports membership via hasAgent', function (): void {
         allowedVendors: [],
         skillsPath: '/tmp/skills',
         guidelinesPath: '/tmp/guidelines',
+        commandsPath: '/tmp/commands',
         disabledEmitters: [],
     );
 
@@ -30,6 +31,7 @@ it('reports allowlist membership via isVendorAllowed', function (): void {
         allowedVendors: ['doctrine/orm', 'symfony/symfony'],
         skillsPath: '/tmp/skills',
         guidelinesPath: '/tmp/guidelines',
+        commandsPath: '/tmp/commands',
         disabledEmitters: [],
     );
 
@@ -44,6 +46,7 @@ it('reports disabled emitters via isEmitterDisabled', function (): void {
         allowedVendors: [],
         skillsPath: '/tmp/skills',
         guidelinesPath: '/tmp/guidelines',
+        commandsPath: '/tmp/commands',
         disabledEmitters: ['Foo\\BarEmitter'],
     );
 

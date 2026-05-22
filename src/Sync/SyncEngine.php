@@ -22,6 +22,8 @@ use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Skills\CollidingSkillsException;
+use SanderMuller\BoostCore\Skills\Command;
+use SanderMuller\BoostCore\Skills\CommandLoader;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\GuidelineLoader;
@@ -54,6 +56,8 @@ final readonly class SyncEngine
 
     private GuidelineLoader $guidelineLoader;
 
+    private CommandLoader $commandLoader;
+
     private VendorScanner $vendorScanner;
 
     private EmitterDiscovery $emitterDiscovery;
@@ -77,6 +81,7 @@ final readonly class SyncEngine
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
         $this->skillLoader = new SkillLoader($this->frontmatterParser);
         $this->guidelineLoader = new GuidelineLoader($this->frontmatterParser);
+        $this->commandLoader = new CommandLoader($this->frontmatterParser);
         $this->vendorScanner = new VendorScanner($this->installedPackages);
         $this->emitterDiscovery = new EmitterDiscovery($this->installedPackages);
     }
@@ -310,6 +315,7 @@ final readonly class SyncEngine
 
         $resolvedSkills = $skillResolution['skills'];
         $droppedSkillNames = $skillResolution['droppedNames'];
+        $resolvedCommands = $this->resolveCommands($config);
 
         $context = new SyncContext(
             projectRoot: $projectRoot,
@@ -324,6 +330,7 @@ final readonly class SyncEngine
             $config,
             $resolvedSkills,
             $resolvedGuidelines,
+            $resolvedCommands,
             $droppedSkillNames,
             $checkOnly,
         );
@@ -463,6 +470,22 @@ final readonly class SyncEngine
     }
 
     /**
+     * Load host commands from `.ai/commands/`. Phase 1 of the agent-commands
+     * spec is host-only — vendor commands, tag-filtering, and collision
+     * resolution are Phase 4.
+     *
+     * @return list<Command>
+     */
+    private function resolveCommands(BoostConfig $config): array
+    {
+        if (! is_dir($config->commandsPath)) {
+            return [];
+        }
+
+        return iterator_to_array($this->commandLoader->load($config->commandsPath), false);
+    }
+
+    /**
      * @return list<EmitterResult>
      */
     private function runEmitters(string $projectRoot, BoostConfig $config, SyncContext $context, bool $checkOnly): array
@@ -582,6 +605,7 @@ final readonly class SyncEngine
     /**
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
+     * @param  list<Command>  $commands
      * @param  list<string>  $droppedSkillNames  Names dropped by SkillTagFilter — candidates for pruning.
      * @return array{0: list<WrittenFile>, 1: list<string>}
      */
@@ -590,6 +614,7 @@ final readonly class SyncEngine
         BoostConfig $config,
         array $skills,
         array $guidelines,
+        array $commands,
         array $droppedSkillNames,
         bool $checkOnly,
     ): array {
@@ -617,6 +642,10 @@ final readonly class SyncEngine
             }
 
             foreach ($target->plan($skills, $guidelines) as $pending) {
+                $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
+            }
+
+            foreach ($target->planCommands($commands) as $pending) {
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
         }

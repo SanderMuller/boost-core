@@ -20,4 +20,9 @@ final class ClaudeCodeTarget extends AgentTarget
     {
         return 'CLAUDE.md';
     }
+
+    public function commandsDirectoryRelative(): string
+    {
+        return '.claude/commands';
+    }
 }

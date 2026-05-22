@@ -10,6 +10,7 @@ it('builds a config with all explicit values', function (): void {
         ->withAllowedVendors(['doctrine/orm'])
         ->withSkillsPath('/host/.ai/skills')
         ->withGuidelinesPath('/host/.ai/guidelines')
+        ->withCommandsPath('/host/.ai/commands')
         ->withDisabledEmitters(['Foo\\Emitter'])
         ->build('/host');
 
@@ -20,6 +21,8 @@ it('builds a config with all explicit values', function (): void {
         ->toBe('/host/.ai/skills')
         ->and($config->guidelinesPath)
         ->toBe('/host/.ai/guidelines')
+        ->and($config->commandsPath)
+        ->toBe('/host/.ai/commands')
         ->and($config->disabledEmitters)
         ->toEqual(['Foo\\Emitter']);
 });
@@ -29,7 +32,9 @@ it('falls back to convention paths when not explicitly set', function (): void {
 
     expect($config->skillsPath)->toBe('/some/project/.ai/skills')
         ->and($config->guidelinesPath)
-        ->toBe('/some/project/.ai/guidelines');
+        ->toBe('/some/project/.ai/guidelines')
+        ->and($config->commandsPath)
+        ->toBe('/some/project/.ai/commands');
 });
 
 it('trims trailing slash from project root when applying defaults', function (): void {

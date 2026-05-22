@@ -75,6 +75,7 @@ final class DoctorCommand extends BoostBaseCommand
         $io->table(['Key', 'Path', 'Status'], [
             ['skillsPath', $config->skillsPath, is_dir($config->skillsPath) ? 'exists' : 'MISSING'],
             ['guidelinesPath', $config->guidelinesPath, is_dir($config->guidelinesPath) ? 'exists' : 'MISSING'],
+            ['commandsPath', $config->commandsPath, is_dir($config->commandsPath) ? 'exists' : 'MISSING'],
         ]);
     }
 

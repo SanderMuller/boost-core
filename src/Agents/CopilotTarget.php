@@ -20,4 +20,14 @@ final class CopilotTarget extends AgentTarget
     {
         return '.github/copilot-instructions.md';
     }
+
+    public function commandsDirectoryRelative(): string
+    {
+        return '.github/prompts';
+    }
+
+    public function commandFileExtension(): string
+    {
+        return 'prompt.md';
+    }
 }

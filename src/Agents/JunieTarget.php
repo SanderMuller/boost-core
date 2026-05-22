@@ -20,4 +20,9 @@ final class JunieTarget extends AgentTarget
     {
         return 'AGENTS.md';
     }
+
+    public function commandsDirectoryRelative(): string
+    {
+        return '.junie/commands';
+    }
 }

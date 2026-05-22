@@ -25,4 +25,16 @@ final readonly class Guideline
     {
         return $this->sourceVendor === null;
     }
+
+    /**
+     * The `vendor/package:guideline-name` key by which a consumer's
+     * `withExcludedGuidelines()` deny-list addresses this guideline — or null
+     * for a host-authored guideline, which the deny-list has no form to name.
+     */
+    public function excludeKey(): ?string
+    {
+        return $this->sourceVendor === null
+            ? null
+            : $this->sourceVendor . ':' . $this->name;
+    }
 }

@@ -38,13 +38,18 @@ final class SkillTagDiagnostics
 
     /**
      * The tag-layer verdict for one vendor guideline — `status()`'s
-     * guideline counterpart. Guidelines have no exclude-list, so there is
-     * no `excluded` verdict.
+     * guideline counterpart, including the `excluded` verdict for the
+     * `withExcludedGuidelines()` deny-list.
      */
     public function guidelineStatus(Guideline $guideline, BoostConfig $config): string
     {
         if (! $guideline->tagsValid) {
             return 'invalid tags (ships nowhere — fix metadata.boost-tags)';
+        }
+
+        $excludeKey = $guideline->excludeKey();
+        if ($excludeKey !== null && $config->excludesGuideline($excludeKey)) {
+            return 'excluded (withExcludedGuidelines)';
         }
 
         $missing = array_values(array_diff($guideline->tags, $config->tags));

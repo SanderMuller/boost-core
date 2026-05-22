@@ -1,6 +1,6 @@
 ---
 name: boost-config-shape
-description: Author a boost.php config file. Covers all five with* methods, when each matters, and what NOT to put in there.
+description: Author a boost.php config file. Covers the with* methods, when each matters, and what NOT to put in there.
 ---
 
 # boost.php config shape
@@ -55,6 +55,11 @@ return BoostConfig::configure()
 - `withExcludedSkills([])` — `vendor/package:skill-name` entries to drop
   regardless of tags. A per-skill deny-list for vendor skills you don't
   want without shipping a shadowing host copy.
+- `withExcludedGuidelines([])` — `vendor/package:guideline-name` entries
+  to drop regardless of tags. The guideline counterpart of
+  `withExcludedSkills()` — and the only filter for a vendor guideline
+  shipped without `metadata.boost-tags`, since untagged guidelines always
+  ship and tag-filtering cannot reach them.
 - `withSkillsPath(...)` / `withGuidelinesPath(...)` — host-authored content
   locations. Default to `<project-root>/.ai/skills` and
   `<project-root>/.ai/guidelines`. Override only if your project uses a
@@ -62,12 +67,12 @@ return BoostConfig::configure()
 
 ## Configuring filtering — discover, then suggest
 
-Setting up or reviewing `withAllowedVendors()` / `withTags()` / `withExcludedSkills()`? Don't guess — discover, then propose:
+Setting up or reviewing `withAllowedVendors()` / `withTags()` / `withExcludedSkills()` / `withExcludedGuidelines()`? Don't guess — discover, then propose:
 
 1. **Discover vendors.** `composer boost:doctor` (read-only) lists installed packages that publish skills/guidelines, split into allowlisted vs discovered-but-not-allowlisted. Decide which vendors the project should trust and add them to `withAllowedVendors()`. (`composer boost:scan` does the same opt-in **interactively but rewrites `boost.php`** — it's the apply step, not a read-only probe.)
 2. **Discover tags.** Once the relevant vendors are allowlisted, `composer boost:tags` lists every tag their skills declare and, per missing tag, which skills it would unlock. `boost:tags` only sees *allowlisted* vendors — a vendor's tags stay invisible until step 1 admits it, so do step 1 first.
 3. **Suggest tags from project context.** Match those tags against what the project *is* — read `composer.json` (Laravel app? framework-agnostic package?), the issue tracker, the CI host — and propose the `withTags()` entries that unlock relevant skills, each with a one-line reason. Only suggest tags an installed skill actually declares; an undeclared tag unlocks nothing.
-4. **Suggest individual excludes.** Tags filter in bulk; when an allowlisted vendor ships one specific skill the project doesn't want — irrelevant to the stack, or redundant with how the project already works — and no tag cleanly singles it out, propose a `withExcludedSkills(['vendor/package:skill-name'])` entry for exactly that skill. The `vendor/package:skill-name` keys are the ones `boost:tags` and `boost:doctor` already print. Reserve it for genuine one-offs — broad filtering is the tags' job.
+4. **Suggest individual excludes.** Tags filter in bulk; when an allowlisted vendor ships one specific item the project doesn't want — irrelevant to the stack, or redundant with how the project already works — and no tag cleanly singles it out, propose an exclude for exactly that item: `withExcludedSkills(['vendor/package:skill-name'])` for a skill, `withExcludedGuidelines(['vendor/package:guideline-name'])` for a guideline. The `vendor/package:name` keys are the ones `boost:tags` and `boost:doctor` already print. The guideline deny-list especially matters for a vendor guideline shipped *without* `metadata.boost-tags` — untagged guidelines always ship, so tag-filtering can't reach them and the exclude is the only lever. Reserve excludes for genuine one-offs — broad filtering is the tags' job.
 
 Present every suggestion with its reasoning — the maintainer decides. Declaring a tag is opt-in (it only ever *adds* skills); an exclude only ever *removes* one.
 

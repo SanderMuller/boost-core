@@ -26,12 +26,14 @@ function diagSkill(string $name, array $tags = [], bool $tagsValid = true, ?stri
 /**
  * @param  list<Tag|string>  $tags
  * @param  list<string>  $excluded
+ * @param  list<string>  $excludedGuidelines
  */
-function diagConfig(array $tags = [], array $excluded = []): BoostConfig
+function diagConfig(array $tags = [], array $excluded = [], array $excludedGuidelines = []): BoostConfig
 {
     return BoostConfig::configure()
         ->withTags(...$tags)
         ->withExcludedSkills($excluded)
+        ->withExcludedGuidelines($excludedGuidelines)
         ->build('/project');
 }
 
@@ -180,4 +182,13 @@ it('reports a tag-invalid guideline', function (): void {
     $status = (new SkillTagDiagnostics())->guidelineStatus(diagGuideline('g', [], tagsValid: false), diagConfig([Tag::Php]));
 
     expect($status)->toContain('invalid tags');
+});
+
+it('reports an excluded guideline', function (): void {
+    $status = (new SkillTagDiagnostics())->guidelineStatus(
+        diagGuideline('g', ['php']),
+        diagConfig([Tag::Php], excludedGuidelines: ['acme/pack:g']),
+    );
+
+    expect($status)->toContain('excluded');
 });

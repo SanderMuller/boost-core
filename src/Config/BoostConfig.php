@@ -27,6 +27,7 @@ final readonly class BoostConfig
      * @param  list<string>  $disabledEmitters  Fully-qualified class names
      * @param  list<string>  $tags  Project tags — a vendor skill ships only when its `metadata.boost-tags` ⊆ these
      * @param  list<string>  $excludedSkills  `vendor/package:skill-name` entries excluded regardless of tags
+     * @param  list<string>  $excludedGuidelines  `vendor/package:guideline-name` entries excluded regardless of tags
      */
     public function __construct(
         public array $agents,
@@ -37,6 +38,7 @@ final readonly class BoostConfig
         public bool $manageGitignore = true,
         public array $tags = [],
         public array $excludedSkills = [],
+        public array $excludedGuidelines = [],
     ) {}
 
     public static function configure(): BoostConfigBuilder
@@ -73,5 +75,17 @@ final readonly class BoostConfig
     public function excludesSkill(string $excludeKey): bool
     {
         return in_array($excludeKey, $this->excludedSkills, true);
+    }
+
+    /**
+     * Whether a guideline is on the `withExcludedGuidelines()` deny-list. The
+     * key is a guideline's `vendor/package:guideline-name` identifier —
+     * `Guideline::excludeKey()` builds it. The guideline counterpart of
+     * `excludesSkill()`: the only lever for a guideline shipped without
+     * `metadata.boost-tags`, which tag-filtering cannot reach.
+     */
+    public function excludesGuideline(string $excludeKey): bool
+    {
+        return in_array($excludeKey, $this->excludedGuidelines, true);
     }
 }

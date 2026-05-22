@@ -141,12 +141,13 @@ use SanderMuller\BoostCore\Enums\Tag;
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE])
     ->withTags(Tag::Php, Tag::Jira)        // Tag enum cases or raw strings
-    ->withExcludedSkills(['acme/pack:unwanted-skill']);
+    ->withExcludedSkills(['acme/pack:unwanted-skill'])
+    ->withExcludedGuidelines(['acme/pack:unwanted-guideline']);
 ```
 
 A vendor skill is synced only when **every** tag in its `boost-tags` is among the project's `withTags()` — `skillTags ⊆ projectTags`. An untagged skill carries the empty set and always ships (so the feature is inert until skills and projects opt in). `withExcludedSkills()` drops a specific `vendor/package:skill-name` regardless of tags.
 
-Vendor **guidelines** filter by the same rule: a guideline declares `metadata.boost-tags` in its own frontmatter and ships only when its tags are a subset of the project's. One portability caveat — a guideline carrying frontmatter is fine for boost-core but not for every consumer (`laravel/boost` expects frontmatter-free guideline Markdown); tag a guideline only when boost-core is its sole delivery path.
+Vendor **guidelines** filter by the same rule: a guideline declares `metadata.boost-tags` in its own frontmatter and ships only when its tags are a subset of the project's. One portability caveat — a guideline carrying frontmatter is fine for boost-core but not for every consumer (`laravel/boost` expects frontmatter-free guideline Markdown); tag a guideline only when boost-core is its sole delivery path. A guideline shipped *without* tags always ships — tag-filtering can't drop it — so `withExcludedGuidelines(['vendor/package:guideline-name'])` is the deny-list that can: the guideline counterpart of `withExcludedSkills()`, and the only lever for a frontmatter-free vendor guideline.
 
 The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `composer boost:tags` lists every tag installed skills and guidelines declare, which of them your `withTags()` currently filters out, and the tags to add to receive them — `boost:doctor` carries the same report as one of its sections.
 

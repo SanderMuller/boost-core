@@ -34,6 +34,9 @@ final class BoostConfigBuilder
     /** @var list<string> */
     private array $excludedSkills = [];
 
+    /** @var list<string> */
+    private array $excludedGuidelines = [];
+
     /**
      * @param  list<Agent>  $agents
      */
@@ -122,6 +125,23 @@ final class BoostConfigBuilder
         return $this;
     }
 
+    /**
+     * Exclude specific vendor guidelines regardless of tags. Each entry is a
+     * `vendor/package:guideline-name` string. The guideline counterpart of
+     * {@see withExcludedSkills()} — and the only lever for a vendor guideline
+     * that ships without `metadata.boost-tags` (e.g. a frontmatter-free
+     * guideline a `laravel/boost`-compatible package publishes), since
+     * untagged guidelines pass tag-filtering trivially.
+     *
+     * @param  list<string>  $guidelines
+     */
+    public function withExcludedGuidelines(array $guidelines): self
+    {
+        $this->excludedGuidelines = array_values($guidelines);
+
+        return $this;
+    }
+
     public function build(string $projectRoot): BoostConfig
     {
         $projectRoot = rtrim($projectRoot, '/');
@@ -135,6 +155,7 @@ final class BoostConfigBuilder
             manageGitignore: $this->manageGitignore,
             tags: $this->tags,
             excludedSkills: $this->excludedSkills,
+            excludedGuidelines: $this->excludedGuidelines,
         );
     }
 }

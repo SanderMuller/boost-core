@@ -49,11 +49,12 @@ it('starts with empty agents, vendors, and disabled emitters', function (): void
         ->toBeEmpty();
 });
 
-it('starts with empty tags and excluded skills', function (): void {
+it('starts with empty tags and exclude lists', function (): void {
     $config = (new BoostConfigBuilder())->build('/x');
 
     expect($config->tags)->toBeEmpty()
-        ->and($config->excludedSkills)->toBeEmpty();
+        ->and($config->excludedSkills)->toBeEmpty()
+        ->and($config->excludedGuidelines)->toBeEmpty();
 });
 
 it('withTags accepts Tag enum cases and raw strings, normalized and deduped', function (): void {
@@ -80,4 +81,12 @@ it('withExcludedSkills carries vendor:skill deny-list entries', function (): voi
         ->build('/x');
 
     expect($config->excludedSkills)->toBe(['acme/repo-init:deploy', 'acme/lint-pack:phpcs']);
+});
+
+it('withExcludedGuidelines carries vendor:guideline deny-list entries', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withExcludedGuidelines(['acme/skills:database-safety', 'acme/skills:migrations'])
+        ->build('/x');
+
+    expect($config->excludedGuidelines)->toBe(['acme/skills:database-safety', 'acme/skills:migrations']);
 });

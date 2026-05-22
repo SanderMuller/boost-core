@@ -24,10 +24,14 @@ function gtfGuideline(string $name, array $tags = [], bool $tagsValid = true): G
 
 /**
  * @param  list<Tag|string>  $tags
+ * @param  list<string>  $excludedGuidelines
  */
-function gtfConfig(array $tags = []): BoostConfig
+function gtfConfig(array $tags = [], array $excludedGuidelines = []): BoostConfig
 {
-    return BoostConfig::configure()->withTags(...$tags)->build('/project');
+    return BoostConfig::configure()
+        ->withTags(...$tags)
+        ->withExcludedGuidelines($excludedGuidelines)
+        ->build('/project');
 }
 
 it('keeps an untagged guideline', function (): void {
@@ -64,4 +68,22 @@ it('filters a mixed set, keeping only shippable guidelines', function (): void {
 
     expect(array_map(static fn (Guideline $g): string => $g->name, $kept))
         ->toBe(['keep-untagged', 'keep-subset']);
+});
+
+it('drops a guideline on the withExcludedGuidelines deny-list, even when its tags match', function (): void {
+    $kept = (new GuidelineTagFilter())->filter(
+        [gtfGuideline('a', ['php'])],
+        gtfConfig([Tag::Php], ['acme/pack:a']),
+    );
+
+    expect($kept)->toBeEmpty();
+});
+
+it('keeps a guideline the deny-list does not name', function (): void {
+    $kept = (new GuidelineTagFilter())->filter(
+        [gtfGuideline('a')],
+        gtfConfig([], ['acme/pack:other']),
+    );
+
+    expect($kept)->toHaveCount(1);
 });

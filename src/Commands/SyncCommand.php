@@ -152,6 +152,7 @@ final class SyncCommand extends BoostBaseCommand
 
         $wrote = $result->countByAction(WriteAction::WROTE);
         $unchanged = $result->countByAction(WriteAction::UNCHANGED);
+        $deleted = $result->countByAction(WriteAction::DELETED);
 
         if ($checkOnly) {
             $io->success(sprintf('[%s] No drift. %d file(s) unchanged.', $result->packageName, $unchanged));
@@ -160,11 +161,12 @@ final class SyncCommand extends BoostBaseCommand
         }
 
         $io->success(sprintf(
-            '[%s → %s] Sync done. wrote=%d, unchanged=%d.',
+            '[%s → %s] Sync done. wrote=%d, unchanged=%d, deleted=%d.',
             $result->packageName,
             $result->homeRoot,
             $wrote,
             $unchanged,
+            $deleted,
         ));
 
         return self::SUCCESS;
@@ -201,6 +203,7 @@ final class SyncCommand extends BoostBaseCommand
 
         $wrote = $result->countByAction(WriteAction::WROTE);
         $unchanged = $result->countByAction(WriteAction::UNCHANGED);
+        $deleted = $result->countByAction(WriteAction::DELETED);
         $emittersWrote = $result->countEmittersByAction(EmitterAction::WROTE);
         $emittersSkipped = $result->countEmittersByAction(EmitterAction::SKIPPED);
 
@@ -219,7 +222,7 @@ final class SyncCommand extends BoostBaseCommand
             return self::SUCCESS;
         }
 
-        $io->success(sprintf('Sync done. wrote=%d, unchanged=%d.%s', $wrote, $unchanged, $emitterSummary));
+        $io->success(sprintf('Sync done. wrote=%d, unchanged=%d, deleted=%d.%s', $wrote, $unchanged, $deleted, $emitterSummary));
 
         return self::SUCCESS;
     }

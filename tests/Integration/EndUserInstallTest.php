@@ -77,7 +77,8 @@ it('bin/boost runs and syncs in an end-user install without composer/composer in
         $syncOutput = $sync->getOutput() . $sync->getErrorOutput();
 
         expect($sync->getExitCode())->toBe(0, 'vendor/bin/boost sync failed: ' . $syncOutput)
-            ->and(file_exists($fixture . '/.claude/skills/dispatched/SKILL.md'))->toBeTrue();
+            ->and(file_exists($fixture . '/.claude/skills/dispatched/SKILL.md'))->toBeTrue()
+            ->and($syncOutput)->toContain('deleted=');
     } finally {
         cleanupTestDir($fixture);
     }

@@ -17,9 +17,10 @@ use Throwable;
  * Two callables, differing only in success-path output:
  *
  *  - {@see run()} — streams the binary's one-line summary only when the
- *    sync wrote at least one file; silent on a no-op (`wrote=0`) install.
- *    Designed for `post-install-cmd` / `post-update-cmd` hooks, where a
- *    summary on every install would be noise.
+ *    sync wrote or deleted at least one file; silent on a true no-op
+ *    (`wrote=0, deleted=0`) install. Designed for `post-install-cmd` /
+ *    `post-update-cmd` hooks, where a summary on every install would be
+ *    noise.
  *  - {@see runWithSummary()} — always streams the summary, including on a
  *    no-op install. Designed for user-invoked scripts like `composer
  *    sync-ai` where silence on success reads as a no-op.
@@ -52,9 +53,10 @@ use Throwable;
 final class BoostAutoSync
 {
     /**
-     * Streams the one-line sync summary only when the sync wrote at least
-     * one file; silent on a no-op (`wrote=0`) install. Wire into auto-firing
-     * hooks (`post-install-cmd` / `post-update-cmd`).
+     * Streams the one-line sync summary only when the sync wrote or deleted
+     * at least one file; silent on a true no-op (`wrote=0, deleted=0`)
+     * install. Wire into auto-firing hooks (`post-install-cmd` /
+     * `post-update-cmd`).
      */
     public static function run(Event $event): void
     {
@@ -75,8 +77,8 @@ final class BoostAutoSync
      * Shared body of the two script callbacks. On a clean exit the binary's
      * one-line summary is streamed through Composer's IO — always when
      * `$alwaysSummary`, otherwise only when the summary reports a non-zero
-     * write count, so a routine no-op `composer install` stays quiet.
-     * Failure handling is identical for both callbacks.
+     * write or delete count, so a routine no-op `composer install` stays
+     * quiet. Failure handling is identical for both callbacks.
      */
     private static function runAndReport(Event $event, bool $alwaysSummary): void
     {
@@ -92,21 +94,22 @@ final class BoostAutoSync
         }
 
         $summary = trim($process->getOutput());
-        if ($summary !== '' && ($alwaysSummary || self::summaryReportsWrites($summary))) {
+        if ($summary !== '' && ($alwaysSummary || self::summaryReportsChange($summary))) {
             $event->getIO()->write($summary);
         }
     }
 
     /**
-     * True when a `boost sync` success summary reports a non-zero write
-     * count (`wrote=<n>`, n > 0) — the signal that lets {@see run()} stay
-     * silent on a no-op install yet still surface the summary when files
-     * actually changed. Couples to the binary's `wrote=%d` summary
-     * phrasing; kept in lockstep with `SyncCommand`'s report output.
+     * True when a `boost sync` success summary reports a non-zero write OR
+     * delete count (`wrote=<n>` or `deleted=<n>`, n > 0) — the signal that
+     * lets {@see run()} stay silent on a true no-op install yet still
+     * surface the summary when files were written or pruned. Couples to
+     * the binary's `wrote=%d, …, deleted=%d` summary phrasing; kept in
+     * lockstep with `SyncCommand`'s report output.
      */
-    private static function summaryReportsWrites(string $summary): bool
+    private static function summaryReportsChange(string $summary): bool
     {
-        return preg_match('/\bwrote=[1-9]\d*\b/', $summary) === 1;
+        return preg_match('/\b(wrote|deleted)=[1-9]\d*\b/', $summary) === 1;
     }
 
     /**

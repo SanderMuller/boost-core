@@ -40,6 +40,36 @@ final class BoostTags
             return [[], false];
         }
 
+        return [self::parseString($raw), true];
+    }
+
+    /**
+     * Whether `$frontmatter` declares a `metadata.boost-tags` key at all —
+     * regardless of whether its value is valid. Lets a caller distinguish
+     * "the author left tags unspecified" (a guideline may then fall back to
+     * the `.boost-tags.yaml` manifest) from "the author declared tags" (that
+     * declaration wins, even when malformed).
+     *
+     * @param  array<string, mixed>  $frontmatter
+     */
+    public static function declaresTags(array $frontmatter): bool
+    {
+        $metadata = $frontmatter['metadata'] ?? null;
+
+        return is_array($metadata) && array_key_exists('boost-tags', $metadata);
+    }
+
+    /**
+     * Tokenize a raw space-delimited `boost-tags` value into normalized,
+     * de-duplicated tags — the shared lexer behind {@see parse()} and the
+     * guideline `.boost-tags.yaml` manifest. A known string always yields a
+     * (possibly empty) list; invalidity — a non-string value — is rejected
+     * by the caller before it reaches here.
+     *
+     * @return list<string>
+     */
+    public static function parseString(string $raw): array
+    {
         $tokens = preg_split('/\s+/', trim($raw), -1, PREG_SPLIT_NO_EMPTY);
 
         $tags = [];
@@ -50,6 +80,6 @@ final class BoostTags
             }
         }
 
-        return [array_values(array_unique($tags)), true];
+        return array_values(array_unique($tags));
     }
 }

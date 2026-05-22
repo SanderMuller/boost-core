@@ -19,6 +19,8 @@ final readonly class GuidelineLoader
             return;
         }
 
+        $manifest = GuidelineTagManifest::load($directory);
+
         $finder = (new Finder())
             ->files()
             ->in($directory)
@@ -36,7 +38,13 @@ final readonly class GuidelineLoader
                 ? $parsed->frontmatter['description']
                 : null;
 
-            [$tags, $tagsValid] = BoostTags::parse($parsed->frontmatter);
+            // Frontmatter `metadata.boost-tags` wins; a guideline that
+            // declares no tags inline falls back to the `.boost-tags.yaml`
+            // sidecar manifest — the tag source for frontmatter-free
+            // (laravel/boost-safe) guidelines.
+            [$tags, $tagsValid] = BoostTags::declaresTags($parsed->frontmatter)
+                ? BoostTags::parse($parsed->frontmatter)
+                : $manifest->tagsFor($file->getFilename());
 
             yield new Guideline(
                 name: $name,

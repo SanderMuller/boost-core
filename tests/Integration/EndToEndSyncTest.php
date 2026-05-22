@@ -590,3 +590,52 @@ it('end-to-end: host command fans out to per-agent command files, gitignored', f
         rmTreeE2E($root);
     }
 });
+
+it('tag-filters a vendor guideline by its .boost-tags.yaml manifest entry', function (): void {
+    $root = makeEndToEndProject();
+    $vendorPath = $root . '/vendor/acme/db-pack';
+    mkdir($vendorPath . '/resources/boost/guidelines', 0o755, recursive: true);
+    try {
+        file_put_contents($vendorPath . '/composer.json', '{"name":"acme/db-pack","type":"library"}');
+        // A frontmatter-free guideline — laravel/boost-safe — tagged only via
+        // the sidecar manifest, never inline.
+        file_put_contents(
+            $vendorPath . '/resources/boost/guidelines/db-safety.md',
+            "# DB Safety\n\nNo destructive commands.\n",
+        );
+        file_put_contents(
+            $vendorPath . '/resources/boost/guidelines/.boost-tags.yaml',
+            "db-safety.md: \"database\"\n",
+        );
+
+        $packages = new InstalledPackages([
+            'acme/db-pack' => new PackageInfo('acme/db-pack', '1.0.0', $vendorPath),
+        ]);
+
+        // No `database` tag declared → the manifest-tagged guideline is filtered out.
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/db-pack"]);',
+        );
+        SyncEngine::default($packages)->sync($root);
+        $withoutTag = is_file($root . '/CLAUDE.md') ? (string) file_get_contents($root . '/CLAUDE.md') : '';
+        expect($withoutTag)->not->toContain('No destructive commands.');
+
+        // Declare `database` → the manifest-tagged guideline now ships.
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/db-pack"])' . "\n"
+            . '    ->withTags("database");',
+        );
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and((string) file_get_contents($root . '/CLAUDE.md'))->toContain('No destructive commands.');
+    } finally {
+        rmTreeE2E($root);
+    }
+});

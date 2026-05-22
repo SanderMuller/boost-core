@@ -23,3 +23,7 @@ it('leaves enum case values unchanged through normalization', function (): void 
         expect(Tag::normalize($case->value))->toBe($case->value);
     }
 });
+
+it('exposes a Database case — the capability tag for the guideline tag manifest', function (): void {
+    expect(Tag::Database->value)->toBe('database');
+});

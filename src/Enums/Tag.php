@@ -18,6 +18,7 @@ enum Tag: string
     case Php = 'php';
     case Laravel = 'laravel';
     case Frontend = 'frontend';
+    case Database = 'database';
     case Jira = 'jira';
     case Github = 'github';
     case GithubIssues = 'github-issues';

@@ -14,7 +14,7 @@ function runBin(string $args): array
     return ['exit' => $process->getExitCode() ?? 0, 'output' => $process->getOutput() . $process->getErrorOutput()];
 }
 
-it('registers all BoostCoreCommandProvider commands in standalone bin', function (): void {
+it('registers all boost commands in the standalone bin', function (): void {
     $result = runBin('list');
 
     expect($result['exit'])->toBe(0);

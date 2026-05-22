@@ -2,6 +2,52 @@
 
 Breaking changes per major/minor bump.
 
+## 0.5 → 0.6
+
+0.6.0 retires boost-core's Composer plugin. boost-core is now a plain `library` — it runs no install-time code, so there is no `allow-plugins` trust prompt and no install-time execution surface. Three things change for consumers.
+
+### `composer boost:*` commands are gone — use `vendor/bin/boost`
+
+The plugin registered `composer boost:install`, `composer boost:sync`, etc. as Composer subcommands. With the plugin removed, every command runs through the standalone binary, with the `boost:` prefix dropped:
+
+| Was | Now |
+|---|---|
+| `composer boost:install` | `vendor/bin/boost install` |
+| `composer boost:sync` | `vendor/bin/boost sync` |
+| `composer boost:scan` | `vendor/bin/boost scan` |
+| `composer boost:doctor` | `vendor/bin/boost doctor` |
+| `composer boost:tags` | `vendor/bin/boost tags` |
+| `composer boost:new` | `vendor/bin/boost new` |
+
+Update any scripts, CI steps, or docs that invoked `composer boost:*`.
+
+### Auto-sync no longer happens automatically
+
+The plugin auto-ran `boost sync` on every `composer install` / `composer update` (the `post-autoload-dump` hook). That hook is gone. To keep a `composer install` re-syncing, wire the script callback into your **own root `composer.json`**:
+
+```json
+"scripts": {
+    "post-install-cmd": ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"],
+    "post-update-cmd":  ["SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"]
+}
+```
+
+A dependency's own `post-install-cmd` does not fire in a consuming project — only the root package's scripts run — so this must go in your project's `composer.json`. Otherwise, run `vendor/bin/boost sync` yourself (e.g. in CI). `BOOST_SKIP_AUTOSYNC=1` still disables the callback.
+
+### Globally-installed skill packages: `boost sync --scope=user --all`
+
+The plugin also auto-synced skills for `composer global require`-d packages. That is replaced by an explicit command — after a global install, run once:
+
+```bash
+vendor/bin/boost sync --scope=user --all
+```
+
+It user-scope-syncs every globally-installed package that ships `resources/boost/skills/`, wholesale — every skill is published. Tag filters and the vendor allowlist are project-scope controls; with no `boost.php` in user scope, neither applies.
+
+### Drop the now-dead `allow-plugins` entry
+
+A consumer `composer.json` that listed `sandermuller/boost-core` under `config.allow-plugins` can remove that entry — boost-core is no longer a plugin. Leaving it is harmless (Composer ignores an `allow-plugins` entry for a non-plugin), so the cleanup is optional.
+
 ## 0.3 → 0.4
 
 ### User-scope skill paths now vendor-namespaced

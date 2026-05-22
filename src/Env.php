@@ -10,8 +10,8 @@ namespace SanderMuller\BoostCore;
 final class Env
 {
     /**
-     * Set to any non-empty value to skip the plugin's auto-sync pass on
-     * `post-autoload-dump` (both project- and global-context branches).
+     * Set to any non-empty value to skip auto-sync — honored by the
+     * `BoostAutoSync` script callbacks and the `syncUserScope*` helpers.
      */
     public const string SKIP_AUTOSYNC = 'BOOST_SKIP_AUTOSYNC';
 

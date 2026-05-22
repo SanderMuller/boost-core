@@ -16,7 +16,7 @@
     ],
     "homepage": "https://github.com/sandermuller/boost-core",
     "license": "MIT",
-    "type": "composer-plugin",
+    "type": "library",
     "authors": [
         {
             "name": "Sander Muller",
@@ -26,7 +26,6 @@
     ],
     "require": {
         "php": "^8.3",
-        "composer-plugin-api": "^2.6",
         "composer-runtime-api": "^2.2",
         "laravel/prompts": "^0.3",
         "nikic/php-parser": "^5.0",
@@ -71,9 +70,6 @@
     "bin": [
         "bin/boost"
     ],
-    "extra": {
-        "class": "SanderMuller\\BoostCore\\BoostCorePlugin"
-    },
     "scripts": {
         "post-install-cmd": [
             "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"

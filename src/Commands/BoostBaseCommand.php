@@ -14,10 +14,9 @@ use Throwable;
 /**
  * Shared base for boost-family commands.
  *
- * Extends Symfony's Command directly (not Composer\Command\BaseCommand) so
- * commands can be loaded in standalone-bin contexts where composer/composer
- * is not in vendor/. The Composer plugin path adds them via CommandProvider;
- * Composer's Application accepts plain Symfony commands.
+ * Extends Symfony's Command directly so commands load in the standalone
+ * `bin/boost` — including end-user installs where composer/composer is not
+ * in vendor/.
  */
 abstract class BoostBaseCommand extends Command
 {

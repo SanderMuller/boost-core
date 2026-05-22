@@ -93,7 +93,7 @@ final class ScanCommand extends BoostBaseCommand
         }
 
         $io->success(sprintf('Updated allowlist in %s', $configPath));
-        $io->writeln('Next: run <info>composer boost:sync</info> to regenerate agent files.');
+        $io->writeln('Next: run <info>vendor/bin/boost sync</info> to regenerate agent files.');
 
         return self::SUCCESS;
     }

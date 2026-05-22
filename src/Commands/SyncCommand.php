@@ -37,8 +37,14 @@ final class SyncCommand extends BoostBaseCommand
                 'scope',
                 null,
                 InputOption::VALUE_REQUIRED,
-                "Sync scope: `project` (default, reads .ai/ + boost.php) or `user` (reads invoking package's resources/boost/skills/ into ~/.{agent}/skills/<pkg>/).",
+                "Sync scope: `project` (default, reads .ai/ + boost.php) or `user` (publishes a package's resources/boost/skills/ wholesale into ~/.{agent}/skills/<pkg>/ — no boost.php, so no tag or allowlist filtering).",
                 'project',
+            )
+            ->addOption(
+                'all',
+                null,
+                InputOption::VALUE_NONE,
+                'With `--scope=user`: sync every installed package that ships skills — run once after `composer global require`.',
             );
         $this->addWorkingDirOption();
     }
@@ -53,7 +59,9 @@ final class SyncCommand extends BoostBaseCommand
         $scope = $input->getOption('scope');
 
         if ($scope === 'user') {
-            return $this->runUserScope($io, $projectRoot, $checkOnly);
+            return (bool) $input->getOption('all')
+                ? $this->runUserScopeAll($io, $checkOnly)
+                : $this->runUserScope($io, $projectRoot, $checkOnly);
         }
 
         if ($scope !== 'project') {
@@ -88,6 +96,37 @@ final class SyncCommand extends BoostBaseCommand
         }
 
         return $this->reportUserScope($io, $result, $checkOnly);
+    }
+
+    /**
+     * `--scope=user --all`: sync every installed package that ships skills.
+     * The explicit-command replacement for the retired plugin's global
+     * autosync — run once after `composer global require`.
+     */
+    private function runUserScopeAll(SymfonyStyle $io, bool $checkOnly): int
+    {
+        try {
+            $results = SyncEngine::default()->syncUserAll($checkOnly);
+        } catch (Throwable $throwable) {
+            $io->error('boost:sync --scope=user --all failed: ' . $throwable->getMessage());
+
+            return self::FAILURE;
+        }
+
+        if ($results === []) {
+            $io->success('No installed package ships skills — nothing to user-scope sync.');
+
+            return self::SUCCESS;
+        }
+
+        $exit = self::SUCCESS;
+        foreach ($results as $result) {
+            if ($this->reportUserScope($io, $result, $checkOnly) === self::FAILURE) {
+                $exit = self::FAILURE;
+            }
+        }
+
+        return $exit;
     }
 
     private function reportUserScope(SymfonyStyle $io, UserScopeResult $result, bool $checkOnly): int

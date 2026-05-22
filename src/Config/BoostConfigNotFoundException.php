@@ -9,7 +9,7 @@ final class BoostConfigNotFoundException extends RuntimeException
     public function __construct(public readonly string $expectedPath)
     {
         parent::__construct(sprintf(
-            "boost.php not found at %s.\n\nRun `composer boost:install` to generate a starter config and pick agents/vendors.",
+            "boost.php not found at %s.\n\nRun `vendor/bin/boost install` to generate a starter config and pick agents/vendors.",
             $expectedPath,
         ));
     }

@@ -1,6 +1,6 @@
 # boost-core
 
-> AI agent configuration sync for PHP projects. Write skills and guidelines once in `.ai/`; boost-core publishes them to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). No framework dependency, and vendor skills sync only from an allowlist you control.
+> AI agent configuration sync for PHP projects. Write skills, guidelines, and commands once in `.ai/`; boost-core publishes them to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). No framework dependency, and vendor skills sync only from an allowlist you control.
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/sandermuller/boost-core.svg?style=flat-square)](https://packagist.org/packages/sandermuller/boost-core)
 [![Tests](https://img.shields.io/github/actions/workflow/status/sandermuller/boost-core/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/sandermuller/boost-core/actions/workflows/run-tests.yml)
@@ -26,21 +26,21 @@ composer require --dev sandermuller/boost-core
 ## Usage
 
 ```bash
-composer boost:install   # generate boost.php (if missing) + interactive picker for agents + vendor allowlist
-composer boost:sync      # fan out to selected agents
+vendor/bin/boost install   # generate boost.php (if missing) + interactive picker for agents + vendor allowlist
+vendor/bin/boost sync      # fan out to selected agents
 ```
 
-After install, every `composer install` / `composer update` re-runs `boost:sync` automatically (post-autoload-dump). Set `BOOST_SKIP_AUTOSYNC=1` to disable.
+boost-core is a plain library — it runs no install-time code of its own. To re-sync automatically after a `composer install` / `composer update`, wire the `BoostAutoSync` script callback into your project's `composer.json` (see below); otherwise run `vendor/bin/boost sync` yourself, e.g. in CI. `BOOST_SKIP_AUTOSYNC=1` disables the callback.
 
 For tooling authors who want to publish their own skills to every AI agent on the user's machine:
 
 ```bash
-composer boost:sync --scope=user   # ~/.{agent}/skills/<vendor>__<package>/<skill>/SKILL.md
+vendor/bin/boost sync --scope=user   # ~/.{agent}/skills/<vendor>__<package>/<skill>/SKILL.md
 ```
 
-In `composer global` context (`composer global require <skill-bearing-package>`), the plugin auto-detects the global install and runs user-scope sync for every globally-installed package shipping `resources/boost/skills/`, so no manual `--scope=user` is needed. Each package's paths are namespaced by its full `vendor/package` slug, with `/` replaced by `__`. That sequence can't occur inside a Composer package name, so two packages never produce the same slug — `vendor-a/foo` and `vendor-b/foo` land in separate directories.
+After `composer global require`-ing one or more skill-bearing packages, run `vendor/bin/boost sync --scope=user --all` once — it user-scope-syncs every globally-installed package that ships `resources/boost/skills/`. User scope publishes a package's skills **wholesale**: there is no `boost.php` in play, so tag filters (`withTags()`) and the vendor allowlist — both project-scope controls — do not apply. Each package's paths are namespaced by its full `vendor/package` slug, with `/` replaced by `__`. That sequence can't occur inside a Composer package name, so two packages never produce the same slug — `vendor-a/foo` and `vendor-b/foo` land in separate directories.
 
-### Composer script callback (for plugin-package authors)
+### Auto-sync on `composer install`
 
 `SanderMuller\BoostCore\Scripts\BoostAutoSync::run` is a cross-platform Composer script callback that consumer packages can wire into their own `post-install-cmd` / `post-update-cmd` hooks:
 
@@ -55,9 +55,9 @@ In `composer global` context (`composer global require <skill-bearing-package>`)
 }
 ```
 
-It checks `Event::isDevMode()`, resolves `composer config.bin-dir`, runs `vendor/bin/boost sync` and surfaces non-zero exits through Composer's IO. Works on Windows + Unix. Honors `BOOST_SKIP_AUTOSYNC=1` (same escape hatch as the plugin's auto-sync hook). The plugin's `onPostAutoloadDump` already runs sync for end-user installs — this callback is for plugin packages in the `boost-*` family that want an explicit, cross-platform script entry of their own.
+It checks `Event::isDevMode()`, resolves `composer config.bin-dir`, runs `vendor/bin/boost sync`, surfaces non-zero exits through Composer's IO, and prints the one-line sync summary on installs that actually wrote files — staying silent on no-op installs. Works on Windows + Unix. Honors `BOOST_SKIP_AUTOSYNC=1`. boost-core ships no Composer plugin — wiring this callback is how a consuming project makes a `composer install` re-sync; without it, run `vendor/bin/boost sync` manually or in CI.
 
-For user-invoked scripts (`composer sync-ai`, etc.) where silence on success reads as a no-op, use `BoostAutoSync::runWithSummary` instead — same behaviour but streams the binary's one-line success summary through Composer's IO:
+For user-invoked scripts (`composer sync-ai`, etc.) where silence on success reads as a no-op, use `BoostAutoSync::runWithSummary` instead — it streams the binary's one-line success summary on *every* successful sync, including the no-op installs `run` keeps quiet:
 
 ```json
 "scripts": {
@@ -86,6 +86,21 @@ require __DIR__ . '/../vendor/autoload.php';
 ```
 
 `syncUserScopeOnce()` runs a user-scope sync (into `~/.{agent}/skills/<vendor>__<package>/`) the first time it sees a given version of the tool, then writes a per-version sentinel so later runs are free. `syncUserScope()` is the ungated form. Both honor `BOOST_SKIP_AUTOSYNC=1` and never throw — the tool keeps running even if its sync fails.
+
+## Commands
+
+`.ai/commands/*.md` holds reusable prompt templates — the slash-command files agents surface in their command palette. `boost sync` fans each one out to the six agents with a command surface:
+
+| Agent       | Command directory                            |
+| ----------- | -------------------------------------------- |
+| Claude Code | `.claude/commands/`                          |
+| Cursor      | `.cursor/commands/`                          |
+| Copilot     | `.github/prompts/` (as `<name>.prompt.md`)   |
+| Junie       | `.junie/commands/`                           |
+| OpenCode    | `.opencode/commands/`                        |
+| Amp         | `.agents/commands/`                          |
+
+Codex, Gemini, and Kiro have no command surface — they are skipped. The source directory defaults to `.ai/commands`; override it with `->withCommandsPath(...)` in `boost.php`.
 
 ## Managed `.gitignore`
 
@@ -149,7 +164,7 @@ A vendor skill is synced only when **every** tag in its `boost-tags` is among th
 
 Vendor **guidelines** filter by the same subset rule, from either of two tag sources: a guideline's own `metadata.boost-tags` frontmatter, or a sidecar `resources/boost/guidelines/.boost-tags.yaml` manifest — a map of guideline filename to a space-delimited tag string. The sidecar exists because a guideline carrying frontmatter is fine for boost-core but not for `laravel/boost`, which renders a `---` block literally; a guideline that must stay frontmatter-free is tagged via the manifest instead, which laravel/boost's `*.md`-only Finder never sees. Frontmatter wins when a guideline has both. An untagged guideline always ships; `withExcludedGuidelines(['vendor/package:guideline-name'])` drops a specific one regardless of tags. Skills always tag inline — `metadata.boost-tags` works in every engine — so the inline-vs-sidecar split is guidelines-only.
 
-The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `composer boost:tags` lists every tag installed skills and guidelines declare, which of them your `withTags()` currently filters out, and the tags to add to receive them — `boost:doctor` carries the same report as one of its sections.
+The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `vendor/bin/boost tags` lists every tag installed skills and guidelines declare, which of them your `withTags()` currently filters out, and the tags to add to receive them — `boost doctor` carries the same report as one of its sections.
 
 > [!WARNING]
 > Adding a tag to an **already-shipped** skill is consumer-breaking: every project that has not declared that tag loses the skill. Vendors should treat it as a breaking change (or a loud release-note callout), not a minor tweak.
@@ -160,7 +175,7 @@ The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open
 composer test
 ```
 
-That runs the full Pest suite (unit + integration, including real `composer install` subprocesses for the standalone-bin, plugin-capability, and global-context surfaces). Coverage report via `composer test-coverage`.
+That runs the full Pest suite (unit + integration, including real `composer install` subprocesses for the standalone-bin and end-user-install surfaces). Coverage report via `composer test-coverage`.
 
 ## Upgrading
 

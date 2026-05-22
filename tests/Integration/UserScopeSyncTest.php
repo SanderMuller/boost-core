@@ -3,6 +3,7 @@
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
 use SanderMuller\BoostCore\Agents\CursorTarget;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
+use SanderMuller\BoostCore\Sync\PackageInfo;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\WriteAction;
 
@@ -393,5 +394,61 @@ it('user-scope errors when composer.json is missing', function (): void {
     } finally {
         rmTreeUserScope($pkg);
         rmTreeUserScope($home);
+    }
+});
+
+it('syncUserAll syncs every installed package that ships skills', function (): void {
+    $home = sys_get_temp_dir() . '/boost-uall-home-' . bin2hex(random_bytes(8));
+    $pkgA = sys_get_temp_dir() . '/boost-uall-a-' . bin2hex(random_bytes(8));
+    $pkgB = sys_get_temp_dir() . '/boost-uall-b-' . bin2hex(random_bytes(8));
+    mkdir($home, 0o755, recursive: true);
+    mkdir($pkgA . '/resources/boost/skills', 0o755, recursive: true);
+    mkdir($pkgB . '/resources/boost/skills', 0o755, recursive: true);
+
+    try {
+        file_put_contents($pkgA . '/composer.json', json_encode(['name' => 'acme/pack-a'], JSON_THROW_ON_ERROR));
+        file_put_contents($pkgA . '/resources/boost/skills/skill-a.md', "---\nname: skill-a\n---\nA body.\n");
+        file_put_contents($pkgB . '/composer.json', json_encode(['name' => 'acme/pack-b'], JSON_THROW_ON_ERROR));
+        file_put_contents($pkgB . '/resources/boost/skills/skill-b.md', "---\nname: skill-b\n---\nB body.\n");
+
+        $results = (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([
+            'acme/pack-a' => new PackageInfo('acme/pack-a', '1.0.0', $pkgA),
+            'acme/pack-b' => new PackageInfo('acme/pack-b', '1.0.0', $pkgB),
+        ])))->syncUserAll(homeRoot: $home);
+
+        expect($results)->toHaveCount(2)
+            ->and(file_exists($home . '/.claude/skills/acme__pack-a/skill-a/SKILL.md'))->toBeTrue()
+            ->and(file_exists($home . '/.claude/skills/acme__pack-b/skill-b/SKILL.md'))->toBeTrue();
+    } finally {
+        rmTreeUserScope($home);
+        rmTreeUserScope($pkgA);
+        rmTreeUserScope($pkgB);
+    }
+});
+
+it('syncUserAll skips a package that ships no skills', function (): void {
+    $home = sys_get_temp_dir() . '/boost-uall-home-' . bin2hex(random_bytes(8));
+    $withSkills = sys_get_temp_dir() . '/boost-uall-s-' . bin2hex(random_bytes(8));
+    $noSkills = sys_get_temp_dir() . '/boost-uall-n-' . bin2hex(random_bytes(8));
+    mkdir($home, 0o755, recursive: true);
+    mkdir($withSkills . '/resources/boost/skills', 0o755, recursive: true);
+    mkdir($noSkills, 0o755, recursive: true);
+
+    try {
+        file_put_contents($withSkills . '/composer.json', json_encode(['name' => 'acme/has-skills'], JSON_THROW_ON_ERROR));
+        file_put_contents($withSkills . '/resources/boost/skills/x.md', "---\nname: x\n---\nBody.\n");
+        file_put_contents($noSkills . '/composer.json', json_encode(['name' => 'acme/no-skills'], JSON_THROW_ON_ERROR));
+
+        $results = (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([
+            'acme/has-skills' => new PackageInfo('acme/has-skills', '1.0.0', $withSkills),
+            'acme/no-skills' => new PackageInfo('acme/no-skills', '1.0.0', $noSkills),
+        ])))->syncUserAll(homeRoot: $home);
+
+        expect($results)->toHaveCount(1)
+            ->and($results[0]->packageName)->toBe('acme/has-skills');
+    } finally {
+        rmTreeUserScope($home);
+        rmTreeUserScope($withSkills);
+        rmTreeUserScope($noSkills);
     }
 });

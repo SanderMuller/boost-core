@@ -14,8 +14,8 @@ use Throwable;
  * Scaffold a new skill or guideline markdown file with frontmatter template.
  *
  * Examples:
- *   composer boost:new skill foo-bar
- *   composer boost:new guideline conventions
+ *   vendor/bin/boost new skill foo-bar
+ *   vendor/bin/boost new guideline conventions
  */
 final class NewCommand extends BoostBaseCommand
 {
@@ -113,7 +113,7 @@ final class NewCommand extends BoostBaseCommand
         }
 
         $io->success(sprintf('Created %s', $targetFile));
-        $io->writeln('Next: edit the file, then run <info>composer boost:sync</info> to publish.');
+        $io->writeln('Next: edit the file, then run <info>vendor/bin/boost sync</info> to publish.');
 
         return self::SUCCESS;
     }

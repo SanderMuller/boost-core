@@ -61,7 +61,7 @@ final class DoctorCommand extends BoostBaseCommand
         $agents = array_map(static fn (Agent $a): string => $a->value, $config->agents);
         $io->section('Agents');
         if ($agents === []) {
-            $io->warning('No agents configured. Run `composer boost:install` to pick.');
+            $io->warning('No agents configured. Run `vendor/bin/boost install` to pick.');
 
             return;
         }
@@ -104,7 +104,7 @@ final class DoctorCommand extends BoostBaseCommand
 
         $this->renderAllowlistGroup($io, 'Allowlisted and publishing', $allowedAndPresent, 'info');
         $this->renderAllowlistGroup($io, 'Allowlisted but not installed (or not publishing)', $allowedButMissing, 'comment');
-        $this->renderAllowlistGroup($io, 'Discovered but NOT allowlisted (run `composer boost:scan` to opt in)', $discoveredButNotAllowed, 'comment');
+        $this->renderAllowlistGroup($io, 'Discovered but NOT allowlisted (run `vendor/bin/boost scan` to opt in)', $discoveredButNotAllowed, 'comment');
 
         if ($allowedAndPresent === [] && $allowedButMissing === [] && $discoveredButNotAllowed === []) {
             $io->writeln('<info>No vendor publishers detected.</info>');
@@ -144,7 +144,7 @@ final class DoctorCommand extends BoostBaseCommand
 
         if ($result->hasDrift()) {
             $io->warning(sprintf(
-                '%d file(s) would change. Run `composer boost:sync`.',
+                '%d file(s) would change. Run `vendor/bin/boost sync`.',
                 $result->countWouldChange(),
             ));
 

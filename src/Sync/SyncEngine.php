@@ -121,7 +121,7 @@ final readonly class SyncEngine
     public function syncUser(string $packageRoot, bool $checkOnly = false, ?string $homeRoot = null): UserScopeResult
     {
         $packageRoot = rtrim($packageRoot, '/');
-        $home = $homeRoot !== null ? rtrim($homeRoot, '/') : $this->resolveHomeDirectory();
+        $home = $homeRoot !== null ? rtrim($homeRoot, '/') : self::resolveHomeDirectory();
 
         $composerJson = $packageRoot . '/composer.json';
         if (! is_file($composerJson)) {
@@ -189,7 +189,24 @@ final readonly class SyncEngine
         );
     }
 
-    private function resolveHomeDirectory(): string
+    /**
+     * User-scope sync EVERY installed package that ships
+     * `resources/boost/skills/` — the explicit-command form of what the
+     * retired Composer plugin's `runGlobalSync` did automatically on a
+     * `composer global` operation. Surfaced as `boost sync --scope=user
+     * --all`, run once after a `composer global require`.
+     *
+     * The per-package loop lives in {@see UserScopeBulkSync} — extracted
+     * so it does not load this class's cognitive-complexity budget.
+     *
+     * @return list<UserScopeResult>  one per skill-shipping package
+     */
+    public function syncUserAll(bool $checkOnly = false, ?string $homeRoot = null): array
+    {
+        return (new UserScopeBulkSync())->run($this, $this->vendorScanner, $checkOnly, $homeRoot);
+    }
+
+    public static function resolveHomeDirectory(): string
     {
         $home = getenv('HOME');
         if (is_string($home) && $home !== '') {

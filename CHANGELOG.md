@@ -5,7 +5,33 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.6.1...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.6.2...HEAD)
+
+## [0.6.2](https://github.com/sandermuller/boost-core/compare/0.6.1...0.6.2) - 2026-05-23
+
+### Fixed
+
+- **`boost sync` emits a one-line note when tagged vendor skills are silently filtered out.** Triggered when (a) the consumer's `withTags()` is empty AND (b) at least one vendor skill was dropped specifically by tag-mismatch:
+  
+  ```
+  ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
+          Run `vendor/bin/boost tags` to see them.
+  
+  ```
+  The nudge is precise about its cause — `withExcludedSkills` denials and malformed-frontmatter drops are NOT counted, so the message never misleads consumers who intentionally excluded skills or have a broken vendor manifest. Per-vendor tag-mismatch drops are summed without cross-vendor name deduplication, so two vendors each hiding a same-named skill count as two.
+  
+  Consumers with `withTags(...)` already declared see no nudge — explicit filtering is intentional, not noise.
+  
+- **`SkillTagFilter::filter()` now returns `droppedByTag: int`** alongside `droppedNames` — the data-flow change that powers the nudge. Existing callers of `kept` and `droppedNames` are unaffected; the return is additive.
+  
+
+### Upgrade notes
+
+`composer require sandermuller/boost-core:^0.6.2` — or nothing at all if you already allow `^0.6`, since this is a patch. No behaviour change for consumers who already declare `withTags(...)` (the common explicit-filtering case). Family packages constrained to `boost-core ^0.6` receive 0.6.2 transitively, no re-tag needed.
+
+If your next `composer install` surfaces the new note pointing at `vendor/bin/boost tags`, you have skills available you have not opted into — `boost tags`'s "Filtered skills you could enable" section shows the gap and the tag(s) to add to `withTags(...)` to receive them. If the filtering was intentional, declare the tags you actually want (any non-empty `withTags()` silences the nudge) and `boost tags` will continue to show the full classification.
+
+**Full changelog:** https://github.com/SanderMuller/boost-core/compare/0.6.1...0.6.2
 
 ## [0.6.1](https://github.com/sandermuller/boost-core/compare/0.6.0...0.6.1) - 2026-05-22
 
@@ -69,6 +95,7 @@ boost-core is no longer a Composer plugin. It ships as a plain `type: library` �
   
   ```php
   ->withExcludedGuidelines(['acme/pack:database-safety'])
+  
   
   
   
@@ -276,6 +303,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   
   
   
+  
     ```
 
 ### Fixed
@@ -309,6 +337,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
   
   
   

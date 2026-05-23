@@ -639,3 +639,121 @@ it('tag-filters a vendor guideline by its .boost-tags.yaml manifest entry', func
         rmTreeE2E($root);
     }
 });
+
+it('tagFilteredSkillsCount surfaces the silent-filter foot-gun when withTags is empty', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-nudge-empty-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills', 0o755, recursive: true);
+
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/jira-pack'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/skills/jira-triage.md',
+            "---\nname: jira-triage\ndescription: Triage Jira.\nmetadata:\n  boost-tags: jira\n---\nBody.\n",
+        );
+
+        // No `withTags(...)` declared — this is the silent-filter case three real
+        // boost-stack repos hit before audits (repo-new, package-boost-laravel,
+        // boost-skills's own dogfood).
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/jira-pack']);");
+
+        $packages = new InstalledPackages(['acme/jira-pack' => new PackageInfo('acme/jira-pack', '1.0.0', $vendor)]);
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->tagFilteredSkillsCount)->toBe(1);
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('tagFilteredSkillsCount stays zero when withTags is declared — intentional filtering does not nudge', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-nudge-decl-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills', 0o755, recursive: true);
+
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/jira-pack'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/skills/jira-triage.md',
+            "---\nname: jira-triage\ndescription: Triage Jira.\nmetadata:\n  boost-tags: jira\n---\nBody.\n",
+        );
+
+        // Consumer declared `withTags('php')` — `jira-triage` is still filtered
+        // out (tag mismatch) but the consumer has clearly considered filtering;
+        // no nudge fires.
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/jira-pack'])\n    ->withTags('php');");
+
+        $packages = new InstalledPackages(['acme/jira-pack' => new PackageInfo('acme/jira-pack', '1.0.0', $vendor)]);
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->tagFilteredSkillsCount)->toBe(0);
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('tagFilteredSkillsCount excludes skills dropped by withExcludedSkills (not a tag-mismatch)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-nudge-excl-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills', 0o755, recursive: true);
+
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/pack'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/skills/foo.md',
+            "---\nname: foo\ndescription: A skill.\nmetadata:\n  boost-tags: jira\n---\nBody.\n",
+        );
+
+        // withTags is empty AND the consumer explicitly excludes the skill.
+        // The drop reason is `excluded`, not tag-mismatch — nudge stays 0
+        // even though `withTags()` is empty.
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/pack'])\n    ->withExcludedSkills(['acme/pack:foo']);");
+
+        $packages = new InstalledPackages(['acme/pack' => new PackageInfo('acme/pack', '1.0.0', $vendor)]);
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->tagFilteredSkillsCount)->toBe(0);
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('tagFilteredSkillsCount counts same-named skills across vendors separately (no dedup)', function (): void {
+    $root = makeEndToEndProject();
+    $vendorA = sys_get_temp_dir() . '/boost-nudge-vA-' . bin2hex(random_bytes(8));
+    $vendorB = sys_get_temp_dir() . '/boost-nudge-vB-' . bin2hex(random_bytes(8));
+    mkdir($vendorA . '/resources/boost/skills', 0o755, recursive: true);
+    mkdir($vendorB . '/resources/boost/skills', 0o755, recursive: true);
+
+    try {
+        // Two vendors each shipping a skill named `shared` tagged `jira`. With
+        // empty withTags, both are tag-filtered — count must be 2, not 1.
+        file_put_contents($vendorA . '/composer.json', json_encode(['name' => 'acme/pack-a'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendorA . '/resources/boost/skills/shared.md',
+            "---\nname: shared\ndescription: A.\nmetadata:\n  boost-tags: jira\n---\nA body.\n",
+        );
+        file_put_contents($vendorB . '/composer.json', json_encode(['name' => 'acme/pack-b'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendorB . '/resources/boost/skills/shared.md',
+            "---\nname: shared\ndescription: B.\nmetadata:\n  boost-tags: jira\n---\nB body.\n",
+        );
+
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/pack-a', 'acme/pack-b']);");
+
+        $packages = new InstalledPackages([
+            'acme/pack-a' => new PackageInfo('acme/pack-a', '1.0.0', $vendorA),
+            'acme/pack-b' => new PackageInfo('acme/pack-b', '1.0.0', $vendorB),
+        ]);
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->tagFilteredSkillsCount)->toBe(2);
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendorA);
+        rmTreeE2E($vendorB);
+    }
+});

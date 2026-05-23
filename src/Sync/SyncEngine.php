@@ -332,6 +332,7 @@ final readonly class SyncEngine
 
         $resolvedSkills = $skillResolution['skills'];
         $droppedSkillNames = $skillResolution['droppedNames'];
+        $tagFilteredCount = $skillResolution['tagFilteredCount'];
         $resolvedCommands = $this->resolveCommands($config);
 
         $context = new SyncContext(
@@ -366,6 +367,7 @@ final readonly class SyncEngine
             emitters: $emitterResults,
             errors: $fanOutErrors,
             check: $checkOnly,
+            tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
         );
     }
 
@@ -424,7 +426,7 @@ final readonly class SyncEngine
      * are never filtered — the project authored them.
      *
      * @param  list<DiscoveredVendor>  $allowedVendors
-     * @return array{skills: list<Skill>, droppedNames: list<string>}
+     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int}
      */
     private function resolveSkills(BoostConfig $config, array $allowedVendors, bool $force): array
     {
@@ -436,6 +438,7 @@ final readonly class SyncEngine
         $vendorSkills = [];
         /** @var list<string> $droppedNames */
         $droppedNames = [];
+        $tagFilteredCount = 0;
         foreach ($allowedVendors as $vendor) {
             if ($vendor->skillsPath === null) {
                 continue;
@@ -449,11 +452,20 @@ final readonly class SyncEngine
             foreach ($filtered['droppedNames'] as $name) {
                 $droppedNames[] = $name;
             }
+
+            // Separate accumulator for the nudge: sum per-vendor, NO
+            // cross-vendor name dedup. Two vendors each dropping a
+            // tag-filtered skill named `code-review` are two real hidden
+            // skills, not one.
+            $tagFilteredCount += $filtered['droppedByTag'];
         }
 
         return [
             'skills' => $this->skillResolver->resolve($hostSkills, $vendorSkills, $force),
+            // Deduped — the pruner only needs each name once for lookup.
             'droppedNames' => array_values(array_unique($droppedNames)),
+            // Summed — the nudge needs the real total per-vendor.
+            'tagFilteredCount' => $tagFilteredCount,
         ];
     }
 

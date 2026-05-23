@@ -218,12 +218,31 @@ final class SyncCommand extends BoostBaseCommand
 
         if ($checkOnly) {
             $io->success(sprintf('No drift. %d file(s) unchanged.%s', $unchanged, $emitterSummary));
+            $this->noteTagFilterGap($io, $result);
 
             return self::SUCCESS;
         }
 
         $io->success(sprintf('Sync done. wrote=%d, unchanged=%d, deleted=%d.%s', $wrote, $unchanged, $deleted, $emitterSummary));
+        $this->noteTagFilterGap($io, $result);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Nudge a consumer whose `withTags()` is empty AND some vendor skills were
+     * tag-filtered out as a result — the silent-filter foot-gun. Three real
+     * boost-stack repos hit it (repo-new, package-boost-laravel, boost-skills'
+     * own dogfood) before being audited. Pointing the consumer at `boost tags`
+     * is the cheapest discoverability fix.
+     */
+    private function noteTagFilterGap(SymfonyStyle $io, SyncResult $result): void
+    {
+        if ($result->tagFilteredSkillsCount > 0) {
+            $io->note(sprintf(
+                '%d tagged skill(s) currently filtered out — your `withTags()` is empty. Run `vendor/bin/boost tags` to see them.',
+                $result->tagFilteredSkillsCount,
+            ));
+        }
     }
 }

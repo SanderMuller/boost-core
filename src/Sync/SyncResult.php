@@ -8,12 +8,17 @@ final readonly class SyncResult
      * @param  list<WrittenFile>  $writes  Files written by agent fan-out (skills + guidelines).
      * @param  list<EmitterResult>  $emitters  Per-emitter outcomes (FileEmitter plugin layer).
      * @param  list<string>  $errors  Top-level errors that aborted parts of the run.
+     * @param  int  $tagFilteredSkillsCount  Count of vendor skills dropped by the tag filter
+     *         WHEN the consumer's `withTags()` is empty. Zero when `withTags()` is declared
+     *         (intentional filtering) or when no skills were dropped. Drives the post-sync
+     *         "discover hidden skills" nudge in `SyncCommand::report()`.
      */
     public function __construct(
         public array $writes,
         public array $emitters,
         public array $errors,
         public bool $check,
+        public int $tagFilteredSkillsCount = 0,
     ) {}
 
     public function hasDrift(): bool

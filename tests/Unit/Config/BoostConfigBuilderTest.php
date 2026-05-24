@@ -1,8 +1,13 @@
 <?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Config\BoostConfigBuilder;
+use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Enums\Tag;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
+use SanderMuller\BoostCore\Skills\Rendering\InvalidSkillRendererException;
+use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
+use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 
 it('builds a config with all explicit values', function (): void {
     $config = (new BoostConfigBuilder())
@@ -94,4 +99,208 @@ it('withExcludedGuidelines carries vendor:guideline deny-list entries', function
         ->build('/x');
 
     expect($config->excludedGuidelines)->toBe(['acme/skills:database-safety', 'acme/skills:migrations']);
+});
+
+it('withRemoteSkills defaults to an empty list and propagates to BoostConfig', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->build('/x');
+
+    expect($config->remoteSkills)
+        ->toBeEmpty();
+});
+
+it('withRemoteSkills stores and propagates the declared sources', function (): void {
+    $bundle = RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']);
+    $path = RemoteSkillSource::githubPath('mattpocock/skills', 'main', ['grill-with-docs' => 'skills/engineering/grill-with-docs']);
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withRemoteSkills([$bundle, $path])
+        ->build('/x');
+
+    expect($config->remoteSkills)->toHaveCount(2)
+        ->and($config->remoteSkills[0])->toBe($bundle)
+        ->and($config->remoteSkills[1])->toBe($path);
+});
+
+it('withRemoteSkills overwrites a prior list (overwrite semantics)', function (): void {
+    $first = RemoteSkillSource::githubBundle('a/b', 'v1.0.0', ['x']);
+    $second = RemoteSkillSource::githubBundle('c/d', 'v2.0.0', ['y']);
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withRemoteSkills([$first])
+        ->withRemoteSkills([$second])
+        ->build('/x');
+
+    expect($config->remoteSkills)->toHaveCount(1)
+        ->and($config->remoteSkills[0])->toBe($second);
+});
+
+it('withRemoteSkills rejects two sources sharing (source, version, mode)', function (): void {
+    $a = RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']);
+    $b = RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['phpstan-developer']);
+
+    expect(fn () => (new BoostConfigBuilder())->withRemoteSkills([$a, $b]))
+        ->toThrow(InvalidArgumentException::class, 'duplicate RemoteSkillSource');
+});
+
+it('withRemoteSkills allows same source+version in different modes (bundle + path coexist)', function (): void {
+    $bundle = RemoteSkillSource::githubBundle('a/b', 'v1.0.0', ['foo']);
+    $path = RemoteSkillSource::githubPath('a/b', 'v1.0.0', ['bar' => 'bar']);
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withRemoteSkills([$bundle, $path])
+        ->build('/x');
+
+    expect($config->remoteSkills)->toHaveCount(2);
+});
+
+it('withRemoteSkills allows same source at different versions', function (): void {
+    $v1 = RemoteSkillSource::githubBundle('a/b', 'v1.0.0', ['foo']);
+    $v2 = RemoteSkillSource::githubBundle('a/b', 'v2.0.0', ['foo']);
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withRemoteSkills([$v1, $v2])
+        ->build('/x');
+
+    expect($config->remoteSkills)->toHaveCount(2);
+});
+
+it('withSkillRenderers defaults to passthrough-only when no renderer registered', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->build('/x');
+
+    expect($config->skillRenderers)->toHaveCount(1)
+        ->and($config->skillRenderers[0])->toBeInstanceOf(PassthroughRenderer::class);
+});
+
+it('withSkillRenderers appends passthrough last so user-registered md wins by registration order', function (): void {
+    $customMd = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return $raw;
+        }
+    };
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withSkillRenderers([$customMd])
+        ->build('/x');
+
+    expect($config->skillRenderers)->toHaveCount(2)
+        ->and($config->skillRenderers[0])->toBe($customMd)
+        ->and($config->skillRenderers[1])->toBeInstanceOf(PassthroughRenderer::class);
+});
+
+it('throws when two user renderers claim the same extension', function (): void {
+    $first = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['blade.php'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return $raw;
+        }
+    };
+    $second = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['blade.php'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return $raw;
+        }
+    };
+
+    expect(fn () => (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withSkillRenderers([$first, $second])
+        ->build('/x')
+    )->toThrow(InvalidSkillRendererException::class, 'Multiple renderers');
+});
+
+it('withDisabledRenderers resolves a conflict by dropping one side', function (): void {
+    $first = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['blade.php'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return $raw;
+        }
+    };
+    $secondClass = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['blade.php'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return $raw;
+        }
+    };
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withSkillRenderers([$first, $secondClass])
+        ->withDisabledRenderers([$secondClass::class])
+        ->build('/x');
+
+    expect($config->skillRenderers)->toHaveCount(2)
+        ->and($config->skillRenderers[0])->toBe($first);
+});
+
+it('disabling PassthroughRenderer is a silent no-op (builder re-appends it)', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withDisabledRenderers([PassthroughRenderer::class])
+        ->build('/x');
+
+    expect($config->skillRenderers)->toHaveCount(1)
+        ->and($config->skillRenderers[0])->toBeInstanceOf(PassthroughRenderer::class);
+});
+
+it('passthrough yields to a user-registered md renderer without conflict-throwing', function (): void {
+    $customMd = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return strtoupper($raw);
+        }
+    };
+
+    // Both claim `md` but build() must NOT throw — passthrough yields silently.
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withSkillRenderers([$customMd])
+        ->build('/x');
+
+    expect($config->skillRenderers[0])->toBe($customMd);
 });

@@ -1,2 +1,7 @@
 parameters:
-	ignoreErrors: []
+	ignoreErrors:
+		-
+			rawMessage: 'Class cognitive complexity is 83, keep it under 80'
+			identifier: complexity.classLike
+			count: 1
+			path: src/Sync/SyncEngine.php

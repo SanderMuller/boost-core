@@ -2,6 +2,19 @@
 
 Breaking changes per major/minor bump.
 
+## 0.6 → 0.7
+
+0.7.0 adds `withRemoteSkills(...)` — declarative consumption of non-Composer skill sources (GitHub bundle releases, single-skill repos, mega-repo subdirs). Additive, no migration required.
+
+Two operational notes for consumers who adopt the new API:
+
+- **First sync hits the network.** Fetched archives are cached on disk so subsequent syncs are offline-fast, but the cold sync downloads each declared source. Anonymous GitHub access caps at 60 requests/hour — set `BOOST_GITHUB_TOKEN` (any token with `public_repo` scope) to lift it to 5000/h. CI runs that resolve `withRemoteSkills(...)` cold should always export the token.
+- **`BOOST_REMOTE_STRICT=1`** escalates any remote-source failure (network unreachable, malformed archive, name-mismatch) to an aborting error. Default is warn-and-skip. Recommended for CI; leave unset for local dev.
+
+`boost doctor` lists every declared remote source, flags moving refs (`'main'`, `'latest'`, branch names) with a `⚠`, and reports per-skill cache presence — all offline.
+
+Removing a skill from `withRemoteSkills(...)` prunes its agent-dir output on the next sync; removing an entire source prunes every skill it last contributed. The pruning state lives at `<project>/.boost-remote-manifest.json`, auto-added to the managed `.gitignore`.
+
 ## 0.5 → 0.6
 
 0.6.0 retires boost-core's Composer plugin. boost-core is now a plain `library` — it runs no install-time code, so there is no `allow-plugins` trust prompt and no install-time execution surface. Three things change for consumers.

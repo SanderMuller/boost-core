@@ -1,9 +1,18 @@
 <?php declare(strict_types=1);
 
+use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
+use SanderMuller\BoostCore\Skills\Guideline;
+use SanderMuller\BoostCore\Skills\Remote\BundleExtractor;
+use SanderMuller\BoostCore\Skills\Remote\RemoteFetchException;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillIngester;
+use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\WriteAction;
+use SanderMuller\BoostCore\Sync\WrittenFile;
+use SanderMuller\BoostCore\Tests\Doubles\Remote\FakeRemoteFetcher;
 
 function makeEndToEndProject(): string
 {
@@ -60,6 +69,28 @@ function writeBoostPhp(string $root, string $body): void
 function emptyInstalledPackages(): InstalledPackages
 {
     return new InstalledPackages([]);
+}
+
+/**
+ * Build a minimal `.skill` ZIP bundle (one SKILL.md, optional body override).
+ * Inlined here so the Phase 5 remote-source tests are self-contained when
+ * EndToEndSyncTest runs in isolation (Pest only auto-loads functions from
+ * the test files it's invoked with).
+ */
+function e2eMakeBundleBytes(string $skillName, ?string $frontmatterName = null, string $body = 'Body.'): string
+{
+    $tmpZip = sys_get_temp_dir() . '/boost-e2e-bundle-' . bin2hex(random_bytes(6)) . '.zip';
+    $zip = new ZipArchive();
+    $zip->open($tmpZip, ZipArchive::CREATE);
+
+    $name = $frontmatterName ?? $skillName;
+    $zip->addFromString($skillName . '/SKILL.md', "---\nname: {$name}\n---\n{$body}");
+    $zip->close();
+
+    $bytes = (string) file_get_contents($tmpZip);
+    @unlink($tmpZip);
+
+    return $bytes;
 }
 
 it('end-to-end: host skill + guideline → Claude Code files committed to disk', function (): void {
@@ -755,5 +786,641 @@ it('tagFilteredSkillsCount counts same-named skills across vendors separately (n
         rmTreeE2E($root);
         rmTreeE2E($vendorA);
         rmTreeE2E($vendorB);
+    }
+});
+
+// ============================================================================
+// Phase 5 — remote-skill sources end-to-end through SyncEngine.
+// Uses FakeRemoteFetcher + a temp cache root to avoid touching the network.
+// `cacheMakeBundleBytes` lives in RemoteSkillCacheTest (Pest auto-loads top-level functions).
+// ============================================================================
+
+it('remote-skill source: a declared bundle skill lands in the agent fan-out', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-e2e-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+
+        $ingester = new RemoteSkillIngester(
+            cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+        );
+
+        $engine = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: $ingester,
+        );
+
+        $result = $engine->sync($root);
+
+        $wrotePaths = array_map(fn (WrittenFile $w): string => $w->relativePath, $result->writes);
+        expect($result->hasErrors())->toBeFalse('errors=' . json_encode($result->errors) . ' writes=' . json_encode($wrotePaths));
+        $remoteWrite = null;
+        foreach ($wrotePaths as $rel) {
+            if (str_contains($rel, 'composer-upgrade')) {
+                $remoteWrite = $rel;
+                break;
+            }
+        }
+
+        expect($remoteWrite)->not->toBeNull('No write mentions composer-upgrade. writes=' . json_encode($wrotePaths));
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('remote-skill source: name-mismatch surfaces as an error and the skill is not fanned out', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-mismatch-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        // Wrapper dir matches the declared name (so the cache layout works),
+        // but the inner SKILL.md frontmatter says `name: WRONG-NAME` —
+        // RemoteSkillIngester must catch the mismatch.
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset(
+                'peterfox/agent-skills',
+                'v1.2.0',
+                'composer-upgrade.skill',
+                e2eMakeBundleBytes('composer-upgrade', frontmatterName: 'WRONG-NAME'),
+            );
+
+        $ingester = new RemoteSkillIngester(
+            cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+        );
+
+        $engine = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: $ingester,
+        );
+
+        $result = $engine->sync($root);
+
+        expect($result->hasErrors())->toBeTrue();
+        $errors = implode("\n", $result->errors);
+        expect($errors)->toContain('does not match')
+            ->and($errors)->toContain('WRONG-NAME');
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('remote-skill source: strict mode aborts on a fetch failure', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-strict-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        // FakeRemoteFetcher with NOTHING registered → ensureCached throws NOT_FOUND.
+        $emptyFetcher = new FakeRemoteFetcher();
+
+        $strictIngester = new RemoteSkillIngester(
+            cache: new RemoteSkillCache(fetcher: $emptyFetcher, cacheRoot: $cacheRoot),
+            strict: true,
+        );
+
+        $engine = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: $strictIngester,
+        );
+
+        expect(fn () => $engine->sync($root))
+            ->toThrow(RemoteFetchException::class);
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+// Phase 6 — pruning: when a remote skill drops out of withRemoteSkills(...),
+// the agent-dir output and the manifest entry both go.
+
+it('remote-skill source: removing a skill from boost.php prunes its fan-out directory on the next sync', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-prune-' . bin2hex(random_bytes(6));
+
+    try {
+        // Sync 1: declare TWO skills under one source; both fan out.
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade', 'phpstan-developer']),\n    ]);");
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'))
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'phpstan-developer.skill', e2eMakeBundleBytes('phpstan-developer'));
+
+        $build = fn () => new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+
+        $first = $build()->sync($root);
+        expect($first->hasErrors())->toBeFalse('first sync errors: ' . json_encode($first->errors))
+            ->and(is_file($root . '/.claude/skills/composer-upgrade/SKILL.md'))
+            ->toBeTrue()
+            ->and(is_file($root . '/.claude/skills/phpstan-developer/SKILL.md'))
+            ->toBeTrue()
+            ->and(is_file($root . '/.boost-remote-manifest.json'))
+            ->toBeTrue();
+
+        // Sync 2: drop `phpstan-developer` from the declared set.
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        $second = $build()->sync($root);
+        $deletedPaths = array_map(
+            fn (WrittenFile $w): string => $w->relativePath,
+            array_values(array_filter(
+                $second->writes,
+                fn (WrittenFile $w): bool => $w->action === WriteAction::DELETED,
+            )),
+        );
+
+        expect($second->hasErrors())->toBeFalse('second sync errors: ' . json_encode($second->errors))
+            ->and($deletedPaths)
+            ->toContain('.claude/skills/phpstan-developer')
+            ->and(is_dir($root . '/.claude/skills/phpstan-developer'))
+            ->toBeFalse()
+            ->and(is_file($root . '/.claude/skills/composer-upgrade/SKILL.md'))
+            ->toBeTrue();
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('remote-skill source: removing an entire source prunes every skill under its slug and cleans the slug dir', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-prune-src-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+
+        $build = fn () => new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+
+        $build()->sync($root);
+        expect(is_dir($root . '/.claude/skills/composer-upgrade'))->toBeTrue();
+
+        // Sync 2: drop the whole withRemoteSkills clause.
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        $second = $build()->sync($root);
+        expect($second->hasErrors())->toBeFalse()
+            ->and(is_dir($root . '/.claude/skills/composer-upgrade'))
+            ->toBeFalse();
+        // Manifest deleted when nothing's declared.
+        expect($root . '/.boost-remote-manifest.json')->not->toBeFile();
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('remote-skill source: a still-declared skill whose fetch fails this sync is NOT pruned', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-prune-keep-' . bin2hex(random_bytes(6));
+
+    try {
+        // Sync 1: skill resolves and fans out.
+        $boostBody = "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);";
+        writeBoostPhp($root, $boostBody);
+
+        $okFetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+
+        (new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $okFetcher, cacheRoot: $cacheRoot),
+            ),
+        ))->sync($root);
+
+        expect($root . '/.claude/skills/composer-upgrade/SKILL.md')
+            ->toBeFile();
+
+        // Invalidate the cache slot so sync 2 must re-fetch.
+        BundleExtractor::recursivelyRemove($cacheRoot);
+
+        // Sync 2: SAME config (skill still declared) but fetcher empty → fetch fails.
+        // Previously cached agent dir must NOT be pruned — user still wants the skill.
+        $brokenFetcher = new FakeRemoteFetcher();
+
+        $result = (new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $brokenFetcher, cacheRoot: $cacheRoot),
+            ),
+        ))->sync($root);
+
+        expect($result->hasErrors())->toBeTrue('expected the failing fetch to be recorded')
+            ->and(is_file($root . '/.claude/skills/composer-upgrade/SKILL.md'))
+            ->toBeTrue('previously fanned-out skill must survive a transient fetch failure');
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('remote-skill source: --check mode reports a WOULD_DELETE for orphans without actually deleting or rewriting the manifest', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-prune-check-' . bin2hex(random_bytes(6));
+
+    try {
+        // Sync 1: declare a remote skill, sync, manifest written, dir written.
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+
+        $engine = fn () => new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+        $engine()->sync($root);
+        expect($root . '/.boost-remote-manifest.json')
+            ->toBeFile();
+
+        // Snapshot manifest contents to confirm --check doesn't rewrite it.
+        $manifestBefore = (string) file_get_contents($root . '/.boost-remote-manifest.json');
+
+        // Drop the skill from config, then run --check. Expect a WOULD_DELETE
+        // for the orphan; dir survives; manifest unchanged.
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        $checkResult = $engine()->sync($root, checkOnly: true);
+
+        $wouldDeletePaths = array_map(
+            fn (WrittenFile $w): string => $w->relativePath,
+            array_values(array_filter(
+                $checkResult->writes,
+                fn (WrittenFile $w): bool => $w->action === WriteAction::WOULD_DELETE,
+            )),
+        );
+
+        expect($wouldDeletePaths)->toContain('.claude/skills/composer-upgrade')
+            ->and(is_dir($root . '/.claude/skills/composer-upgrade'))
+            ->toBeTrue('--check must not delete anything')
+            ->and((string) file_get_contents($root . '/.boost-remote-manifest.json'))
+            ->toBe($manifestBefore, '--check must not rewrite the manifest');
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('remote-skill source: pruning runs even when the still-declared source fails to fetch', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-prune-fetchfail-' . bin2hex(random_bytes(6));
+
+    try {
+        // Sync 1: two sources, both succeed.
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n        RemoteSkillSource::githubBundle('other/skills', 'v0.1.0', ['my-skill']),\n    ]);");
+
+        $okFetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'))
+            ->withAsset('other/skills', 'v0.1.0', 'my-skill.skill', e2eMakeBundleBytes('my-skill'));
+
+        $engine1 = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $okFetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+        $engine1->sync($root);
+
+        expect(is_dir($root . '/.claude/skills/composer-upgrade'))->toBeTrue()
+            ->and(is_dir($root . '/.claude/skills/my-skill'))
+            ->toBeTrue();
+
+        // Sync 2: drop `other/skills` entirely; declared `peterfox/agent-skills`
+        // fetcher returns nothing → fetch fails → its skill stays absent.
+        // But the prune for the dropped source MUST still run.
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v9.9.9', ['composer-upgrade']),\n    ]);");
+
+        $brokenFetcher = new FakeRemoteFetcher();  // empty — every fetch throws.
+
+        $engine2 = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $brokenFetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+
+        $result = $engine2->sync($root);
+
+        expect($result->hasErrors())->toBeTrue('expected the failing fetch to be recorded');
+        // Despite the fetch failure, the dropped `other/skills` was pruned.
+        expect(is_dir($root . '/.claude/skills/my-skill'))->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('remote-skill source: warn-and-skip mode does NOT abort the sync (default)', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-warn-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        $emptyFetcher = new FakeRemoteFetcher();
+
+        $defaultIngester = new RemoteSkillIngester(
+            cache: new RemoteSkillCache(fetcher: $emptyFetcher, cacheRoot: $cacheRoot),
+            // strict: false (default) — fetch errors become recorded errors, not exceptions.
+        );
+
+        $engine = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: $defaultIngester,
+        );
+
+        $result = $engine->sync($root);
+
+        // Sync completes; the remote source's failure is recorded but doesn't abort.
+        expect($result->hasErrors())->toBeTrue();
+        expect(implode("\n", $result->errors))->toContain('peterfox/agent-skills');
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('caller-injected vendor skills land in agent dirs alongside scanned vendors', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        $injected = [
+            'acme/external-bridge' => [
+                new Skill(
+                    name: 'bridge-skill',
+                    description: 'Pre-built by a caller bridge.',
+                    frontmatter: ['name' => 'bridge-skill', 'description' => 'Pre-built by a caller bridge.'],
+                    body: "# Bridge\n\nInjected by the caller.\n",
+                    sourcePath: '/virtual/bridge-skill/SKILL.md',
+                    sourceVendor: 'acme/external-bridge',
+                    tags: [],
+                    tagsValid: true,
+                ),
+            ],
+        ];
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorSkills: $injected);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/bridge-skill/SKILL.md'))->toBeTrue()
+            ->and(file_get_contents($root . '/.claude/skills/bridge-skill/SKILL.md'))->toContain('Injected by the caller.');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('tag-filters injected vendor skills using the same subset rule as scanned vendors', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withTags("php");',
+        );
+
+        $injected = [
+            'acme/external-bridge' => [
+                new Skill(
+                    name: 'php-skill',
+                    description: 'Tagged php.',
+                    frontmatter: [],
+                    body: 'PHP.',
+                    sourcePath: '/virtual/php-skill/SKILL.md',
+                    sourceVendor: 'acme/external-bridge',
+                    tags: ['php'],
+                    tagsValid: true,
+                ),
+                new Skill(
+                    name: 'jira-skill',
+                    description: 'Tagged jira — should be dropped.',
+                    frontmatter: [],
+                    body: 'Jira.',
+                    sourcePath: '/virtual/jira-skill/SKILL.md',
+                    sourceVendor: 'acme/external-bridge',
+                    tags: ['jira'],
+                    tagsValid: true,
+                ),
+            ],
+        ];
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorSkills: $injected);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/php-skill/SKILL.md'))->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/jira-skill/SKILL.md'))->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('throws when injectedVendorSkills lists the same skill name twice within one vendor', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        $dupe = static fn (): Skill => new Skill(
+            name: 'dup',
+            description: 'd',
+            frontmatter: [],
+            body: '.',
+            sourcePath: '/virtual/dup/SKILL.md',
+            sourceVendor: 'acme/bridge',
+            tags: [],
+            tagsValid: true,
+        );
+
+        expect(
+            fn () => SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorSkills: [
+                'acme/bridge' => [$dupe(), $dupe()],
+            ])
+        )->toThrow(InvalidArgumentException::class, 'listed more than once');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('throws when injectedVendorSkills overlaps a scanned vendor of the same name', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeTagVendor($root, 'acme/shared', 'shared-skill', '');
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/shared"]);',
+        );
+
+        $injected = [
+            'acme/shared' => [
+                new Skill(
+                    name: 'shared-skill',
+                    description: 'caller-injected duplicate of scanned vendor skill',
+                    frontmatter: [],
+                    body: '.',
+                    sourcePath: '/virtual/shared-skill/SKILL.md',
+                    sourceVendor: 'acme/shared',
+                    tags: [],
+                    tagsValid: true,
+                ),
+            ],
+        ];
+
+        expect(
+            fn () => SyncEngine::default(new InstalledPackages(['acme/shared' => $pkg]))->sync($root, injectedVendorSkills: $injected)
+        )->toThrow(InvalidArgumentException::class, 'also published by a scanned vendor');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('respects withExcludedSkills against injected vendor skills', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withExcludedSkills(["acme/external-bridge:unwanted"]);',
+        );
+
+        $injected = [
+            'acme/external-bridge' => [
+                new Skill(
+                    name: 'unwanted',
+                    description: 'Should be dropped by exclude list.',
+                    frontmatter: [],
+                    body: 'X.',
+                    sourcePath: '/virtual/unwanted/SKILL.md',
+                    sourceVendor: 'acme/external-bridge',
+                    tags: [],
+                    tagsValid: true,
+                ),
+            ],
+        ];
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorSkills: $injected);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/unwanted/SKILL.md'))->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('caller-injected vendor guidelines feed into the CLAUDE.md/AGENTS.md fan-out', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        $injected = [
+            'laravel/boost' => [
+                new Guideline(
+                    name: 'laravel-best-practices',
+                    description: 'Laravel best practices guideline (injected).',
+                    frontmatter: [],
+                    body: "## Laravel Conventions\n\nBe consistent with the codebase.\n",
+                    sourcePath: '/virtual/laravel-best-practices.md',
+                    sourceVendor: 'laravel/boost',
+                    tags: [],
+                    tagsValid: true,
+                ),
+            ],
+        ];
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync(
+            $root,
+            injectedVendorGuidelines: $injected,
+        );
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue()
+            ->and(file_get_contents($root . '/CLAUDE.md'))->toContain('Be consistent with the codebase');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('tag-filters injected vendor guidelines using the same subset rule', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withTags("php");',
+        );
+
+        $injected = [
+            'laravel/boost' => [
+                new Guideline(
+                    name: 'kept',
+                    description: 'php-tagged.',
+                    frontmatter: [],
+                    body: 'KEPT.',
+                    sourcePath: '/virtual/kept.md',
+                    sourceVendor: 'laravel/boost',
+                    tags: ['php'],
+                    tagsValid: true,
+                ),
+                new Guideline(
+                    name: 'dropped',
+                    description: 'jira-tagged, should be dropped.',
+                    frontmatter: [],
+                    body: 'DROPPED.',
+                    sourcePath: '/virtual/dropped.md',
+                    sourceVendor: 'laravel/boost',
+                    tags: ['jira'],
+                    tagsValid: true,
+                ),
+            ],
+        ];
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync(
+            $root,
+            injectedVendorGuidelines: $injected,
+        );
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue()
+            ->and(file_get_contents($root . '/CLAUDE.md'))->toContain('KEPT')
+            ->and(file_get_contents($root . '/CLAUDE.md'))->not->toContain('DROPPED');
+    } finally {
+        rmTreeE2E($root);
     }
 });

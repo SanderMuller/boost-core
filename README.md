@@ -133,6 +133,51 @@ On the next `boost:sync`, that package's skills fan out to every selected agent 
 
 [`sandermuller/boost-skills`](https://github.com/sandermuller/boost-skills) is built this way: a package of skills and nothing else, several of them tagged for conditional sync (see below).
 
+## Remote skill sources
+
+Not every useful skill ships as a Composer package. GitHub repos shipping `.skill` ZIP release bundles, single-skill repos with a root-level `SKILL.md`, and mega-repos to cherry-pick subdirs from are all common. `withRemoteSkills()` declares them directly in `boost.php`, with the same `composer install / update` lifecycle:
+
+```php
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
+
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE])
+    ->withRemoteSkills([
+        // Bundle mode — fetches the named `.skill` release asset and unzips it.
+        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', [
+            'composer-upgrade',
+            'phpstan-developer',
+        ]),
+
+        // Path mode — fetches the repo tarball at the given ref and extracts
+        // the named subdirs. `.` covers a whole-repo-is-one-skill layout.
+        RemoteSkillSource::githubPath('blader/humanizer', 'v0.3.0', [
+            'humanizer' => '.',
+        ]),
+        RemoteSkillSource::githubPath('mattpocock/skills', 'main', [
+            'grill-with-docs' => 'skills/engineering/grill-with-docs',
+        ]),
+    ]);
+```
+
+Each fetched skill fans out alongside host and vendor skills — same `.{agent}/skills/<skill-name>/SKILL.md` layout, same `withTags()` filtering via `metadata.boost-tags`, same `withExcludedSkills(['<owner>/<repo>:<skill-name>'])` deny-list. Removing an entry from `withRemoteSkills()` prunes its agent-dir output on the next sync.
+
+**Cache + offline behavior.** Fetched bundles and tarballs land in `${BOOST_CACHE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}}/boost/remote-skills/<owner>__<repo>/<ref>/`. Pinned refs (a tag, a 40-char SHA) cache forever; moving refs (`'main'`, `'latest'`, a branch name) re-resolve every 24h. `boost sync --check` is offline-only — it never hits the network. `boost doctor` lists every remote source, flags moving refs with a `⚠`, and reports per-skill cache presence.
+
+**First sync is online.** Anonymous GitHub access caps at 60 requests/hour. Set `BOOST_GITHUB_TOKEN` (any token with `public_repo` scope) to lift it to 5000/h — needed for CI runs that hit `withRemoteSkills(...)` cold and for `boost doctor` on > 3 sources, which surfaces the same nudge.
+
+**Trust posture.** Sources and skills are opt-in by full path — declaring `peterfox/agent-skills:composer-upgrade` does not grant access to anything else in that repo. Pin to a tag or SHA in production; moving refs are convenient but a source-side push silently changes what lands. ZIP and tarball extraction reject path-traversal entries, absolute paths, symlinks anywhere in the archive, and oversized payloads (caps: 200 MB total / 50 MB per file / 10000 entries) — a violation rejects the whole source rather than partially extracting.
+
+**Set `BOOST_REMOTE_STRICT=1`** to escalate any remote-source failure (network unreachable, malformed archive, name-mismatch) to a sync-aborting error. Default is warn-and-skip: a failing source records an error in the sync result but the other sources and the rest of the sync proceed.
+
+### Publishing a skill source for remote consumption
+
+If you publish a repo intended for `withRemoteSkills(...)` consumption:
+
+- Treat the `SKILL.md` frontmatter `name` as a **durable public API surface**. Renaming it breaks every moving-ref consumer the moment they re-sync.
+- **Keep skill source dirs symlink-free**, including project-metadata symlinks like a `LICENSE` symlink at the repo root. Extraction rejects the whole source on any symlinked entry — the file-inclusion filter would drop benign symlinks anyway, but the reject-on-symlink rule fires first.
+- **Align tag vocabulary with established conventions** in `metadata.boost-tags` (`frontend` for JS/TS toolchain, `database` for projects with a database, `php`, etc.) — common tags collide semantically across sources and a consumer's single `withTags()` set applies uniformly.
+
 ## Conditional skill filtering
 
 Vendor skills can be scoped to projects that want them, so a project with no Jira work never receives a `jira-triage` skill (and its `description` never pollutes the agent's skill-selection index).

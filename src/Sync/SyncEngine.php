@@ -2,7 +2,6 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
-use JsonException;
 use LogicException;
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;
@@ -16,6 +15,7 @@ use SanderMuller\BoostCore\Agents\KiroTarget;
 use SanderMuller\BoostCore\Agents\OpenCodeTarget;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
+use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
@@ -29,6 +29,13 @@ use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\GuidelineLoader;
 use SanderMuller\BoostCore\Skills\GuidelineResolver;
 use SanderMuller\BoostCore\Skills\GuidelineTagFilter;
+use SanderMuller\BoostCore\Skills\Remote\CurlHttpTransport;
+use SanderMuller\BoostCore\Skills\Remote\GitHubFetcher;
+use SanderMuller\BoostCore\Skills\Remote\RemoteOrphanPruner;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillIngester;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSyncCoordinator;
+use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
@@ -62,6 +69,14 @@ final readonly class SyncEngine
 
     private EmitterDiscovery $emitterDiscovery;
 
+    private RemoteSkillIngester $remoteSkillIngester;
+
+    private RemoteOrphanPruner $remoteOrphanPruner;
+
+    private RemoteSkillSyncCoordinator $remoteCoordinator;
+
+    private InjectedVendorMerger $injectedVendorMerger;
+
     /**
      * @param  list<AgentTarget>  $agentTargets
      */
@@ -77,13 +92,32 @@ final readonly class SyncEngine
         private GuidelineTagFilter $guidelineTagFilter = new GuidelineTagFilter(),
         private FilteredSkillPruner $filteredSkillPruner = new FilteredSkillPruner(),
         ?InstalledPackages $installedPackages = null,
+        ?RemoteSkillIngester $remoteSkillIngester = null,
+        ?RemoteOrphanPruner $remoteOrphanPruner = null,
     ) {
+        $this->injectedVendorMerger = new InjectedVendorMerger($this->skillTagFilter, $this->guidelineTagFilter);
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
         $this->skillLoader = new SkillLoader($this->frontmatterParser);
         $this->guidelineLoader = new GuidelineLoader($this->frontmatterParser);
         $this->commandLoader = new CommandLoader($this->frontmatterParser);
         $this->vendorScanner = new VendorScanner($this->installedPackages);
         $this->emitterDiscovery = new EmitterDiscovery($this->installedPackages);
+        $this->remoteSkillIngester = $remoteSkillIngester ?? new RemoteSkillIngester(
+            cache: new RemoteSkillCache(
+                fetcher: new GitHubFetcher(new CurlHttpTransport()),
+            ),
+            // Truthy-value check — `BOOST_REMOTE_STRICT=0` / `false` / `off`
+            // must KEEP the documented warn-and-skip behavior. A bare presence
+            // check would flip strict on for the no-op assignments users
+            // reach for when they think they're disabling the flag.
+            strict: Env::flagEnabled(Env::REMOTE_STRICT),
+        );
+        $this->remoteOrphanPruner = $remoteOrphanPruner ?? new RemoteOrphanPruner();
+        $this->remoteCoordinator = new RemoteSkillSyncCoordinator(
+            ingester: $this->remoteSkillIngester,
+            orphanPruner: $this->remoteOrphanPruner,
+            skillTagFilter: $this->skillTagFilter,
+        );
     }
 
     public static function default(?InstalledPackages $installedPackages = null): self
@@ -225,16 +259,7 @@ final readonly class SyncEngine
     private function extractPackageName(string $composerJsonPath): ?string
     {
         $raw = @file_get_contents($composerJsonPath);
-        if ($raw === false) {
-            return null;
-        }
-
-        try {
-            $decoded = json_decode($raw, true, flags: JSON_THROW_ON_ERROR);
-        } catch (JsonException) {
-            return null;
-        }
-
+        $decoded = $raw === false ? null : json_decode($raw, true);
         $name = is_array($decoded) ? ($decoded['name'] ?? null) : null;
 
         return is_string($name) && $name !== '' ? $name : null;
@@ -316,23 +341,33 @@ final readonly class SyncEngine
         return $prefix . self::packageSuffix($packageName) . '/' . $filename;
     }
 
-    public function sync(string $projectRoot, bool $checkOnly = false, bool $force = false): SyncResult
+    /**
+     * @param  array<string, list<Skill>>  $injectedVendorSkills  Pre-built Skills keyed by source vendor (e.g. `['laravel/boost' => $skills]`). Caller-controlled injection point — covers ecosystems whose layout boost-core's VendorScanner does not match (laravel/boost's `.ai/<pkg>/`, ad-hoc bridges). Tag filter applies the same as for scanned vendors.
+     * @param  list<SkillRenderer>  $extraSkillRenderers  Additional renderers to append to `BoostConfig::skillRenderers` for this sync transaction. Caller-controlled — lets a wrapper package (e.g. project-boost-laravel) guarantee its BladeRenderer is registered without forcing users to wire it in `boost.php`. Conflict detection runs against the merged list.
+     * @param  array<string, list<Guideline>>  $injectedVendorGuidelines  Pre-built Guidelines keyed by source vendor. Mirrors `$injectedVendorSkills` for the guideline pipeline.
+     */
+    public function sync(string $projectRoot, bool $checkOnly = false, bool $force = false, array $injectedVendorSkills = [], array $extraSkillRenderers = [], array $injectedVendorGuidelines = []): SyncResult
     {
         $projectRoot = rtrim($projectRoot, '/');
         $config = $this->configLoader->load($projectRoot);
 
+        $config = $this->injectedVendorMerger->mergeExtraRenderers($config, $extraSkillRenderers);
+
         $allowedVendors = $this->discoverAllowedVendors($config);
 
         try {
-            $skillResolution = $this->resolveSkills($config, $allowedVendors, $force);
-            $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force);
+            $skillResolution = $this->resolveSkills($config, $allowedVendors, $force, $injectedVendorSkills);
+            $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force, $injectedVendorGuidelines);
         } catch (CollidingSkillsException $collidingSkillsException) {
             return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
         }
 
+        $remoteErrors = [];
+
         $resolvedSkills = $skillResolution['skills'];
         $droppedSkillNames = $skillResolution['droppedNames'];
         $tagFilteredCount = $skillResolution['tagFilteredCount'];
+        $remoteErrors = $skillResolution['remoteErrors'];
         $resolvedCommands = $this->resolveCommands($config);
 
         $context = new SyncContext(
@@ -353,11 +388,19 @@ final readonly class SyncEngine
             $checkOnly,
         );
 
+        $remoteOrphanWrites = $this->remoteCoordinator->applyOrphanPruning(
+            $projectRoot,
+            $this->agentTargets,
+            $config,
+            $resolvedSkills,
+            $checkOnly,
+        );
+
         $gitignoreWrite = ($config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false)
             ? $this->updateGitignore($projectRoot, $config, $checkOnly)
             : null;
 
-        $writes = $fanOutWrites;
+        $writes = array_merge($fanOutWrites, $remoteOrphanWrites);
         if ($gitignoreWrite instanceof WrittenFile) {
             $writes[] = $gitignoreWrite;
         }
@@ -365,7 +408,7 @@ final readonly class SyncEngine
         return new SyncResult(
             writes: $writes,
             emitters: $emitterResults,
-            errors: $fanOutErrors,
+            errors: array_merge($fanOutErrors, $remoteErrors),
             check: $checkOnly,
             tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
         );
@@ -382,6 +425,13 @@ final readonly class SyncEngine
             foreach ($target->gitignorePatterns() as $pattern) {
                 $patterns[] = $pattern;
             }
+        }
+
+        // The remote-skill manifest lives at the project root once any remote
+        // source is declared. Keep it out of VCS so users don't fight merge
+        // noise — it's auto-regenerated by every sync.
+        if ($config->remoteSkills !== []) {
+            $patterns[] = '/' . RemoteOrphanPruner::MANIFEST_FILE;
         }
 
         $absolute = $projectRoot . '/.gitignore';
@@ -426,13 +476,25 @@ final readonly class SyncEngine
      * are never filtered — the project authored them.
      *
      * @param  list<DiscoveredVendor>  $allowedVendors
-     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int}
+     * @param  array<string, list<Skill>>  $injectedVendorSkills  Caller-supplied pre-built skills keyed by source vendor. Tag-filtered before merging into the vendor map. Mirrors the remote-ingest path; see `sync()` docblock.
+     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int, remoteErrors: list<string>}  `remoteErrors` carries both per-source remote ingest failures (lenient mode) and per-file render failures.
      */
-    private function resolveSkills(BoostConfig $config, array $allowedVendors, bool $force): array
+    private function resolveSkills(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorSkills = []): array
     {
-        $hostSkills = is_dir($config->skillsPath)
-            ? $this->skillLoader->load($config->skillsPath)
-            : [];
+        // Per-sync renderer dispatcher — built from the just-loaded config.
+        // Cannot live as a ctor field on SyncEngine because BoostConfig is
+        // only known inside sync(). See spec §5.1 (lifecycle constraint).
+        $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
+
+        /** @var list<string> $renderErrors */
+        $renderErrors = [];
+
+        $hostSkills = [];
+        if (is_dir($config->skillsPath)) {
+            foreach ($this->skillLoader->load($config->skillsPath, null, $dispatcher, $renderErrors) as $hostSkill) {
+                $hostSkills[] = $hostSkill;
+            }
+        }
 
         /** @var array<string, list<Skill>> $vendorSkills */
         $vendorSkills = [];
@@ -444,8 +506,17 @@ final readonly class SyncEngine
                 continue;
             }
 
+            // Eager-collect so the renderErrors out-param accumulates per
+            // call site (Symfony Finder is lazy, but the SkillTagFilter
+            // iterates the result once and the errors-out reference must
+            // be wired through that iteration).
+            $loaded = [];
+            foreach ($this->skillLoader->load($vendor->skillsPath, $vendor->name, $dispatcher, $renderErrors) as $vendorSkill) {
+                $loaded[] = $vendorSkill;
+            }
+
             $filtered = $this->skillTagFilter->filter(
-                $this->skillLoader->load($vendor->skillsPath, $vendor->name),
+                $loaded,
                 $config,
             );
             $vendorSkills[$vendor->name] = $filtered['kept'];
@@ -460,12 +531,24 @@ final readonly class SyncEngine
             $tagFilteredCount += $filtered['droppedByTag'];
         }
 
+        $this->injectedVendorMerger->mergeSkills($injectedVendorSkills, $vendorSkills, $droppedNames, $tagFilteredCount, $config);
+
+        $remote = $this->remoteCoordinator->ingestIntoVendorMap(
+            $config,
+            $vendorSkills,
+            $droppedNames,
+            $tagFilteredCount,
+            $dispatcher,
+        );
+
         return [
             'skills' => $this->skillResolver->resolve($hostSkills, $vendorSkills, $force),
             // Deduped — the pruner only needs each name once for lookup.
             'droppedNames' => array_values(array_unique($droppedNames)),
             // Summed — the nudge needs the real total per-vendor.
             'tagFilteredCount' => $tagFilteredCount,
+            // Per-source remote ingest failures (warn-and-skip mode) + per-file render failures.
+            'remoteErrors' => array_merge($remote['errors'], $renderErrors),
         ];
     }
 
@@ -476,9 +559,10 @@ final readonly class SyncEngine
      * project authored them. Mirrors `resolveSkills()`.
      *
      * @param  list<DiscoveredVendor>  $allowedVendors
+     * @param  array<string, list<Guideline>>  $injectedVendorGuidelines  Caller-supplied pre-built guidelines keyed by source vendor. Tag-filtered before merging into the vendor map. Mirrors `resolveSkills()`'s injection path.
      * @return list<Guideline>
      */
-    private function resolveGuidelines(BoostConfig $config, array $allowedVendors, bool $force): array
+    private function resolveGuidelines(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorGuidelines = []): array
     {
         $hostGuidelines = is_dir($config->guidelinesPath)
             ? $this->guidelineLoader->load($config->guidelinesPath)
@@ -494,6 +578,8 @@ final readonly class SyncEngine
                 );
             }
         }
+
+        $this->injectedVendorMerger->mergeGuidelines($injectedVendorGuidelines, $vendorGuidelines, $config);
 
         return $this->guidelineResolver->resolve($hostGuidelines, $vendorGuidelines, $force);
     }

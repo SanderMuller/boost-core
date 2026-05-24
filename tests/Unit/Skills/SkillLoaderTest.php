@@ -1,12 +1,40 @@
 <?php declare(strict_types=1);
 
+use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
+use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
+use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
+use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
+use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 
 function loader(): SkillLoader
 {
     return new SkillLoader(new FrontmatterParser());
+}
+
+function rmTreeSkillLoader(string $path): void
+{
+    if (! is_dir($path)) {
+        return;
+    }
+    $entries = scandir($path);
+    if ($entries === false) {
+        return;
+    }
+    foreach ($entries as $entry) {
+        if ($entry === '.' || $entry === '..') {
+            continue;
+        }
+        $full = $path . '/' . $entry;
+        if (is_dir($full) && ! is_link($full)) {
+            rmTreeSkillLoader($full);
+        } else {
+            @unlink($full);
+        }
+    }
+    @rmdir($path);
 }
 
 /**
@@ -100,4 +128,212 @@ it('silently contributes zero skills when a directory has ONLY Blade-template sk
 
     expect($skills)
         ->toBeEmpty();
+});
+
+/**
+ * @return list<Skill>
+ */
+function skillsFromFixtureWithDispatcher(string $subdir, SkillRendererDispatcher $dispatcher, ?string $vendor = null): array
+{
+    /** @var list<Skill> $skills */
+    $skills = [];
+    foreach (loader()->load(__DIR__ . '/../../Fixtures/skills/' . $subdir, $vendor, $dispatcher) as $skill) {
+        $skills[] = $skill;
+    }
+
+    return $skills;
+}
+
+it('loads SKILL.blade.php once a renderer claims `blade.php`', function (): void {
+    $bladeRenderer = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['blade.php'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            // Substitute the Blade directive the fixture already carries
+            // (`{{ config('app.name') }}`). The real BladeRenderer
+            // delegates to Laravel's compiler; this stub proves the render
+            // seam fires.
+            return str_replace("{{ config('app.name') }}", 'TestApp', $raw);
+        }
+    };
+
+    $dispatcher = new SkillRendererDispatcher([
+        $bladeRenderer,
+        new PassthroughRenderer(),
+    ]);
+
+    $skills = skillsFromFixtureWithDispatcher('blade-only', $dispatcher);
+
+    expect($skills)->toHaveCount(1)
+        ->and($skills[0]->body)->toContain('TestApp');
+});
+
+it('multi-extension filename fallback strips full matched extension', function (): void {
+    // Fixture: SKILL.blade.php with NO `name:` frontmatter. Without the
+    // fallback fix, getFilenameWithoutExtension would yield `SKILL.blade`.
+    $bladeRenderer = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['blade.php'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return $raw;
+        }
+    };
+
+    // Create a temp fixture inline since the existing `blade-only` fixture
+    // contains a `name:` frontmatter that would override the filename fallback.
+    $fixtureDir = sys_get_temp_dir() . '/boost-skill-loader-fallback-' . bin2hex(random_bytes(8));
+    mkdir($fixtureDir, 0o755, true);
+    mkdir($fixtureDir . '/anonymous-skill', 0o755, true);
+    file_put_contents($fixtureDir . '/anonymous-skill/SKILL.blade.php', "# No frontmatter\nBody only.\n");
+
+    try {
+        $dispatcher = new SkillRendererDispatcher([
+            $bladeRenderer,
+            new PassthroughRenderer(),
+        ]);
+
+        /** @var list<Skill> $skills */
+        $skills = iterator_to_array(loader()->load($fixtureDir, null, $dispatcher), false);
+
+        expect($skills)->toHaveCount(1)
+            ->and($skills[0]->name)->toBe('SKILL');  // not 'SKILL.blade'
+    } finally {
+        rmTreeSkillLoader($fixtureDir);
+    }
+});
+
+it('passes RenderContext to the renderer with pre-parsed frontmatter', function (): void {
+    $box = new class {
+        public ?RenderContext $ctx = null;
+    };
+
+    $renderer = new class ($box) implements SkillRenderer {
+        public function __construct(private readonly object $box) {}
+
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            $this->box->ctx = $ctx;
+
+            return $raw;
+        }
+    };
+
+    $dispatcher = new SkillRendererDispatcher([$renderer]);
+    skillsFromFixtureWithDispatcher('host', $dispatcher);
+
+    expect($box->ctx)->toBeInstanceOf(RenderContext::class);
+    assert($box->ctx instanceof RenderContext);
+    expect($box->ctx->frontmatter)->toBeArray()
+        ->and($box->ctx->sourcePath)->toContain('host');
+});
+
+it('post-render frontmatter override beats the filename fallback', function (): void {
+    $renderer = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            // Inject a `name:` frontmatter in render output even if source has none.
+            return "---\nname: renderer-renamed\n---\n" . $raw;
+        }
+    };
+
+    $fixtureDir = sys_get_temp_dir() . '/boost-skill-loader-rename-' . bin2hex(random_bytes(8));
+    mkdir($fixtureDir . '/anonymous', 0o755, true);
+    file_put_contents($fixtureDir . '/anonymous/skill.md', 'Body.');
+
+    try {
+        $dispatcher = new SkillRendererDispatcher([$renderer]);
+        /** @var list<Skill> $skills */
+        $skills = iterator_to_array(loader()->load($fixtureDir, null, $dispatcher), false);
+
+        expect($skills)->toHaveCount(1)
+            ->and($skills[0]->name)->toBe('renderer-renamed');
+    } finally {
+        rmTreeSkillLoader($fixtureDir);
+    }
+});
+
+it('lenient mode: renderer exception adds to errors-out and continues with siblings', function (): void {
+    $renderer = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            throw new RuntimeException('boom');
+        }
+    };
+
+    $fixtureDir = sys_get_temp_dir() . '/boost-skill-render-throw-' . bin2hex(random_bytes(8));
+    mkdir($fixtureDir . '/one', 0o755, true);
+    mkdir($fixtureDir . '/two', 0o755, true);
+    file_put_contents($fixtureDir . '/one/a.md', 'A.');
+    file_put_contents($fixtureDir . '/two/b.md', 'B.');
+
+    try {
+        $dispatcher = new SkillRendererDispatcher([$renderer]);
+        $errors = [];
+        $skills = iterator_to_array(loader()->load($fixtureDir, null, $dispatcher, $errors), false);
+
+        expect($skills)->toBeEmpty()
+            ->and($errors)->toHaveCount(2)
+            ->and($errors[0])->toContain('boom')
+            ->and($errors[0])->toContain('render failed');
+    } finally {
+        rmTreeSkillLoader($fixtureDir);
+    }
+});
+
+it('strict mode: renderer exception throws SkillRenderException', function (): void {
+    $renderer = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            throw new RuntimeException('strict-boom');
+        }
+    };
+
+    $fixtureDir = sys_get_temp_dir() . '/boost-skill-render-strict-' . bin2hex(random_bytes(8));
+    mkdir($fixtureDir . '/one', 0o755, true);
+    file_put_contents($fixtureDir . '/one/a.md', 'A.');
+
+    putenv('BOOST_RENDER_STRICT=1');
+    try {
+        $dispatcher = new SkillRendererDispatcher([$renderer]);
+        $errors = [];
+        expect(fn () => iterator_to_array(loader()->load($fixtureDir, null, $dispatcher, $errors), false))
+            ->toThrow(SkillRenderException::class, 'strict-boom');
+    } finally {
+        putenv('BOOST_RENDER_STRICT');
+        rmTreeSkillLoader($fixtureDir);
+    }
 });

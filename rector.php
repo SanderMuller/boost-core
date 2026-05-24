@@ -1,6 +1,7 @@
 <?php declare(strict_types=1);
 
 use Rector\Caching\ValueObject\Storage\FileCacheStorage;
+use Rector\Carbon\Rector\FuncCall\TimeFuncCallToCarbonRector;
 use Rector\CodeQuality\Rector\ClassMethod\InlineArrayReturnAssignRector;
 use Rector\CodeQuality\Rector\If_\ExplicitBoolCompareRector;
 use Rector\CodingStyle\Rector\Encapsed\EncapsedStringsToSprintfRector;
@@ -47,6 +48,11 @@ return RectorConfig::configure()
         PestSetList::PEST_CHAIN,
     ])
     ->withSkip([
+        // boost-core ships no `nesbot/carbon` runtime dep; Rector's Carbon set
+        // is enabled for tests + dev but the production code must stay
+        // Carbon-free, so this single src-path skip keeps `time()` untouched
+        // in shipped code.
+        TimeFuncCallToCarbonRector::class => [__DIR__ . '/src'],
         NullToStrictStringFuncCallArgRector::class,
         AddArrowFunctionReturnTypeRector::class,
         EncapsedStringsToSprintfRector::class,

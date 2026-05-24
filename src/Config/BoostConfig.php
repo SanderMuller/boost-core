@@ -2,7 +2,9 @@
 
 namespace SanderMuller\BoostCore\Config;
 
+use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 
 /**
  * Resolved, immutable boost configuration.
@@ -28,6 +30,8 @@ final readonly class BoostConfig
      * @param  list<string>  $tags  Project tags — a vendor skill ships only when its `metadata.boost-tags` ⊆ these
      * @param  list<string>  $excludedSkills  `vendor/package:skill-name` entries excluded regardless of tags
      * @param  list<string>  $excludedGuidelines  `vendor/package:guideline-name` entries excluded regardless of tags
+     * @param  list<RemoteSkillSource>  $remoteSkills  Non-Composer skill sources (GitHub `.skill` bundles or repo subdirs)
+     * @param  list<SkillRenderer>  $skillRenderers  Registered renderers; always carries the implicit PassthroughRenderer last unless a user-registered renderer claims `md`
      */
     public function __construct(
         public array $agents,
@@ -40,6 +44,8 @@ final readonly class BoostConfig
         public array $tags = [],
         public array $excludedSkills = [],
         public array $excludedGuidelines = [],
+        public array $remoteSkills = [],
+        public array $skillRenderers = [],
     ) {}
 
     public static function configure(): BoostConfigBuilder

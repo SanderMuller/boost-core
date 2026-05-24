@@ -2,30 +2,42 @@
 
 namespace SanderMuller\BoostCore\Skills;
 
+use SanderMuller\BoostCore\Env;
+use SanderMuller\BoostCore\Skills\Rendering\MatchedRenderer;
+use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
+use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
+use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
+use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
 use Symfony\Component\Finder\Finder;
+use Throwable;
 
 /**
- * Loads Skills from a directory of markdown files.
+ * Loads Skills from a directory of skill files.
  *
- * Skill name derives from the filename (without `.md` extension). Frontmatter
- * may override via `name:` key — if present and non-empty, that wins.
+ * File extension handling is driven by the {@see SkillRendererDispatcher}:
+ *  - `.md` files are always loaded (the implicit {@see PassthroughRenderer}
+ *    claims it; raw-content passthrough by default).
+ *  - Files matching a registered renderer's extension are rendered through
+ *    that renderer first, then the rendered output is frontmatter-parsed
+ *    and turned into a {@see Skill}. A `BladeRenderer` registered for
+ *    `blade.php` lets `SKILL.blade.php` files load with their template
+ *    output as the skill body.
+ *  - Files whose extension no registered renderer claims are silently
+ *    skipped — boost-core's default registry is passthrough-only, so an
+ *    unmodified install behaves identically to pre-renderer boost-core.
  *
- * Skip rules:
- *  - Hidden files (`.`-prefixed) are skipped.
- *  - Non-`.md` extensions are skipped.
- *  - **Blade-template skills** (`*.blade.php`, e.g. `SKILL.blade.php`) are
- *    silently skipped — they need Laravel app context to render, which
- *    boost-core (framework-agnostic) cannot provide. `laravel/mcp`'s
- *    `mcp-development` skill is the canonical example.
+ * Hidden files (`.`-prefixed) are skipped.
  *
- * Important: a vendor that publishes **only** Blade-template skills will
- * contribute zero loaded skills from boost-core's perspective, with no
- * diagnostic. That's intentional (boost-core does not warn about its own
- * inability to render Blade), but vendors wanting their skills to
- * propagate through boost-core's per-agent fan-out must pre-render to
- * `SKILL.md` before shipping. Whether such skills reach the host app via
- * a different integration path (e.g. the vendor's own Laravel ServiceProvider
- * rendering on boot) is the vendor's responsibility, not boost-core's.
+ * Name resolution:
+ *  1. Post-render frontmatter `name:` wins when present.
+ *  2. Filename fallback strips the MATCHED RENDERER EXTENSION (not just the
+ *     last `.`-segment) — so `SKILL.blade.php` becomes `SKILL`, not
+ *     `SKILL.blade`. The matched extension is carried out of the dispatcher
+ *     via {@see MatchedRenderer}
+ *     so multi-segment extensions work.
+ *
+ * Errors raised by a renderer are NOT caught here. Caller (`SyncEngine`)
+ * applies the `BOOST_RENDER_STRICT` policy.
  */
 final readonly class SkillLoader
 {
@@ -34,26 +46,72 @@ final readonly class SkillLoader
     ) {}
 
     /**
+     * @param  list<string>  $errors  Out-parameter: render failures (lenient mode) accumulate here.
      * @return iterable<Skill>
      */
-    public function load(string $directory, ?string $sourceVendor = null): iterable
+    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = []): iterable
     {
         if (! is_dir($directory)) {
             return;
         }
 
+        $dispatcher = $renderers ?? new SkillRendererDispatcher([new PassthroughRenderer()]);
+        $strict = Env::flagEnabled(Env::RENDER_STRICT);
+
         $finder = (new Finder())
             ->files()
             ->in($directory)
-            ->name('*.md')
+            ->name($dispatcher->fileGlobPatterns())
             ->ignoreDotFiles(true)
             ->sortByName();
 
         foreach ($finder as $file) {
-            $content = $file->getContents();
-            $parsed = $this->parser->parse($content);
+            $matched = $dispatcher->resolve($file->getFilename());
+            if (! $matched instanceof MatchedRenderer) {
+                // Defensive: the Finder pattern is derived from the same
+                // registry, so this should not happen — but skip rather
+                // than crash if it ever does.
+                continue;
+            }
 
-            $name = $this->resolveName($parsed->frontmatter, $file->getFilenameWithoutExtension());
+            $raw = $file->getContents();
+
+            // Pre-render frontmatter so we can hand the renderer enough
+            // context. The renderer's output is re-parsed below — most
+            // templates leave the YAML head untouched and the second parse
+            // sees the same frontmatter, but a renderer that regenerates
+            // the head is free to.
+            $preParsed = $this->parser->parse($raw);
+            $ctx = new RenderContext(
+                sourcePath: $file->getRealPath(),
+                sourceVendor: $sourceVendor,
+                frontmatter: $preParsed->frontmatter,
+            );
+
+            try {
+                $rendered = $matched->renderer->render($raw, $ctx);
+            } catch (Throwable $e) {
+                $message = sprintf(
+                    'skill render failed (`%s`, renderer `%s`): %s',
+                    $file->getRelativePathname(),
+                    $matched->renderer::class,
+                    $e->getMessage(),
+                );
+                if ($strict) {
+                    throw new SkillRenderException($message, previous: $e);
+                }
+
+                $errors[] = $message;
+
+                continue;
+            }
+
+            $parsed = $this->parser->parse($rendered);
+
+            $name = $this->resolveName(
+                $parsed->frontmatter,
+                $this->stripMatchedExtension($file->getFilename(), $matched->extension),
+            );
 
             $description = is_string($parsed->frontmatter['description'] ?? null)
                 ? $parsed->frontmatter['description']
@@ -66,7 +124,7 @@ final readonly class SkillLoader
                 description: $description,
                 frontmatter: $parsed->frontmatter,
                 body: $parsed->body,
-                sourcePath: $file->getRealPath() !== false ? $file->getRealPath() : $file->getPathname(),
+                sourcePath: $file->getRealPath(),
                 sourceVendor: $sourceVendor,
                 tags: $tags,
                 tagsValid: $tagsValid,
@@ -77,13 +135,31 @@ final readonly class SkillLoader
     /**
      * @param  array<string, mixed>  $frontmatter
      */
-    private function resolveName(array $frontmatter, string $filename): string
+    private function resolveName(array $frontmatter, string $filenameFallback): string
     {
         $fromFrontmatter = $frontmatter['name'] ?? null;
         if (is_string($fromFrontmatter) && $fromFrontmatter !== '') {
             return $fromFrontmatter;
         }
 
-        return $filename;
+        return $filenameFallback;
+    }
+
+    /**
+     * `SKILL.blade.php` + matched extension `blade.php` → `SKILL`. Falls
+     * through to `getFilenameWithoutExtension`'s last-segment behavior if
+     * the suffix does not match (defensive — should not happen since the
+     * dispatcher derived the extension from the same filename).
+     */
+    private function stripMatchedExtension(string $filename, string $matchedExtension): string
+    {
+        $suffix = '.' . $matchedExtension;
+        if (str_ends_with(strtolower($filename), strtolower($suffix))) {
+            return substr($filename, 0, -strlen($suffix));
+        }
+
+        $lastDot = strrpos($filename, '.');
+
+        return $lastDot === false ? $filename : substr($filename, 0, $lastDot);
     }
 }

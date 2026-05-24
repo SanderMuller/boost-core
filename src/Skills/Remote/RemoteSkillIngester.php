@@ -222,11 +222,13 @@ final readonly class RemoteSkillIngester
 
     /**
      * Locate the skill file inside a cache slot. Tries each glob the
-     * dispatcher claims and picks the first that matches `SKILL.*` over
-     * any other-named match within the same glob. This protects against
-     * a slot containing sibling files (`README.md`, `CHANGELOG.md`)
-     * sorting alphabetically before `SKILL.md` and being picked instead.
-     * Returns null if no claimed extension matches. Hidden files skipped.
+     * dispatcher claims and prefers the EXACT canonical basename
+     * `SKILL.<ext>` over any other-named match (sibling files like
+     * `README.md`, `skill.backup.md`, `skill-template.md` are tolerated
+     * but never preferred). The exact-basename rule — not a prefix match
+     * — distinguishes the canonical file from helper variants whose
+     * names start with `skill.`. Returns null if no claimed extension
+     * matches a file in the slot. Hidden files skipped.
      */
     private function locateSkillFile(string $cacheSlot, SkillRendererDispatcher $dispatcher): ?string
     {
@@ -236,7 +238,11 @@ final readonly class RemoteSkillIngester
                 continue;
             }
 
-            $skillNamed = null;
+            // Glob is `*.<ext>` (set by SkillRendererDispatcher::fileGlobPatterns).
+            // Strip the `*.` prefix to recover the canonical `SKILL.<ext>` form.
+            $canonicalBasename = 'SKILL.' . substr($glob, 2);
+
+            $canonical = null;
             $fallback = null;
             foreach ($matches as $match) {
                 if (! is_file($match)) {
@@ -247,17 +253,14 @@ final readonly class RemoteSkillIngester
                     continue;
                 }
 
-                // Case-insensitive `SKILL.*` preference — the canonical
-                // skill-file name; sibling .md/.blade.php files in the
-                // same slot are tolerated but never preferred.
-                if (str_starts_with(strtolower($basename), 'skill.')) {
-                    $skillNamed ??= $match;
+                if (strcasecmp($basename, $canonicalBasename) === 0) {
+                    $canonical ??= $match;
                 } else {
                     $fallback ??= $match;
                 }
             }
 
-            $pick = $skillNamed ?? $fallback;
+            $pick = $canonical ?? $fallback;
             if ($pick !== null) {
                 return $pick;
             }

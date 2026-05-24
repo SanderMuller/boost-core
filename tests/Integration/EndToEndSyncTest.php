@@ -1376,6 +1376,75 @@ it('caller-injected vendor guidelines feed into the CLAUDE.md/AGENTS.md fan-out'
     }
 });
 
+it('throws when injectedVendorGuidelines lists the same guideline name twice within one vendor', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        $dupe = static fn (): Guideline => new Guideline(
+            name: 'dup',
+            description: 'd',
+            frontmatter: [],
+            body: '.',
+            sourcePath: '/virtual/dup.md',
+            sourceVendor: 'acme/bridge',
+            tags: [],
+            tagsValid: true,
+        );
+
+        expect(
+            fn () => SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorGuidelines: [
+                'acme/bridge' => [$dupe(), $dupe()],
+            ])
+        )->toThrow(InvalidArgumentException::class, 'listed more than once');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('throws when injectedVendorGuidelines overlaps a scanned vendor of the same name', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        // Inline a guideline-publishing vendor since makeTagVendor only does skills.
+        $vendorPath = $root . '/vendor/acme/shared';
+        mkdir($vendorPath . '/resources/boost/guidelines', 0o755, recursive: true);
+        file_put_contents($vendorPath . '/composer.json', '{"name":"acme/shared","type":"library"}');
+        file_put_contents(
+            $vendorPath . '/resources/boost/guidelines/shared-guideline.md',
+            "---\nname: shared-guideline\n---\nBody.\n",
+        );
+        $pkg = new PackageInfo('acme/shared', '1.0.0', $vendorPath);
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/shared"]);',
+        );
+
+        $injected = [
+            'acme/shared' => [
+                new Guideline(
+                    name: 'shared-guideline',
+                    description: 'caller-injected duplicate of scanned vendor guideline',
+                    frontmatter: [],
+                    body: '.',
+                    sourcePath: '/virtual/shared-guideline.md',
+                    sourceVendor: 'acme/shared',
+                    tags: [],
+                    tagsValid: true,
+                ),
+            ],
+        ];
+
+        expect(
+            fn () => SyncEngine::default(new InstalledPackages(['acme/shared' => $pkg]))->sync($root, injectedVendorGuidelines: $injected)
+        )->toThrow(InvalidArgumentException::class, 'also published by a scanned vendor');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('tag-filters injected vendor guidelines using the same subset rule', function (): void {
     $root = makeEndToEndProject();
     try {

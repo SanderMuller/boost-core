@@ -20,7 +20,10 @@ use SanderMuller\BoostCore\Contracts\SkillRenderer;
  *    applying the deny-list), so a user-registered `md`-claiming renderer
  *    overrides the default.
  *  - Filename comparison is lowercase: `SKILL.MD` resolves the same as
- *    `SKILL.md`. Extensions are normalized to lowercase at registration.
+ *    `SKILL.md`. Extensions are REJECTED at registration if they contain
+ *    uppercase characters (the validator regex enforces lowercase, see
+ *    construction validation below). The dispatcher does not normalize —
+ *    a renderer is responsible for declaring its extensions in lowercase.
  *
  * Validation runs at construction:
  *  - Extension strings must match `/^[a-z0-9.]+$/` (lowercase letters,

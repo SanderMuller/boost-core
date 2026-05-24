@@ -72,6 +72,11 @@ final readonly class InjectedVendorMerger
     public function mergeSkills(array $injected, array &$vendorSkills, array &$droppedNames, int &$tagFilteredCount, BoostConfig $config): void
     {
         foreach ($injected as $vendorName => $skills) {
+            // Collision detection runs POST-tag-filter — only skills that
+            // would actually ship participate in collision resolution.
+            // Matches scanned-vendor + remote-ingest semantics (both
+            // filter-then-resolve). Two injected skills named `foo` where
+            // one is dropped by `withTags()` is a legal pattern.
             $filtered = $this->skillTagFilter->filter($skills, $config);
 
             $this->assertNoSameVendorDupes(
@@ -93,25 +98,24 @@ final readonly class InjectedVendorMerger
 
     /**
      * @param  array<string, list<Guideline>>  $injected
-     * @param  array<string, iterable<Guideline>>  $vendorGuidelines  in-place
+     * @param  array<string, list<Guideline>>  $vendorGuidelines  in-place. Always populated by GuidelineTagFilter::filter (which returns list<Guideline>) — the iterable shape in SyncEngine's local typing is historical and never materializes here.
      */
     public function mergeGuidelines(array $injected, array &$vendorGuidelines, BoostConfig $config): void
     {
         foreach ($injected as $vendorName => $guidelines) {
-            $existingArr = is_array($vendorGuidelines[$vendorName] ?? null)
-                ? $vendorGuidelines[$vendorName]
-                : iterator_to_array($vendorGuidelines[$vendorName] ?? [], false);
+            // POST-filter collision check (matches mergeSkills semantics).
+            $filtered = $this->guidelineTagFilter->filter($guidelines, $config);
+            $existing = $vendorGuidelines[$vendorName] ?? [];
 
             $this->assertNoSameVendorDupes(
                 $vendorName,
-                $guidelines,
-                $existingArr,
+                $filtered,
+                $existing,
                 'injectedVendorGuidelines',
                 'guideline',
             );
 
-            $filtered = $this->guidelineTagFilter->filter($guidelines, $config);
-            $vendorGuidelines[$vendorName] = array_merge($existingArr, $filtered);
+            $vendorGuidelines[$vendorName] = array_merge($existing, $filtered);
         }
     }
 

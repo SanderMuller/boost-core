@@ -568,7 +568,7 @@ final readonly class SyncEngine
             ? $this->guidelineLoader->load($config->guidelinesPath)
             : [];
 
-        /** @var array<string, iterable<Guideline>> $vendorGuidelines */
+        /** @var array<string, list<Guideline>> $vendorGuidelines */
         $vendorGuidelines = [];
         foreach ($allowedVendors as $vendor) {
             if ($vendor->guidelinesPath !== null) {

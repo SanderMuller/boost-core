@@ -133,6 +133,25 @@ On the next `boost:sync`, that package's skills fan out to every selected agent 
 
 [`sandermuller/boost-skills`](https://github.com/sandermuller/boost-skills) is built this way: a package of skills and nothing else, several of them tagged for conditional sync (see below).
 
+## Skill rendering
+
+Skill files default to plain markdown (`SKILL.md`). For template-flavored content — Blade, Twig, anything that needs a render step before fan-out — register a `SkillRenderer` in `boost.php`:
+
+```php
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\ProjectBoostLaravel\Rendering\BladeRenderer;
+
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE])
+    ->withSkillRenderers([new BladeRenderer]);
+```
+
+The dispatcher matches **longest-extension-first**, so a `BladeRenderer` claiming `blade.php` handles `SKILL.blade.php` even if another renderer claims `php`. The implicit `PassthroughRenderer` always handles `.md` and is re-appended after any `withDisabledRenderers([FQCN])` deny-list — so `.md` always renders. A user-registered renderer claiming `md` wins over the passthrough by first-registered order.
+
+Render failures default to warn-and-skip: an error is recorded in `SyncResult::errors` and the file is dropped from the sync. Set `BOOST_RENDER_STRICT=1` to escalate the first failure to a sync-aborting `SkillRenderException`. The flag is separate from `BOOST_REMOTE_STRICT` so a project can keep renders lenient (a single broken Blade skill should not abort CI) while making remote-source resolution strict, or vice versa.
+
+The renderer contract is `@experimental` — the shape will change before v1.0 stable; pin to an exact boost-core version if building against it. Reference consumer: [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) ships a `BladeRenderer` that delegates to laravel/boost's `RendersBladeGuidelines` trait, so `.ai/<pkg>/skill/<name>/SKILL.blade.php` files render with the `$assist = GuidelineAssist` runtime context they expect.
+
 ## Remote skill sources
 
 Not every useful skill ships as a Composer package. GitHub repos shipping `.skill` ZIP release bundles, single-skill repos with a root-level `SKILL.md`, and mega-repos to cherry-pick subdirs from are all common. `withRemoteSkills()` declares them directly in `boost.php`, with the same `composer install / update` lifecycle:

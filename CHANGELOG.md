@@ -33,6 +33,29 @@ If your next `composer install` surfaces the new note pointing at `vendor/bin/bo
 
 **Full changelog:** https://github.com/SanderMuller/boost-core/compare/0.6.1...0.6.2
 
+### Added
+
+- **`SkillRenderer` plugin contract** (`@experimental`, `src/Contracts/SkillRenderer.php`). Lets downstream packages render template-flavored skill bodies (Blade, Twig, …) before per-agent fan-out. Default registry is `PassthroughRenderer` claiming `.md` — behavior is bit-identical to pre-renderer boost-core when no renderer is registered. Register via `BoostConfigBuilder::withSkillRenderers([new BladeRenderer])`; deny by FQCN via `withDisabledRenderers([Foo::class])`. Dispatcher uses longest-extension-first match (so `.blade.php` beats `.php`); first-registered-wins resolves same-extension ties. The implicit `PassthroughRenderer` is re-appended after the deny-list so `.md` always renders. Spec: `internal/specs/skill-renderer-plugin.md`. Reference consumer: [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel)'s `BladeRenderer` which delegates to laravel/boost's `RendersBladeGuidelines` trait for `$assist = GuidelineAssist` runtime context.
+
+- **`BOOST_RENDER_STRICT` env flag.** Mirrors `BOOST_REMOTE_STRICT` but for renderer exceptions. Lenient (default): the offending file is dropped from the sync and the failure is recorded in `SyncResult::errors`. Strict (`=1`/`true`/`on`): the first failure throws `SkillRenderException`, aborting the sync. Kept separate from `REMOTE_STRICT` so a project can keep renders lenient while remote-source resolution is strict (or vice versa).
+
+- **Caller-controlled vendor injection** via three new `SyncEngine::sync()` parameters:
+  - `injectedVendorSkills: array<string, list<Skill>>` — pre-built skills keyed by source vendor. Tag-filtered + collision-detected identically to scanned vendors. Covers ecosystems whose layout `VendorScanner` does not match (laravel/boost's `.ai/<pkg>/...` is the motivating case).
+  - `injectedVendorGuidelines: array<string, list<Guideline>>` — same shape for guidelines.
+  - `extraSkillRenderers: list<SkillRenderer>` — additional renderers to append to `BoostConfig::skillRenderers` for one sync transaction. Lets a wrapper package guarantee its renderer is registered without forcing users to wire it in `boost.php`.
+
+  Same-vendor name collisions throw explicitly (`SkillResolver` only catches cross-vendor dupes, so an injected skill overlapping a scanned vendor's would silently first-win without this guard).
+
+### Changed
+
+- **`SkillLoader::load()` accepts a `SkillRendererDispatcher` parameter** (default = passthrough-only). External direct callers that construct a `SkillLoader` are unaffected unless they want to register a non-default renderer. `SyncEngine` builds the per-sync dispatcher from `BoostConfig::skillRenderers` after config-load (the dispatcher cannot live as a ctor field — `BoostConfig` is only known inside `sync()`).
+
+- **`RemoteSkillIngester::ingest()` accepts the same dispatcher**, so remote `.blade.php` skills render through the registered renderer too. The internal `loadOne` was generalized from a hard-coded `SKILL.md` lookup to walk the dispatcher's claimed extensions, falling back to `.md`.
+
+- **Multi-extension naming fallback fix.** `SKILL.blade.php` with no `name:` frontmatter now resolves to skill name `SKILL` (previously would have been `SKILL.blade` because `getFilenameWithoutExtension()` only strips the last `.`-segment). The dispatcher now returns a `MatchedRenderer { renderer, extension }` tuple so the loader can strip the full matched extension.
+
+- **`SyncEngine`'s injection-merge logic** extracted to `InjectedVendorMerger` to keep the engine's class-level cognitive complexity tractable.
+
 ## [0.6.1](https://github.com/sandermuller/boost-core/compare/0.6.0...0.6.1) - 2026-05-22
 
 A visibility fix on top of 0.6.0: `BoostAutoSync::run` (and `runWithSummary`) went silent on a delete-only sync — a `composer install` that pruned generated AI files showed no trace of having done so. The sync itself worked correctly; only its summary line was missing the data. Additive and non-breaking.

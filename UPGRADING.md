@@ -4,7 +4,11 @@ Breaking changes per major/minor bump.
 
 ## 0.6 → 0.7
 
-0.7.0 adds `withRemoteSkills(...)` — declarative consumption of non-Composer skill sources (GitHub bundle releases, single-skill repos, mega-repo subdirs). Additive, no migration required.
+0.7.0 adds three additive surfaces — no migration required for the routine case.
+
+### `withRemoteSkills(...)` — declarative non-Composer sources
+
+Declarative consumption of non-Composer skill sources (GitHub bundle releases, single-skill repos, mega-repo subdirs).
 
 Two operational notes for consumers who adopt the new API:
 
@@ -14,6 +18,32 @@ Two operational notes for consumers who adopt the new API:
 `boost doctor` lists every declared remote source, flags moving refs (`'main'`, `'latest'`, branch names) with a `⚠`, and reports per-skill cache presence — all offline.
 
 Removing a skill from `withRemoteSkills(...)` prunes its agent-dir output on the next sync; removing an entire source prunes every skill it last contributed. The pruning state lives at `<project>/.boost-remote-manifest.json`, auto-added to the managed `.gitignore`.
+
+### `SkillRenderer` plugin — Blade/Twig/Mustache support
+
+`@experimental` plugin contract for rendering template-flavored skills (`SKILL.blade.php`, `SKILL.twig`, …) before per-agent fan-out. **Zero-action upgrade** for projects with `.md`-only skills — the default registry is `PassthroughRenderer` claiming `.md`, behavior bit-identical to pre-renderer boost-core.
+
+Two notes for consumers building their own renderer or extending boost-core:
+
+- **`SkillLoader::__construct()` signature is unchanged**, but `SkillLoader::load()` gained an optional `?SkillRendererDispatcher $renderers = null` parameter (default = passthrough-only) and a `&array $errors = []` out-param for render failures. External code that calls `load()` directly is unaffected unless it wants to register a non-default renderer or capture errors.
+- **`BOOST_RENDER_STRICT=1`** escalates renderer exceptions to an aborting `SkillRenderException`. Kept separate from `BOOST_REMOTE_STRICT` so a project can pin one strict and the other lenient.
+
+The renderer contract is `@experimental` — pin to an exact boost-core version if building against it. Lock-in happens after a second non-trivial consumer from a different problem domain validates the shape, mirroring the `FileEmitter` plugin lock-in criteria.
+
+### `SyncEngine::sync()` accepts caller-injected skills, guidelines, renderers
+
+Three new optional parameters for wrapper packages whose source layout `VendorScanner` cannot reach (laravel/boost's `.ai/<pkg>/...` is the motivating case — `sandermuller/project-boost-laravel` uses this seam):
+
+```php
+$engine->sync(
+    projectRoot: __DIR__,
+    injectedVendorSkills: ['laravel/boost' => $skills],
+    extraSkillRenderers: [new BladeRenderer],
+    injectedVendorGuidelines: ['laravel/boost' => $guidelines],
+);
+```
+
+All three default to `[]`. Existing call sites (`sync($root)`, `sync($root, checkOnly: true)`, etc.) are unchanged. Same-vendor name collisions between injected and scanned skills throw explicitly — `SkillResolver` only catches cross-vendor dupes, so the engine guards same-vendor dupes upfront to prevent silent first-wins behavior.
 
 ## 0.5 → 0.6
 

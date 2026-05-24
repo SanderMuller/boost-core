@@ -266,22 +266,17 @@ final class BoostConfigBuilder
             $kept[] = $renderer;
         }
 
-        // Re-append the implicit passthrough LAST so user-registered
-        // renderers claiming `md` win by first-registered-wins. Disabling
-        // PassthroughRenderer via the deny-list is silently no-op'd here.
-        $hasPassthrough = false;
-        foreach ($kept as $renderer) {
-            if ($renderer::class === PassthroughRenderer::class) {
-                $hasPassthrough = true;
-                break;
-            }
-        }
+        // Always append a FRESH implicit-passthrough instance LAST. We
+        // identify it by object identity (not class) in
+        // assertNoExtensionConflicts so a user-supplied PassthroughRenderer
+        // instance via withSkillRenderers is treated as a regular
+        // user renderer — including for conflict detection. Disabling
+        // PassthroughRenderer via the deny-list is silently no-op'd via
+        // this re-append.
+        $implicitPassthrough = new PassthroughRenderer();
+        $kept[] = $implicitPassthrough;
 
-        if (! $hasPassthrough) {
-            $kept[] = new PassthroughRenderer();
-        }
-
-        $this->assertNoExtensionConflicts($kept);
+        $this->assertNoExtensionConflicts($kept, $implicitPassthrough);
 
         return $kept;
     }
@@ -289,22 +284,23 @@ final class BoostConfigBuilder
     /**
      * Build-time conflict detection: two renderers claiming the same
      * extension is fatal unless the deny-list resolved it earlier. The
-     * implicit {@see PassthroughRenderer}'s `md` claim is *not* considered
-     * a conflict — user-registered `md`-claiming renderers override it via
-     * first-registered-wins (the passthrough sits last).
+     * builder's appended implicit {@see PassthroughRenderer} is identified
+     * by object reference — a *separate* user-supplied PassthroughRenderer
+     * passed via withSkillRenderers is treated as a regular user renderer
+     * and DOES collide with other `md`-claiming renderers.
      *
      * @param  list<SkillRenderer>  $renderers
      */
-    private function assertNoExtensionConflicts(array $renderers): void
+    private function assertNoExtensionConflicts(array $renderers, PassthroughRenderer $implicitPassthrough): void
     {
         /** @var array<string, list<class-string>> $byExtension */
         $byExtension = [];
         foreach ($renderers as $renderer) {
-            $isImplicitPassthrough = $renderer::class === PassthroughRenderer::class;
+            $isImplicit = $renderer === $implicitPassthrough;
             foreach ($renderer->extensions() as $ext) {
-                if ($isImplicitPassthrough && isset($byExtension[$ext])) {
-                    // User-registered renderer already claims this ext.
-                    // Passthrough silently yields — first-wins applies.
+                if ($isImplicit && isset($byExtension[$ext])) {
+                    // A user renderer already claims this ext. The implicit
+                    // passthrough silently yields — first-wins applies.
                     continue;
                 }
 

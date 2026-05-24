@@ -73,7 +73,12 @@ final readonly class TarballExtractor
     {
         $count = 0;
         $totalBytes = 0;
-        $archiveRootLen = strlen($phar->getPath()) + 1; // skip the `phar://<path>/` prefix
+        // `PharData::getPath()` returns the host filesystem path of the
+        // archive (e.g. `/tmp/foo.tar`), NOT the `phar://...` URL that
+        // prefixes iterated-entry pathnames. The pathname looks like
+        // `phar:///tmp/foo.tar/<entry>` — the prefix to strip is
+        // `phar://` (7 chars) + the host path + `/` (1 char).
+        $archiveRootLen = strlen('phar://') + strlen($phar->getPath()) + 1;
         /** @var PharFileInfo $fileInfo */
         foreach (new RecursiveIteratorIterator($phar) as $fileInfo) {
             ++$count;

@@ -304,3 +304,27 @@ it('passthrough yields to a user-registered md renderer without conflict-throwin
 
     expect($config->skillRenderers[0])->toBe($customMd);
 });
+
+it('throws when user passes their own PassthroughRenderer alongside another md-claiming renderer', function (): void {
+    $other = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return strtoupper($raw);
+        }
+    };
+
+    // Explicit user-supplied PassthroughRenderer is NOT the same instance
+    // as the builder's implicit one — it should be treated as a regular
+    // renderer and collide with `$other` over the `md` extension.
+    expect(fn () => (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withSkillRenderers([new PassthroughRenderer(), $other])
+        ->build('/x')
+    )->toThrow(InvalidSkillRendererException::class, 'Multiple renderers');
+});

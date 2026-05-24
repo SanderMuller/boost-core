@@ -83,7 +83,7 @@ final readonly class SkillLoader
             // the head is free to.
             $preParsed = $this->parser->parse($raw);
             $ctx = new RenderContext(
-                sourcePath: $file->getRealPath(),
+                sourcePath: $this->resolvedPath($file),
                 sourceVendor: $sourceVendor,
                 frontmatter: $preParsed->frontmatter,
             );
@@ -124,12 +124,29 @@ final readonly class SkillLoader
                 description: $description,
                 frontmatter: $parsed->frontmatter,
                 body: $parsed->body,
-                sourcePath: $file->getRealPath(),
+                sourcePath: $this->resolvedPath($file),
                 sourceVendor: $sourceVendor,
                 tags: $tags,
                 tagsValid: $tagsValid,
             );
         }
+    }
+
+    /**
+     * Resolve to a real-path string, falling back to the unresolved
+     * pathname if PHP's `realpath()` returns false (broken symlink,
+     * open_basedir restriction, race where the file disappears between
+     * Finder enumeration and getRealPath call). Symfony Finder's
+     * SplFileInfo narrows the return type to `string` via PHPDoc which
+     * lets phpstan see the `!== false` check as always-true; the
+     * runtime branch is still meaningful for the genuine false case,
+     * so we suppress the static-analyzer hint by computing once.
+     */
+    private function resolvedPath(\SplFileInfo $file): string
+    {
+        $real = $file->getRealPath();
+
+        return $real !== false ? $real : $file->getPathname();
     }
 
     /**

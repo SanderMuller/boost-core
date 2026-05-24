@@ -2,12 +2,14 @@
 
 namespace SanderMuller\BoostCore\Skills\Remote;
 
+use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Skills\BoostTags;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Rendering\MatchedRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
+use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
 use SanderMuller\BoostCore\Skills\Skill;
 use Throwable;
 
@@ -66,19 +68,58 @@ final readonly class RemoteSkillIngester
             $skillsByVendor[$source->source] ??= [];
 
             foreach ($source->skills as $ref) {
-                $outcome = $this->loadOne($source, $cached, $ref, $dispatcher);
-                if ($outcome instanceof Skill) {
-                    $skillsByVendor[$source->source][] = $outcome;
-                } else {
-                    $errors[] = $outcome;
-                    if ($this->strict) {
-                        throw new RemoteFetchException($outcome, RemoteFetchException::MALFORMED_RESPONSE);
-                    }
-                }
+                $this->absorbOutcome(
+                    $this->loadOne($source, $cached, $ref, $dispatcher),
+                    $source,
+                    $skillsByVendor,
+                    $errors,
+                );
             }
         }
 
         return ['skills' => $skillsByVendor, 'errors' => $errors];
+    }
+
+    /**
+     * Absorb one loadOne outcome into the in-flight vendor map. Skill
+     * goes through same-vendor-name collision detection (two
+     * `withRemoteSkills` entries for the same repo at different versions
+     * silently first-winning is the bug class — surfaced explicitly).
+     * Error string is recorded; strict mode escalates.
+     *
+     * @param  array<string, list<Skill>>  $skillsByVendor  in-place
+     * @param  list<string>  $errors  in-place
+     */
+    private function absorbOutcome(Skill|string $outcome, RemoteSkillSource $source, array &$skillsByVendor, array &$errors): void
+    {
+        if (! ($outcome instanceof Skill)) {
+            $errors[] = $outcome;
+            if ($this->strict) {
+                throw new RemoteFetchException($outcome, RemoteFetchException::MALFORMED_RESPONSE);
+            }
+
+            return;
+        }
+
+        foreach ($skillsByVendor[$source->source] as $existing) {
+            if ($existing->name === $outcome->name) {
+                $message = sprintf(
+                    'remote skill `%s:%s`: collides with an earlier remote declaration of the same skill name under the same source — likely two `withRemoteSkills` entries for `%s` at different versions both listing `%s`. Pick one version, or rename one of the skills.',
+                    $source->source,
+                    $outcome->name,
+                    $source->source,
+                    $outcome->name,
+                );
+                if ($this->strict) {
+                    throw new RemoteFetchException($message, RemoteFetchException::MALFORMED_RESPONSE);
+                }
+                $errors[] = $message;
+
+                return;
+            }
+        }
+
+        $skillsByVendor[$source->source][] = $outcome;
     }
 
     /**
@@ -125,12 +166,24 @@ final readonly class RemoteSkillIngester
                 frontmatter: $preParsed->frontmatter,
             ));
         } catch (Throwable $throwable) {
-            return sprintf(
+            $message = sprintf(
                 'remote skill `%s:%s`: render failed: %s',
                 $source->source,
                 $ref->name,
                 $throwable->getMessage(),
             );
+
+            // BOOST_RENDER_STRICT escalates here, mirroring SkillLoader's
+            // strict path. BOOST_REMOTE_STRICT is separately checked by
+            // the outer ingest() loop and triggers a different exception
+            // (RemoteFetchException) — render strictness must escalate
+            // FROM the render site so the right env var controls the
+            // right failure class.
+            if (Env::flagEnabled(Env::RENDER_STRICT)) {
+                throw new SkillRenderException($message, previous: $throwable);
+            }
+
+            return $message;
         }
 
         $parsed = $this->frontmatterParser->parse($content);
@@ -169,8 +222,11 @@ final readonly class RemoteSkillIngester
 
     /**
      * Locate the skill file inside a cache slot. Tries each glob the
-     * dispatcher claims; first match wins. Returns null if no claimed
-     * extension matches a file in the slot. Excludes hidden files.
+     * dispatcher claims and picks the first that matches `SKILL.*` over
+     * any other-named match within the same glob. This protects against
+     * a slot containing sibling files (`README.md`, `CHANGELOG.md`)
+     * sorting alphabetically before `SKILL.md` and being picked instead.
+     * Returns null if no claimed extension matches. Hidden files skipped.
      */
     private function locateSkillFile(string $cacheSlot, SkillRendererDispatcher $dispatcher): ?string
     {
@@ -179,16 +235,31 @@ final readonly class RemoteSkillIngester
             if ($matches === false) {
                 continue;
             }
+
+            $skillNamed = null;
+            $fallback = null;
             foreach ($matches as $match) {
                 if (! is_file($match)) {
                     continue;
                 }
-
-                if (str_starts_with(basename($match), '.')) {
+                $basename = basename($match);
+                if (str_starts_with($basename, '.')) {
                     continue;
                 }
 
-                return $match;
+                // Case-insensitive `SKILL.*` preference — the canonical
+                // skill-file name; sibling .md/.blade.php files in the
+                // same slot are tolerated but never preferred.
+                if (str_starts_with(strtolower($basename), 'skill.')) {
+                    $skillNamed ??= $match;
+                } else {
+                    $fallback ??= $match;
+                }
+            }
+
+            $pick = $skillNamed ?? $fallback;
+            if ($pick !== null) {
+                return $pick;
             }
         }
 

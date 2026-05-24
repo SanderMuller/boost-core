@@ -143,7 +143,14 @@ final readonly class BundleExtractor
         $opsys = 0;
         $attr = 0;
         if (! $zip->getExternalAttributesIndex($index, $opsys, $attr)) {
-            return;
+            // Fail closed: unreadable external attrs mean we cannot prove
+            // the entry is NOT a symlink, so reject the whole archive. A
+            // crafted ZIP that suppresses attr-readability would otherwise
+            // bypass the symlink check entirely.
+            throw new RemoteExtractException(
+                sprintf('ZIP entry `%s`: external attributes unreadable, cannot verify it is not a symlink.', $name),
+                RemoteExtractException::SYMLINK,
+            );
         }
 
         // Unix file-type bits live in the upper 16 bits of the external

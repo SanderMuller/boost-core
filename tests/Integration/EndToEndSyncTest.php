@@ -1,11 +1,13 @@
 <?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
+use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Remote\BundleExtractor;
 use SanderMuller\BoostCore\Skills\Remote\RemoteFetchException;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillIngester;
+use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
@@ -1489,6 +1491,35 @@ it('tag-filters injected vendor guidelines using the same subset rule', function
             ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue()
             ->and(file_get_contents($root . '/CLAUDE.md'))->toContain('KEPT')
             ->and(file_get_contents($root . '/CLAUDE.md'))->not->toContain('DROPPED');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('extraSkillRenderers PREPENDS — a user md-claiming renderer wins over implicit passthrough', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nhello");
+
+        $upper = new class implements SkillRenderer {
+            /** @return list<string> */
+            public function extensions(): array
+            {
+                return ['md'];
+            }
+
+            public function render(string $raw, RenderContext $ctx): string
+            {
+                return strtoupper($raw);
+            }
+        };
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root, extraSkillRenderers: [$upper]);
+
+        $written = (string) file_get_contents($root . '/.claude/skills/foo/SKILL.md');
+        // body uppercased proves the extra renderer ran (passthrough would have left it lowercase)
+        expect($written)->toContain('HELLO');
     } finally {
         rmTreeE2E($root);
     }

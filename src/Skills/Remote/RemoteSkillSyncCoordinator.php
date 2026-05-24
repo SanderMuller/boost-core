@@ -49,6 +49,27 @@ final readonly class RemoteSkillSyncCoordinator
             }
 
             $filtered = $this->skillTagFilter->filter($remoteSkills, $config);
+
+            // Same-vendor collision detection — mirrors InjectedVendorMerger.
+            // A remote source sharing a vendor key with an already-populated
+            // entry (scanned vendor with the same Composer name, or an
+            // injected vendor of the same key) would otherwise silently
+            // first-win via array_merge. SkillResolver only catches
+            // cross-vendor collisions.
+            $existingNames = [];
+            foreach ($vendorSkills[$sourceName] ?? [] as $existing) {
+                $existingNames[$existing->name] = true;
+            }
+            foreach ($filtered['kept'] as $skill) {
+                if (isset($existingNames[$skill->name])) {
+                    throw new \InvalidArgumentException(sprintf(
+                        'remote source `%s` publishes skill `%s` that also exists in the scanned or injected vendor map under the same vendor key. Rename one or use a distinct injection/scan vendor key.',
+                        $sourceName,
+                        $skill->name,
+                    ));
+                }
+            }
+
             $vendorSkills[$sourceName] = array_merge($vendorSkills[$sourceName] ?? [], $filtered['kept']);
             foreach ($filtered['droppedNames'] as $name) {
                 $droppedNames[] = $name;

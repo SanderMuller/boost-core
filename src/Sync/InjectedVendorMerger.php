@@ -32,13 +32,18 @@ final readonly class InjectedVendorMerger
     ) {}
 
     /**
-     * Append caller-supplied renderers onto `BoostConfig::skillRenderers`
-     * for one sync transaction. Returns the config unchanged when the
-     * extra list is empty. The merged list is NOT re-validated for
-     * extension conflicts here — `BoostConfigBuilder::build` already
-     * validated the project's own renderers; a duplicate from the extras
-     * list is a caller bug that surfaces via dispatcher resolution
-     * (first-match-wins) rather than throwing.
+     * Merge caller-supplied renderers into `BoostConfig::skillRenderers`
+     * for one sync transaction. Extras are PREPENDED, not appended — the
+     * dispatcher is first-match-wins, so an extra claiming `md` must
+     * precede the implicit PassthroughRenderer (which the builder
+     * always appended last) to actually win. Returns the config unchanged
+     * when the extras list is empty.
+     *
+     * The merged list is NOT re-validated for extension conflicts here —
+     * `BoostConfigBuilder::build` already validated the project's own
+     * renderers; a duplicate from the extras list is a caller bug that
+     * surfaces via dispatcher resolution (first-match-wins) rather than
+     * throwing.
      *
      * @param  list<SkillRenderer>  $extras
      */
@@ -60,7 +65,7 @@ final readonly class InjectedVendorMerger
             excludedSkills: $config->excludedSkills,
             excludedGuidelines: $config->excludedGuidelines,
             remoteSkills: $config->remoteSkills,
-            skillRenderers: array_merge($config->skillRenderers, $extras),
+            skillRenderers: array_merge($extras, $config->skillRenderers),
         );
     }
 

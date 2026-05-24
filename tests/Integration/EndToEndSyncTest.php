@@ -1251,7 +1251,7 @@ it('tag-filters injected vendor skills using the same subset rule as scanned ven
     }
 });
 
-it('throws when injectedVendorSkills lists the same skill name twice within one vendor', function (): void {
+it('records a SyncResult error when injectedVendorSkills lists the same skill name twice within one vendor', function (): void {
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
@@ -1267,17 +1267,21 @@ it('throws when injectedVendorSkills lists the same skill name twice within one 
             tagsValid: true,
         );
 
-        expect(
-            fn () => SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorSkills: [
-                'acme/bridge' => [$dupe(), $dupe()],
-            ])
-        )->toThrow(InvalidArgumentException::class, 'listed more than once');
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorSkills: [
+            'acme/bridge' => [$dupe(), $dupe()],
+        ]);
+
+        // sync() catches SkillSourceCollisionException and converts to a
+        // SyncResult error (preserves the wrapper-friendly contract that
+        // sync never throws on user-config issues).
+        expect($result->hasErrors())->toBeTrue()
+            ->and(implode("\n", $result->errors))->toContain('listed more than once');
     } finally {
         rmTreeE2E($root);
     }
 });
 
-it('throws when injectedVendorSkills overlaps a scanned vendor of the same name', function (): void {
+it('records a SyncResult error when injectedVendorSkills overlaps a scanned vendor of the same name', function (): void {
     $root = makeEndToEndProject();
     try {
         $pkg = makeTagVendor($root, 'acme/shared', 'shared-skill', '');
@@ -1303,9 +1307,10 @@ it('throws when injectedVendorSkills overlaps a scanned vendor of the same name'
             ],
         ];
 
-        expect(
-            fn () => SyncEngine::default(new InstalledPackages(['acme/shared' => $pkg]))->sync($root, injectedVendorSkills: $injected)
-        )->toThrow(InvalidArgumentException::class, 'also published by a scanned vendor');
+        $result = SyncEngine::default(new InstalledPackages(['acme/shared' => $pkg]))->sync($root, injectedVendorSkills: $injected);
+
+        expect($result->hasErrors())->toBeTrue()
+            ->and(implode("\n", $result->errors))->toContain('also published by a scanned vendor');
     } finally {
         rmTreeE2E($root);
     }
@@ -1378,7 +1383,7 @@ it('caller-injected vendor guidelines feed into the CLAUDE.md/AGENTS.md fan-out'
     }
 });
 
-it('throws when injectedVendorGuidelines lists the same guideline name twice within one vendor', function (): void {
+it('records a SyncResult error when injectedVendorGuidelines lists the same guideline name twice within one vendor', function (): void {
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
@@ -1394,17 +1399,18 @@ it('throws when injectedVendorGuidelines lists the same guideline name twice wit
             tagsValid: true,
         );
 
-        expect(
-            fn () => SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorGuidelines: [
-                'acme/bridge' => [$dupe(), $dupe()],
-            ])
-        )->toThrow(InvalidArgumentException::class, 'listed more than once');
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root, injectedVendorGuidelines: [
+            'acme/bridge' => [$dupe(), $dupe()],
+        ]);
+
+        expect($result->hasErrors())->toBeTrue()
+            ->and(implode("\n", $result->errors))->toContain('listed more than once');
     } finally {
         rmTreeE2E($root);
     }
 });
 
-it('throws when injectedVendorGuidelines overlaps a scanned vendor of the same name', function (): void {
+it('records a SyncResult error when injectedVendorGuidelines overlaps a scanned vendor of the same name', function (): void {
     $root = makeEndToEndProject();
     try {
         // Inline a guideline-publishing vendor since makeTagVendor only does skills.
@@ -1439,9 +1445,10 @@ it('throws when injectedVendorGuidelines overlaps a scanned vendor of the same n
             ],
         ];
 
-        expect(
-            fn () => SyncEngine::default(new InstalledPackages(['acme/shared' => $pkg]))->sync($root, injectedVendorGuidelines: $injected)
-        )->toThrow(InvalidArgumentException::class, 'also published by a scanned vendor');
+        $result = SyncEngine::default(new InstalledPackages(['acme/shared' => $pkg]))->sync($root, injectedVendorGuidelines: $injected);
+
+        expect($result->hasErrors())->toBeTrue()
+            ->and(implode("\n", $result->errors))->toContain('also published by a scanned vendor');
     } finally {
         rmTreeE2E($root);
     }
@@ -1522,5 +1529,39 @@ it('extraSkillRenderers PREPENDS — a user md-claiming renderer wins over impli
         expect($written)->toContain('HELLO');
     } finally {
         rmTreeE2E($root);
+    }
+});
+
+it('detects same-name remote skill across two source versions and records a sync error', function (): void {
+    // Two RemoteSkillSource entries pointing at the same repo at different
+    // versions, both listing `composer-upgrade`. uniqueKey() rejects only
+    // exact-triple duplicates, so this passes withRemoteSkills validation.
+    // The ingester must detect the collision (one vendor key, two skills
+    // with the same name) and surface it instead of silently first-winning.
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-collide-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.0.0', ['composer-upgrade']),\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v2.0.0', ['composer-upgrade']),\n    ]);");
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.0.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade', body: 'V1 body'))
+            ->withAsset('peterfox/agent-skills', 'v2.0.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade', body: 'V2 body'));
+
+        $engine = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+
+        $result = $engine->sync($root);
+
+        expect($result->hasErrors())->toBeTrue('expected a same-vendor collision error');
+        expect(implode("\n", $result->errors))->toContain('collides with an earlier remote declaration');
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
     }
 });

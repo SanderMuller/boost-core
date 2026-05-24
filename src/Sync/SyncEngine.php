@@ -360,6 +360,12 @@ final readonly class SyncEngine
             $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force, $injectedVendorGuidelines);
         } catch (CollidingSkillsException $collidingSkillsException) {
             return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
+        } catch (SkillSourceCollisionException $sourceCollisionException) {
+            // Caller-config-error class (injected vendor map / remote source
+            // overlapping a vendor key). Converted to a SyncResult error so
+            // wrappers (BoostAutoSync, project-boost-laravel) that expect
+            // sync() to never throw on user-config issues keep working.
+            return new SyncResult(writes: [], emitters: [], errors: [$sourceCollisionException->getMessage()], check: $checkOnly);
         }
 
         $remoteErrors = [];

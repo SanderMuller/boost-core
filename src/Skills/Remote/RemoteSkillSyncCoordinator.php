@@ -7,6 +7,7 @@ use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
+use SanderMuller\BoostCore\Sync\SkillSourceCollisionException;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\WrittenFile;
 
@@ -62,7 +63,7 @@ final readonly class RemoteSkillSyncCoordinator
             }
             foreach ($filtered['kept'] as $skill) {
                 if (isset($existingNames[$skill->name])) {
-                    throw new \InvalidArgumentException(sprintf(
+                    throw new SkillSourceCollisionException(sprintf(
                         'remote source `%s` publishes skill `%s` that also exists in the scanned or injected vendor map under the same vendor key. Rename one or use a distinct injection/scan vendor key.',
                         $sourceName,
                         $skill->name,

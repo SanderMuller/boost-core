@@ -2,11 +2,11 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
-use InvalidArgumentException;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\GuidelineTagFilter;
+use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
 
@@ -21,7 +21,7 @@ use SanderMuller\BoostCore\Skills\SkillTagFilter;
  * `SkillResolver` raises `CollidingSkillsException` only on *cross-vendor*
  * name collisions, so this merger detects same-vendor dupes (both the
  * inject-vs-scan case and the inject-list-internal case) explicitly. Throws
- * `InvalidArgumentException` with a message pointing at the offending key —
+ * `SkillSourceCollisionException` with a message pointing at the offending key —
  * forces the caller to decide (dedupe first, or use a distinct vendor key).
  */
 final readonly class InjectedVendorMerger
@@ -33,11 +33,14 @@ final readonly class InjectedVendorMerger
 
     /**
      * Merge caller-supplied renderers into `BoostConfig::skillRenderers`
-     * for one sync transaction. Extras are PREPENDED, not appended — the
-     * dispatcher is first-match-wins, so an extra claiming `md` must
-     * precede the implicit PassthroughRenderer (which the builder
-     * always appended last) to actually win. Returns the config unchanged
-     * when the extras list is empty.
+     * for one sync transaction. Extras are inserted JUST BEFORE the
+     * trailing implicit `PassthroughRenderer` (which `BoostConfigBuilder`
+     * always appends last). Resulting order: `[...user-registered,
+     * ...extras, Passthrough]`. With first-match-wins dispatch:
+     *  - User-registered renderers win over extras (user's `boost.php`
+     *    is authoritative).
+     *  - Extras override only the implicit passthrough — the documented
+     *    use case for `extraSkillRenderers`.
      *
      * The merged list is NOT re-validated for extension conflicts here —
      * `BoostConfigBuilder::build` already validated the project's own
@@ -53,6 +56,17 @@ final readonly class InjectedVendorMerger
             return $config;
         }
 
+        // Split off the trailing implicit Passthrough; insert extras
+        // between user renderers and the passthrough.
+        $userRenderers = $config->skillRenderers;
+        /** @var list<SkillRenderer> $trailing */
+        $trailing = [];
+        $lastIndex = count($userRenderers) - 1;
+        if ($lastIndex >= 0 && $userRenderers[$lastIndex] instanceof PassthroughRenderer) {
+            $trailing = [$userRenderers[$lastIndex]];
+            array_pop($userRenderers);
+        }
+
         return new BoostConfig(
             agents: $config->agents,
             allowedVendors: $config->allowedVendors,
@@ -65,7 +79,7 @@ final readonly class InjectedVendorMerger
             excludedSkills: $config->excludedSkills,
             excludedGuidelines: $config->excludedGuidelines,
             remoteSkills: $config->remoteSkills,
-            skillRenderers: array_merge($extras, $config->skillRenderers),
+            skillRenderers: array_merge($userRenderers, $extras, $trailing),
         );
     }
 
@@ -138,7 +152,7 @@ final readonly class InjectedVendorMerger
         $seenInBatch = [];
         foreach ($batch as $item) {
             if (isset($seenInBatch[$item->name])) {
-                throw new InvalidArgumentException(sprintf(
+                throw new SkillSourceCollisionException(sprintf(
                     '%s[%s]: %s `%s` listed more than once. Dedupe before passing to SyncEngine::sync().',
                     $kind,
                     $vendorName,
@@ -148,7 +162,7 @@ final readonly class InjectedVendorMerger
             }
 
             if (isset($existingNames[$item->name])) {
-                throw new InvalidArgumentException(sprintf(
+                throw new SkillSourceCollisionException(sprintf(
                     '%s[%s]: %s `%s` also published by a scanned vendor of the same name. Use a distinct injection key or remove the scan-side copy.',
                     $kind,
                     $vendorName,

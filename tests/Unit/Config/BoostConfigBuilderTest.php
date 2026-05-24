@@ -4,10 +4,13 @@ use SanderMuller\BoostCore\Config\BoostConfigBuilder;
 use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Enums\Tag;
+use SanderMuller\BoostCore\Skills\GuidelineTagFilter;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Skills\Rendering\InvalidSkillRendererException;
 use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
+use SanderMuller\BoostCore\Skills\SkillTagFilter;
+use SanderMuller\BoostCore\Sync\InjectedVendorMerger;
 
 it('builds a config with all explicit values', function (): void {
     $config = (new BoostConfigBuilder())
@@ -327,4 +330,51 @@ it('throws when user passes their own PassthroughRenderer alongside another md-c
         ->withSkillRenderers([new PassthroughRenderer(), $other])
         ->build('/x')
     )->toThrow(InvalidSkillRendererException::class, 'Multiple renderers');
+});
+
+it('extraSkillRenderers inserts between user renderers and the implicit passthrough', function (): void {
+    // Construct: user renderer claims `md`. Extras provides another `md`-claimer.
+    // Expected order after mergeExtraRenderers: [UserMd, ExtrasMd, Passthrough].
+    // Dispatcher first-match-wins → UserMd ALWAYS beats ExtrasMd
+    // (user's boost.php is authoritative). Both beat Passthrough.
+    $userMd = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return 'USER:' . $raw;
+        }
+    };
+    $extrasMd = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return 'EXTRAS:' . $raw;
+        }
+    };
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withSkillRenderers([$userMd])
+        ->build('/x');
+
+    $merger = new InjectedVendorMerger(
+        new SkillTagFilter(),
+        new GuidelineTagFilter(),
+    );
+    $merged = $merger->mergeExtraRenderers($config, [$extrasMd]);
+
+    expect($merged->skillRenderers)->toHaveCount(3)
+        ->and($merged->skillRenderers[0])->toBe($userMd)
+        ->and($merged->skillRenderers[1])->toBe($extrasMd)
+        ->and($merged->skillRenderers[2])->toBeInstanceOf(PassthroughRenderer::class);
 });

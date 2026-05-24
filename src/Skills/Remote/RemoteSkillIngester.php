@@ -221,51 +221,71 @@ final readonly class RemoteSkillIngester
     }
 
     /**
-     * Locate the skill file inside a cache slot. Tries each glob the
-     * dispatcher claims and prefers the EXACT canonical basename
-     * `SKILL.<ext>` over any other-named match (sibling files like
-     * `README.md`, `skill.backup.md`, `skill-template.md` are tolerated
-     * but never preferred). The exact-basename rule — not a prefix match
-     * — distinguishes the canonical file from helper variants whose
-     * names start with `skill.`. Returns null if no claimed extension
-     * matches a file in the slot. Hidden files skipped.
+     * Locate the skill file inside a cache slot.
+     *
+     * Two-pass scan across ALL globs the dispatcher claims:
+     *  1. First pass: any EXACT canonical `SKILL.<ext>` (case-insensitive)
+     *     wins regardless of which glob iterated first. This prevents a
+     *     non-canonical sibling matched by an earlier glob (e.g.
+     *     `README.md` under the `*.md` glob) from beating the canonical
+     *     `SKILL.blade.php` under a later glob.
+     *  2. Second pass (only if no canonical found): the first
+     *     non-canonical match in glob-iteration order. Helper variants
+     *     like `skill.backup.md` are tolerated but never preferred.
+     *
+     * Returns null if no claimed extension matches. Hidden files skipped.
      */
     private function locateSkillFile(string $cacheSlot, SkillRendererDispatcher $dispatcher): ?string
     {
-        foreach ($dispatcher->fileGlobPatterns() as $glob) {
-            $matches = glob($cacheSlot . '/' . $glob);
-            if ($matches === false) {
-                continue;
-            }
+        $globs = $dispatcher->fileGlobPatterns();
 
-            // Glob is `*.<ext>` (set by SkillRendererDispatcher::fileGlobPatterns).
-            // Strip the `*.` prefix to recover the canonical `SKILL.<ext>` form.
-            $canonicalBasename = 'SKILL.' . substr($glob, 2);
-
-            $canonical = null;
-            $fallback = null;
-            foreach ($matches as $match) {
-                if (! is_file($match)) {
-                    continue;
-                }
-                $basename = basename($match);
-                if (str_starts_with($basename, '.')) {
-                    continue;
-                }
-
-                if (strcasecmp($basename, $canonicalBasename) === 0) {
-                    $canonical ??= $match;
-                } else {
-                    $fallback ??= $match;
+        // Pass 1: canonical SKILL.<ext> across all globs.
+        foreach ($globs as $glob) {
+            $canonicalBasename = $this->canonicalBasenameFromGlob($glob);
+            foreach ($this->matchingFiles($cacheSlot, $glob) as $match) {
+                if (strcasecmp(basename($match), $canonicalBasename) === 0) {
+                    return $match;
                 }
             }
+        }
 
-            $pick = $canonical ?? $fallback;
-            if ($pick !== null) {
-                return $pick;
+        // Pass 2: first non-canonical match in glob-iteration order.
+        foreach ($globs as $glob) {
+            foreach ($this->matchingFiles($cacheSlot, $glob) as $match) {
+                return $match;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Globs are `*.<ext>` per SkillRendererDispatcher::fileGlobPatterns.
+     * Strip the `*.` prefix to recover the canonical `SKILL.<ext>`.
+     */
+    private function canonicalBasenameFromGlob(string $glob): string
+    {
+        return 'SKILL.' . (str_starts_with($glob, '*.') ? substr($glob, 2) : $glob);
+    }
+
+    /**
+     * @return iterable<string>
+     */
+    private function matchingFiles(string $cacheSlot, string $glob): iterable
+    {
+        $matches = glob($cacheSlot . '/' . $glob);
+        if ($matches === false) {
+            return;
+        }
+        foreach ($matches as $match) {
+            if (! is_file($match)) {
+                continue;
+            }
+            if (str_starts_with(basename($match), '.')) {
+                continue;
+            }
+
+            yield $match;
+        }
     }
 }

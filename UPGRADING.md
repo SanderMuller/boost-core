@@ -4,7 +4,17 @@ Breaking changes per major/minor bump.
 
 ## 0.6 → 0.7
 
-0.7.0 adds three additive surfaces — no migration required for the routine case.
+0.7.0 adds four additive surfaces — no migration required for the routine case.
+
+### `vendor/bin/boost where` — skill origin tracing
+
+New CLI command. Lists every resolved skill grouped by origin (`.ai/` host, scanned vendor packages, remote skill sources), with a `(shadows <vendor>)` annotation on host overrides that shadow an allowlisted vendor's skill of the same name. Same resolution pipeline as `boost sync --check` (tag-filtered, collision-resolved). Caller-injected skills (the wrapper pattern, e.g. `project-boost-laravel`) are NOT visible — wrapper packages own their own inspection surface.
+
+```bash
+vendor/bin/boost where
+```
+
+Complements `boost tags` and `boost doctor`. No `boost.php` change required.
 
 ### `withRemoteSkills(...)` — declarative non-Composer sources
 

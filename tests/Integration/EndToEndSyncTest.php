@@ -1626,3 +1626,47 @@ it('silently skips host `.ai/guidelines/*.blade.php` when NO renderer is wired (
         rmTreeE2E($root);
     }
 });
+
+it('check-only mode skips remote fetch when cache is cold and surfaces a would-fetch advisory', function (): void {
+    // Regression for rc2: `boost sync --check` must not touch the network
+    // or write to the remote-skill cache. Cold-cache sources are excluded
+    // from the ingest call and surfaced as `would-fetch` advisories in
+    // SyncResult::errors. We verify by using a FakeRemoteFetcher with NO
+    // canned data — any actual fetch would throw RemoteFetchException.
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-checkonly-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        // FakeRemoteFetcher with no canned anything — every fetch throws.
+        // If --check accidentally calls fetchRef/fetchAsset/fetchTarball,
+        // the test fails with a RemoteFetchException.
+        $fetcher = new FakeRemoteFetcher();
+
+        $engine = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+
+        $result = $engine->sync($root, checkOnly: true);
+
+        // The would-fetch advisory is recorded as an error string, but the
+        // sync itself does not abort — `hasErrors()` returns true because
+        // errors[] is non-empty, but no exception bubbles up.
+        expect($result->errors)->not->toBeEmpty('expected a would-fetch advisory in errors[]')
+            ->and(implode("\n", $result->errors))
+            ->toContain('would fetch on a real sync');
+
+        // Cache root must still be untouched — no on-disk writes during check.
+        expect(is_dir($cacheRoot))->toBeFalse('check mode wrote to the cache root');
+    } finally {
+        rmTreeE2E($root);
+        if (is_dir($cacheRoot)) {
+            BundleExtractor::recursivelyRemove($cacheRoot);
+        }
+    }
+});

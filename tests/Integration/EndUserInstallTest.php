@@ -34,6 +34,17 @@ it('bin/boost runs and syncs in an end-user install without composer/composer in
 
         $install = Process::fromShellCommandline(
             'cd ' . escapeshellarg($fixture) . ' && composer install --no-dev --no-interaction --quiet 2>&1',
+            null,
+            // Symfony Process's default env strips PARENT env in some
+            // PHP-process configurations (notably GitHub-Actions Linux
+            // runners). Composer requires HOME or COMPOSER_HOME to
+            // resolve its config dir; pass both explicitly so the test
+            // runs in CI the same way it does locally.
+            [
+                'HOME' => (string) (getenv('HOME') !== false ? getenv('HOME') : sys_get_temp_dir()),
+                'COMPOSER_HOME' => (string) (getenv('COMPOSER_HOME') !== false ? getenv('COMPOSER_HOME') : sys_get_temp_dir() . '/.composer'),
+                'PATH' => (string) (getenv('PATH') !== false ? getenv('PATH') : '/usr/bin:/usr/local/bin'),
+            ],
         );
         $install->run();
 

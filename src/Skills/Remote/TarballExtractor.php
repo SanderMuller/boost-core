@@ -35,34 +35,52 @@ final readonly class TarballExtractor
 
     public function extract(string $archivePath, string $destinationPath): void
     {
-        // Use SEPARATE PharData instances for the safety walk and the
-        // extraction. RecursiveIteratorIterator over PharData advances the
-        // archive's internal iterator state; on some Linux/PHP/libphar
-        // combinations subsequent `extractTo` then writes zero-byte files
-        // (the iterator is at EOF; the extractor's gzip stream handle
-        // depends on the shared internal cursor). macOS happens not to hit
-        // this — empirically reproducible only in CI.
-        $safetyPhar = $this->openPhar($archivePath);
-        $this->assertAllEntriesSafe($safetyPhar, $archivePath);
-        unset($safetyPhar);
-
-        if (! is_dir($destinationPath) && ! mkdir($destinationPath, 0o755, recursive: true) && ! is_dir($destinationPath)) {
+        // Two-phase: safety-check a COPY of the archive at a different
+        // path, then extract from the ORIGINAL path. PharData has a
+        // process-wide path-keyed cache; opening the same path twice
+        // returns the cached object with its (possibly-corrupted)
+        // iterator state. RecursiveIteratorIterator($phar) inside the
+        // safety walk advances internal cursors, and on some Linux/PHP/
+        // libphar combinations the subsequent extractTo from the same
+        // PharData instance writes zero-byte files. macOS happens not
+        // to hit this — empirically reproducible only in CI.
+        //
+        // Copying to a unique path sidesteps the cache and guarantees
+        // fresh state for the extract phase. The copy lives under the
+        // same temp dir; deleted in finally.
+        $safetyCopy = $archivePath . '.boost-safety-' . bin2hex(random_bytes(4)) . '.copy';
+        if (! @copy($archivePath, $safetyCopy)) {
             throw new RemoteExtractException(
-                sprintf('Cannot create destination directory `%s`.', $destinationPath),
+                sprintf('Cannot create safety-check copy of `%s`.', $archivePath),
                 RemoteExtractException::DISK_FULL,
             );
         }
 
-        $extractPhar = $this->openPhar($archivePath);
-
         try {
-            $extractPhar->extractTo($destinationPath, null, overwrite: true);
-        } catch (Throwable $e) {
-            throw new RemoteExtractException(
-                sprintf('Tarball extraction failed at `%s`: %s', $destinationPath, $e->getMessage()),
-                RemoteExtractException::DISK_FULL,
-                $e,
-            );
+            $safetyPhar = $this->openPhar($safetyCopy);
+            $this->assertAllEntriesSafe($safetyPhar, $archivePath);
+            unset($safetyPhar);
+
+            if (! is_dir($destinationPath) && ! mkdir($destinationPath, 0o755, recursive: true) && ! is_dir($destinationPath)) {
+                throw new RemoteExtractException(
+                    sprintf('Cannot create destination directory `%s`.', $destinationPath),
+                    RemoteExtractException::DISK_FULL,
+                );
+            }
+
+            $extractPhar = $this->openPhar($archivePath);
+
+            try {
+                $extractPhar->extractTo($destinationPath, null, overwrite: true);
+            } catch (Throwable $e) {
+                throw new RemoteExtractException(
+                    sprintf('Tarball extraction failed at `%s`: %s', $destinationPath, $e->getMessage()),
+                    RemoteExtractException::DISK_FULL,
+                    $e,
+                );
+            }
+        } finally {
+            @unlink($safetyCopy);
         }
     }
 

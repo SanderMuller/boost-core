@@ -7,32 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.6.2...HEAD)
 
-## [0.6.2](https://github.com/sandermuller/boost-core/compare/0.6.1...0.6.2) - 2026-05-23
-
-### Fixed
-
-- **`boost sync` emits a one-line note when tagged vendor skills are silently filtered out.** Triggered when (a) the consumer's `withTags()` is empty AND (b) at least one vendor skill was dropped specifically by tag-mismatch:
-  
-  ```
-  ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
-          Run `vendor/bin/boost tags` to see them.
-  
-  ```
-  The nudge is precise about its cause — `withExcludedSkills` denials and malformed-frontmatter drops are NOT counted, so the message never misleads consumers who intentionally excluded skills or have a broken vendor manifest. Per-vendor tag-mismatch drops are summed without cross-vendor name deduplication, so two vendors each hiding a same-named skill count as two.
-  
-  Consumers with `withTags(...)` already declared see no nudge — explicit filtering is intentional, not noise.
-  
-- **`SkillTagFilter::filter()` now returns `droppedByTag: int`** alongside `droppedNames` — the data-flow change that powers the nudge. Existing callers of `kept` and `droppedNames` are unaffected; the return is additive.
-  
-
-### Upgrade notes
-
-`composer require sandermuller/boost-core:^0.6.2` — or nothing at all if you already allow `^0.6`, since this is a patch. No behaviour change for consumers who already declare `withTags(...)` (the common explicit-filtering case). Family packages constrained to `boost-core ^0.6` receive 0.6.2 transitively, no re-tag needed.
-
-If your next `composer install` surfaces the new note pointing at `vendor/bin/boost tags`, you have skills available you have not opted into — `boost tags`'s "Filtered skills you could enable" section shows the gap and the tag(s) to add to `withTags(...)` to receive them. If the filtering was intentional, declare the tags you actually want (any non-empty `withTags()` silences the nudge) and `boost tags` will continue to show the full classification.
-
-**Full changelog:** https://github.com/SanderMuller/boost-core/compare/0.6.1...0.6.2
-
 ### Added
 
 - **`SkillRenderer` plugin contract** (`@experimental`, `src/Contracts/SkillRenderer.php`). Lets downstream packages render template-flavored skill bodies (Blade, Twig, …) before per-agent fan-out. Default registry is `PassthroughRenderer` claiming `.md` — behavior is bit-identical to pre-renderer boost-core when no renderer is registered. Register via `BoostConfigBuilder::withSkillRenderers([new BladeRenderer])`; deny by FQCN via `withDisabledRenderers([Foo::class])`. Dispatcher uses longest-extension-first match (so `.blade.php` beats `.php`); first-registered-wins resolves same-extension ties. The implicit `PassthroughRenderer` is re-appended after the deny-list so `.md` always renders. Spec: `internal/specs/skill-renderer-plugin.md`. Reference consumer: [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel)'s `BladeRenderer` which delegates to laravel/boost's `RendersBladeGuidelines` trait for `$assist = GuidelineAssist` runtime context.
@@ -81,6 +55,32 @@ If your next `composer install` surfaces the new note pointing at `vendor/bin/bo
 ### Added (internal — public exception class)
 
 - **`SkillSourceCollisionException`** (`src/Sync/SkillSourceCollisionException.php`). Thrown by `InjectedVendorMerger` and `RemoteSkillSyncCoordinator` when caller-config (injected vendor map / remote source declaration) would silently overwrite an existing entry under the same vendor key. Caught in `SyncEngine::sync()` and converted to a `SyncResult` with the message as an error — consumers that wrap `sync()` and expect it to never throw on user-config issues keep working. Distinct from `CollidingSkillsException` (which models cross-vendor name collisions detected by `SkillResolver`).
+
+## [0.6.2](https://github.com/sandermuller/boost-core/compare/0.6.1...0.6.2) - 2026-05-23
+
+### Fixed
+
+- **`boost sync` emits a one-line note when tagged vendor skills are silently filtered out.** Triggered when (a) the consumer's `withTags()` is empty AND (b) at least one vendor skill was dropped specifically by tag-mismatch:
+
+  ```
+  ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
+          Run `vendor/bin/boost tags` to see them.
+
+  ```
+  The nudge is precise about its cause — `withExcludedSkills` denials and malformed-frontmatter drops are NOT counted, so the message never misleads consumers who intentionally excluded skills or have a broken vendor manifest. Per-vendor tag-mismatch drops are summed without cross-vendor name deduplication, so two vendors each hiding a same-named skill count as two.
+
+  Consumers with `withTags(...)` already declared see no nudge — explicit filtering is intentional, not noise.
+
+- **`SkillTagFilter::filter()` now returns `droppedByTag: int`** alongside `droppedNames` — the data-flow change that powers the nudge. Existing callers of `kept` and `droppedNames` are unaffected; the return is additive.
+
+
+### Upgrade notes
+
+`composer require sandermuller/boost-core:^0.6.2` — or nothing at all if you already allow `^0.6`, since this is a patch. No behaviour change for consumers who already declare `withTags(...)` (the common explicit-filtering case). Family packages constrained to `boost-core ^0.6` receive 0.6.2 transitively, no re-tag needed.
+
+If your next `composer install` surfaces the new note pointing at `vendor/bin/boost tags`, you have skills available you have not opted into — `boost tags`'s "Filtered skills you could enable" section shows the gap and the tag(s) to add to `withTags(...)` to receive them. If the filtering was intentional, declare the tags you actually want (any non-empty `withTags()` silences the nudge) and `boost tags` will continue to show the full classification.
+
+**Full changelog:** https://github.com/SanderMuller/boost-core/compare/0.6.1...0.6.2
 
 ## [0.6.1](https://github.com/sandermuller/boost-core/compare/0.6.0...0.6.1) - 2026-05-22
 

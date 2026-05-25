@@ -3,7 +3,7 @@
 namespace SanderMuller\BoostCore\Skills\Remote;
 
 use PharData;
-use PharFileInfo;
+use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use Throwable;
 use UnexpectedValueException;
@@ -35,31 +35,37 @@ final readonly class TarballExtractor
 
     public function extract(string $archivePath, string $destinationPath): void
     {
-        // Two-phase: safety-check a COPY of the archive at a different
-        // path, then extract from the ORIGINAL path. PharData has a
-        // process-wide path-keyed cache; opening the same path twice
-        // returns the cached object with its (possibly-corrupted)
-        // iterator state. RecursiveIteratorIterator($phar) inside the
-        // safety walk advances internal cursors, and on some Linux/PHP/
-        // libphar combinations the subsequent extractTo from the same
-        // PharData instance writes zero-byte files. macOS happens not
-        // to hit this — empirically reproducible only in CI.
-        //
-        // Copying to a unique path sidesteps the cache and guarantees
-        // fresh state for the extract phase. The copy lives under the
-        // same temp dir; deleted in finally.
-        $safetyCopy = $archivePath . '.boost-safety-' . bin2hex(random_bytes(4)) . '.copy';
-        if (! @copy($archivePath, $safetyCopy)) {
+        // Extract-then-validate order. The previous pre-validation pass
+        // walked PharData with RecursiveIteratorIterator, which on some
+        // Linux/PHP/libphar combinations left extractTo producing
+        // zero-byte files (state contamination or cache identity — both
+        // empirically reproducible only on CI). Order-flipping sidesteps
+        // PharData iteration entirely: stage the extract to a temp dir,
+        // walk the resulting files on disk (cheap, predictable), reject
+        // if any entry violates the safety contract, atomic-move staging
+        // to destination if all-safe.
+        $phar = $this->openPhar($archivePath);
+
+        $stagingDir = sys_get_temp_dir() . '/boost-tar-staging-' . bin2hex(random_bytes(8));
+        if (! mkdir($stagingDir, 0o755, recursive: true)) {
             throw new RemoteExtractException(
-                sprintf('Cannot create safety-check copy of `%s`.', $archivePath),
+                sprintf('Cannot create staging directory `%s`.', $stagingDir),
                 RemoteExtractException::DISK_FULL,
             );
         }
 
         try {
-            $safetyPhar = $this->openPhar($safetyCopy);
-            $this->assertAllEntriesSafe($safetyPhar, $archivePath);
-            unset($safetyPhar);
+            try {
+                $phar->extractTo($stagingDir, null, overwrite: true);
+            } catch (Throwable $e) {
+                throw new RemoteExtractException(
+                    sprintf('Tarball extraction failed at `%s`: %s', $archivePath, $e->getMessage()),
+                    RemoteExtractException::DISK_FULL,
+                    $e,
+                );
+            }
+
+            $this->assertAllEntriesSafe($stagingDir, $archivePath);
 
             if (! is_dir($destinationPath) && ! mkdir($destinationPath, 0o755, recursive: true) && ! is_dir($destinationPath)) {
                 throw new RemoteExtractException(
@@ -68,19 +74,57 @@ final readonly class TarballExtractor
                 );
             }
 
-            $extractPhar = $this->openPhar($archivePath);
+            $this->mergeStagingInto($stagingDir, $destinationPath);
+        } finally {
+            BundleExtractor::recursivelyRemove($stagingDir);
+        }
+    }
 
-            try {
-                $extractPhar->extractTo($destinationPath, null, overwrite: true);
-            } catch (Throwable $e) {
+    /**
+     * Move every file from $stagingDir into $destinationPath, preserving
+     * the directory structure. Uses `rename` for atomicity within a
+     * filesystem; falls back to copy+unlink across filesystems.
+     */
+    private function mergeStagingInto(string $stagingDir, string $destinationPath): void
+    {
+        $iter = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($stagingDir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST,
+        );
+
+        foreach ($iter as $entry) {
+            /** @var \SplFileInfo $entry */
+            $relative = ltrim(substr($entry->getPathname(), strlen($stagingDir)), '/');
+            $target = $destinationPath . '/' . $relative;
+
+            if ($entry->isDir()) {
+                if (! is_dir($target) && ! @mkdir($target, 0o755, recursive: true) && ! is_dir($target)) {
+                    throw new RemoteExtractException(
+                        sprintf('Cannot create destination subdir `%s`.', $target),
+                        RemoteExtractException::DISK_FULL,
+                    );
+                }
+
+                continue;
+            }
+
+            $parent = dirname($target);
+            if (! is_dir($parent) && ! @mkdir($parent, 0o755, recursive: true) && ! is_dir($parent)) {
                 throw new RemoteExtractException(
-                    sprintf('Tarball extraction failed at `%s`: %s', $destinationPath, $e->getMessage()),
+                    sprintf('Cannot create destination subdir `%s`.', $parent),
                     RemoteExtractException::DISK_FULL,
-                    $e,
                 );
             }
-        } finally {
-            @unlink($safetyCopy);
+
+            if (! @rename($entry->getPathname(), $target)) {
+                if (! @copy($entry->getPathname(), $target)) {
+                    throw new RemoteExtractException(
+                        sprintf('Cannot move `%s` → `%s`.', $entry->getPathname(), $target),
+                        RemoteExtractException::DISK_FULL,
+                    );
+                }
+                @unlink($entry->getPathname());
+            }
         }
     }
 
@@ -97,18 +141,18 @@ final readonly class TarballExtractor
         }
     }
 
-    private function assertAllEntriesSafe(PharData $phar, string $archivePath): void
+    private function assertAllEntriesSafe(string $stagingDir, string $archivePath): void
     {
         $count = 0;
         $totalBytes = 0;
-        // `PharData::getPath()` returns the host filesystem path of the
-        // archive (e.g. `/tmp/foo.tar`), NOT the `phar://...` URL that
-        // prefixes iterated-entry pathnames. The pathname looks like
-        // `phar:///tmp/foo.tar/<entry>` — the prefix to strip is
-        // `phar://` (7 chars) + the host path + `/` (1 char).
-        $archiveRootLen = strlen('phar://') + strlen($phar->getPath()) + 1;
-        /** @var PharFileInfo $fileInfo */
-        foreach (new RecursiveIteratorIterator($phar) as $fileInfo) {
+
+        $iter = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($stagingDir, RecursiveDirectoryIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::SELF_FIRST,
+        );
+
+        foreach ($iter as $entry) {
+            /** @var \SplFileInfo $entry */
             ++$count;
             if ($count > $this->maxEntries) {
                 throw new RemoteExtractException(
@@ -117,20 +161,21 @@ final readonly class TarballExtractor
                 );
             }
 
-            $pathName = $fileInfo->getPathname();
-            // `phar://<archive-path>/<entry-name>` — strip the prefix to get the in-archive entry name.
-            $relName = $this->stripPharPrefix($pathName, $archiveRootLen);
-
+            $relName = ltrim(substr($entry->getPathname(), strlen($stagingDir)), '/');
             $this->assertEntryNameSafe($relName);
 
-            if ($fileInfo->isLink()) {
+            if ($entry->isLink()) {
                 throw new RemoteExtractException(
                     sprintf('Tarball entry `%s` is a symbolic link; strict rejection per §9.', $relName),
                     RemoteExtractException::SYMLINK,
                 );
             }
 
-            $size = (int) $fileInfo->getSize();
+            if ($entry->isDir()) {
+                continue;
+            }
+
+            $size = (int) $entry->getSize();
             if ($size > $this->maxFileBytes) {
                 throw new RemoteExtractException(
                     sprintf('Tarball entry `%s` exceeds the %d-byte per-file cap.', $relName, $this->maxFileBytes),
@@ -146,13 +191,6 @@ final readonly class TarballExtractor
                 );
             }
         }
-    }
-
-    private function stripPharPrefix(string $pharPath, int $skip): string
-    {
-        // Defensive — if for any reason the path is shorter than expected,
-        // fall back to the basename so we still have something checkable.
-        return strlen($pharPath) > $skip ? substr($pharPath, $skip) : basename($pharPath);
     }
 
     private function assertEntryNameSafe(string $name): void

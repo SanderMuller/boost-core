@@ -2,6 +2,7 @@
 
 use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\InvalidSkillRendererException;
+use SanderMuller\BoostCore\Skills\Rendering\MatchedRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
@@ -38,7 +39,7 @@ test('passthrough-only registry resolves SKILL.md', function (): void {
     $matched = $d->resolve('SKILL.md');
 
     expect($matched)->not->toBeNull();
-    assert($matched !== null);
+    assert($matched instanceof MatchedRenderer);
     expect($matched->extension)->toBe('md')
         ->and($matched->renderer)->toBeInstanceOf(PassthroughRenderer::class);
 });
@@ -55,7 +56,7 @@ test('longest-extension-first beats single-segment claim', function (): void {
 
     $matched = $d->resolve('SKILL.blade.php');
     expect($matched)->not->toBeNull();
-    assert($matched !== null);
+    assert($matched instanceof MatchedRenderer);
     expect($matched->extension)->toBe('blade.php')
         ->and($matched->renderer)->toBe($blade);
 });

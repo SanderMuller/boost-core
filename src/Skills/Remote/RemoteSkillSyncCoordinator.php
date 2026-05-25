@@ -61,6 +61,7 @@ final readonly class RemoteSkillSyncCoordinator
             foreach ($vendorSkills[$sourceName] ?? [] as $existing) {
                 $existingNames[$existing->name] = true;
             }
+
             foreach ($filtered['kept'] as $skill) {
                 if (isset($existingNames[$skill->name])) {
                     throw new SkillSourceCollisionException(sprintf(

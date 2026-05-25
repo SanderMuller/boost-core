@@ -19,14 +19,21 @@ function rmTreeSkillLoader(string $path): void
     if (! is_dir($path)) {
         return;
     }
+
     $entries = scandir($path);
     if ($entries === false) {
         return;
     }
+
     foreach ($entries as $entry) {
-        if ($entry === '.' || $entry === '..') {
+        if ($entry === '.') {
             continue;
         }
+
+        if ($entry === '..') {
+            continue;
+        }
+
         $full = $path . '/' . $entry;
         if (is_dir($full) && ! is_link($full)) {
             rmTreeSkillLoader($full);
@@ -34,6 +41,7 @@ function rmTreeSkillLoader(string $path): void
             @unlink($full);
         }
     }
+
     @rmdir($path);
 }
 

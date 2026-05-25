@@ -141,3 +141,70 @@ it('rejects empty paths', function (): void {
 it('rejects backslash-leading paths (Windows-ish)', function (): void {
     (new FileWriter())->write('/some/root', new PendingWrite('\\evil.md', 'x'));
 })->throws(PathTraversalException::class);
+
+it('skips writes whose immediate parent dir is a user-placed symlink', function (): void {
+    // Repro the collectiq dogfood layout: `.claude/skills/<name>` is a
+    // symlink to `../../.ai/skills/<name>/`. A sync write of
+    // `.claude/skills/<name>/SKILL.md` resolves through the link and
+    // overwrites the source. FileWriter must refuse.
+    $root = tempProjectRoot();
+    try {
+        // Set up the source tree the symlink points to.
+        mkdir($root . '/.ai/skills/livewire-development', 0o755, recursive: true);
+        file_put_contents($root . '/.ai/skills/livewire-development/SKILL.md', 'USER SOURCE');
+
+        // Create the symlinked agent dir.
+        mkdir($root . '/.claude/skills', 0o755, recursive: true);
+        symlink('../../.ai/skills/livewire-development', $root . '/.claude/skills/livewire-development');
+
+        $written = (new FileWriter())->write(
+            $root,
+            new PendingWrite('.claude/skills/livewire-development/SKILL.md', 'SYNC OVERWRITE'),
+        );
+
+        expect($written->action)->toBe(WriteAction::SKIPPED_SYMLINK)
+            ->and(file_get_contents($root . '/.ai/skills/livewire-development/SKILL.md'))->toBe('USER SOURCE');
+    } finally {
+        rmTree($root);
+    }
+});
+
+it('skips writes when any deeper path segment is a symlink', function (): void {
+    // Less-common case: `.claude/skills/` itself is a symlink. Walks each
+    // segment so this still gets caught.
+    $root = tempProjectRoot();
+    try {
+        mkdir($root . '/.ai-skills/foo', 0o755, recursive: true);
+        file_put_contents($root . '/.ai-skills/foo/SKILL.md', 'USER SOURCE');
+
+        mkdir($root . '/.claude', 0o755, recursive: true);
+        symlink('../.ai-skills', $root . '/.claude/skills');
+
+        $written = (new FileWriter())->write(
+            $root,
+            new PendingWrite('.claude/skills/foo/SKILL.md', 'SYNC OVERWRITE'),
+        );
+
+        expect($written->action)->toBe(WriteAction::SKIPPED_SYMLINK)
+            ->and(file_get_contents($root . '/.ai-skills/foo/SKILL.md'))->toBe('USER SOURCE');
+    } finally {
+        rmTree($root);
+    }
+});
+
+it('writes normally when no path segment is a symlink', function (): void {
+    // Regression guard — make sure the new check does not break the
+    // happy path.
+    $root = tempProjectRoot();
+    try {
+        $written = (new FileWriter())->write(
+            $root,
+            new PendingWrite('.claude/skills/foo/SKILL.md', 'happy'),
+        );
+
+        expect($written->action)->toBe(WriteAction::WROTE)
+            ->and(file_get_contents($root . '/.claude/skills/foo/SKILL.md'))->toBe('happy');
+    } finally {
+        rmTree($root);
+    }
+});

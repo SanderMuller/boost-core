@@ -56,6 +56,32 @@ If your next `composer install` surfaces the new note pointing at `vendor/bin/bo
 
 - **`SyncEngine`'s injection-merge logic** extracted to `InjectedVendorMerger` to keep the engine's class-level cognitive complexity tractable.
 
+### Fixed
+
+- **`FileWriter` refuses to follow user-placed symlinks** — `SKIPPED_SYMLINK` `WriteAction` (new). Previously a sync write of `.claude/skills/<name>/SKILL.md` would silently overwrite the file behind a user-placed symlink (e.g. `.claude/skills/<name>` → `../../.ai/skills/<name>/`), destroying the source the symlink was meant to read from. The writer now walks each path segment under `$projectRoot` and bails with `WriteAction::SKIPPED_SYMLINK` on the first one that is a symlink. Mirrors the "live symlinks owned by consumer" contract that `SyncEngine::pruneDeadSymlinks()` documented but the write path did not honor. `SyncCommand` surfaces the count as `skipped-symlink=%d` in its summary plus a warning line pointing the user at `--check` to inspect paths. Surfaced by a dogfooding consumer with 17 dir-symlinks.
+
+- **`extraSkillRenderers` no longer shadow user-registered renderers.** Extras are now inserted between user renderers and the trailing implicit `PassthroughRenderer`. Final order: `[...user, ...extras, Passthrough]`. With first-match-wins dispatch, the user's `boost.php` registry stays authoritative; extras override only the implicit passthrough — the documented use case.
+
+- **`RemoteSkillIngester` honors `BOOST_RENDER_STRICT`.** Render failures inside the per-skill loop now escalate via `SkillRenderException` when the flag is set, mirroring `SkillLoader`'s strict path. Previously only `BOOST_REMOTE_STRICT` could promote a remote-skill render failure to a sync abort.
+
+- **`locateSkillFile` prefers the canonical `SKILL.<ext>` across all globs.** A remote-skill cache slot containing both `README.md` and `SKILL.blade.php` now correctly loads the latter. Previously the first-glob-with-any-match returned, which silently ingested README as the skill body when alphabetical order put it first.
+
+- **`RemoteSkillIngester` surfaces same-source different-version skill collisions.** Two `withRemoteSkills` entries pointing at the same repo at different versions both listing the same skill name now produce a clear error (lenient: `SyncResult::errors`; strict: `RemoteFetchException`). Previously the second skill silently first-won.
+
+- **`RemoteSkillSyncCoordinator` detects collisions with scanned/injected vendor maps.** A remote source sharing a vendor key with an already-populated entry now throws a `SkillSourceCollisionException` caught by `SyncEngine::sync` and converted to a `SyncResult::errors` entry. Mirrors `InjectedVendorMerger`'s invariant for the remote path.
+
+- **`TarballExtractor` archive-path prefix length corrected.** The strip-length for in-archive entry names now includes the `phar://` URL prefix that `PharData` iteration prepends (was off by 7 chars). Error messages now name the right path; archive entries flagged as path-traversal still rejected, but for the right reason.
+
+- **`BundleExtractor::assertNotSymlink` fails closed on unreadable external attributes.** A crafted ZIP that suppresses attribute readability would previously bypass the symlink check; now throws `RemoteExtractException::SYMLINK` with a clear message.
+
+- **`SkillLoader` falls back to `getPathname()` when `getRealPath()` returns false** (broken symlinks, open_basedir restrictions, file disappears between Finder enumeration and the realpath call). `Skill::sourcePath` is typed `string`; the previous direct assignment would have thrown `TypeError` on the false case.
+
+- **`BoostConfigBuilder` distinguishes implicit vs explicit `PassthroughRenderer` by object identity.** A user passing `new PassthroughRenderer()` via `withSkillRenderers` is now treated as a regular renderer for conflict detection — including colliding with other md-claiming renderers. The implicit passthrough appended by the builder is still silently yielded on user-registered `md` claims.
+
+### Added (internal — public exception class)
+
+- **`SkillSourceCollisionException`** (`src/Sync/SkillSourceCollisionException.php`). Thrown by `InjectedVendorMerger` and `RemoteSkillSyncCoordinator` when caller-config (injected vendor map / remote source declaration) would silently overwrite an existing entry under the same vendor key. Caught in `SyncEngine::sync()` and converted to a `SyncResult` with the message as an error — consumers that wrap `sync()` and expect it to never throw on user-config issues keep working. Distinct from `CollidingSkillsException` (which models cross-vendor name collisions detected by `SkillResolver`).
+
 ## [0.6.1](https://github.com/sandermuller/boost-core/compare/0.6.0...0.6.1) - 2026-05-22
 
 A visibility fix on top of 0.6.0: `BoostAutoSync::run` (and `runWithSummary`) went silent on a delete-only sync — a `composer install` that pruned generated AI files showed no trace of having done so. The sync itself worked correctly; only its summary line was missing the data. Additive and non-breaking.

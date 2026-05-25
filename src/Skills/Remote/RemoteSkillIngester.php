@@ -113,6 +113,7 @@ final readonly class RemoteSkillIngester
                 if ($this->strict) {
                     throw new RemoteFetchException($message, RemoteFetchException::MALFORMED_RESPONSE);
                 }
+
                 $errors[] = $message;
 
                 return;
@@ -277,10 +278,12 @@ final readonly class RemoteSkillIngester
         if ($matches === false) {
             return;
         }
+
         foreach ($matches as $match) {
             if (! is_file($match)) {
                 continue;
             }
+
             if (str_starts_with(basename($match), '.')) {
                 continue;
             }

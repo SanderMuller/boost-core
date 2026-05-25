@@ -204,6 +204,7 @@ final class SyncCommand extends BoostBaseCommand
         $wrote = $result->countByAction(WriteAction::WROTE);
         $unchanged = $result->countByAction(WriteAction::UNCHANGED);
         $deleted = $result->countByAction(WriteAction::DELETED);
+        $skippedSymlink = $result->countByAction(WriteAction::SKIPPED_SYMLINK);
         $emittersWrote = $result->countEmittersByAction(EmitterAction::WROTE);
         $emittersSkipped = $result->countEmittersByAction(EmitterAction::SKIPPED);
 
@@ -216,14 +217,23 @@ final class SyncCommand extends BoostBaseCommand
             );
         }
 
+        $symlinkSummary = $skippedSymlink > 0 ? sprintf(' skipped-symlink=%d', $skippedSymlink) : '';
+
+        if ($skippedSymlink > 0) {
+            $io->warning(sprintf(
+                '%d file(s) skipped because a path segment is a user-placed symlink. Sync did not follow the link; the source file behind the symlink was not overwritten. Inspect with `vendor/bin/boost --check` to see which paths.',
+                $skippedSymlink,
+            ));
+        }
+
         if ($checkOnly) {
-            $io->success(sprintf('No drift. %d file(s) unchanged.%s', $unchanged, $emitterSummary));
+            $io->success(sprintf('No drift. %d file(s) unchanged.%s%s', $unchanged, $symlinkSummary, $emitterSummary));
             $this->noteTagFilterGap($io, $result);
 
             return self::SUCCESS;
         }
 
-        $io->success(sprintf('Sync done. wrote=%d, unchanged=%d, deleted=%d.%s', $wrote, $unchanged, $deleted, $emitterSummary));
+        $io->success(sprintf('Sync done. wrote=%d, unchanged=%d, deleted=%d.%s%s', $wrote, $unchanged, $deleted, $symlinkSummary, $emitterSummary));
         $this->noteTagFilterGap($io, $result);
 
         return self::SUCCESS;

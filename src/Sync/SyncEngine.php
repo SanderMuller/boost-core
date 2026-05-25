@@ -717,6 +717,7 @@ final readonly class SyncEngine
             WriteAction::WROTE => EmitterAction::WROTE,
             WriteAction::UNCHANGED => EmitterAction::UNCHANGED,
             WriteAction::WOULD_WRITE => EmitterAction::WOULD_WRITE,
+            WriteAction::SKIPPED_SYMLINK => EmitterAction::SKIPPED,
             WriteAction::DELETED, WriteAction::WOULD_DELETE => throw new LogicException(
                 'Emitter writes never produce a delete action.',
             ),

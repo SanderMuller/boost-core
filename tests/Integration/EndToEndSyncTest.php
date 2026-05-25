@@ -1558,8 +1558,9 @@ it('detects same-name remote skill across two source versions and records a sync
 
         $result = $engine->sync($root);
 
-        expect($result->hasErrors())->toBeTrue('expected a same-vendor collision error');
-        expect(implode("\n", $result->errors))->toContain('collides with an earlier remote declaration');
+        expect($result->hasErrors())->toBeTrue('expected a same-vendor collision error')
+            ->and(implode("\n", $result->errors))
+            ->toContain('collides with an earlier remote declaration');
     } finally {
         rmTreeE2E($root);
         BundleExtractor::recursivelyRemove($cacheRoot);

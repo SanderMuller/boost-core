@@ -8,6 +8,7 @@ use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
+use SplFileInfo;
 use Symfony\Component\Finder\Finder;
 use Throwable;
 
@@ -142,7 +143,7 @@ final readonly class SkillLoader
      * runtime branch is still meaningful for the genuine false case,
      * so we suppress the static-analyzer hint by computing once.
      */
-    private function resolvedPath(\SplFileInfo $file): string
+    private function resolvedPath(SplFileInfo $file): string
     {
         $real = $file->getRealPath();
 

@@ -13,4 +13,13 @@ enum WriteAction: string
 
     /** Check mode: a stale skill directory that a real sync would delete. */
     case WOULD_DELETE = 'would-delete';
+
+    /**
+     * Write skipped because a path segment is a user-placed symbolic link.
+     * Following the link would write into the link target — typically
+     * `.ai/skills/<name>/SKILL.md` — overwriting the source the symlink
+     * was meant to read from. Honors the "live symlinks owned by consumer"
+     * contract documented in `SyncEngine::pruneDeadSymlinks()`.
+     */
+    case SKIPPED_SYMLINK = 'skipped-symlink';
 }

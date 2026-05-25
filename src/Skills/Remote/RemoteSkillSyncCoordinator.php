@@ -42,8 +42,20 @@ final readonly class RemoteSkillSyncCoordinator
         array &$droppedNames,
         int &$tagFilteredCount,
         ?SkillRendererDispatcher $renderers = null,
+        bool $checkOnly = false,
     ): array {
-        $remote = $this->ingester->ingest($config->remoteSkills, $renderers);
+        // Check mode: filter `$config->remoteSkills` to only those already
+        // cached offline. Cache misses are recorded as a "would-fetch"
+        // advisory in errors[] and skipped — avoids the side effects of
+        // network calls + cache writes during `boost sync --check`.
+        [$sources, $skippedAdvisories] = $checkOnly
+            ? $this->filterToOfflineCached($config->remoteSkills)
+            : [$config->remoteSkills, []];
+
+        $remote = $this->ingester->ingest($sources, $renderers);
+        if ($skippedAdvisories !== []) {
+            $remote['errors'] = array_merge($remote['errors'], $skippedAdvisories);
+        }
         foreach ($remote['skills'] as $sourceName => $remoteSkills) {
             if ($remoteSkills === []) {
                 continue;
@@ -81,6 +93,35 @@ final readonly class RemoteSkillSyncCoordinator
         }
 
         return $remote;
+    }
+
+    /**
+     * Split a remote-source list into `[offline-ready, would-fetch
+     * advisories]` for `--check`-mode use. Sources missing from the
+     * offline cache are excluded from the ingest call (preventing the
+     * network fetch + cache write) and surfaced as advisory strings.
+     *
+     * @param  list<RemoteSkillSource>  $sources
+     * @return array{0: list<RemoteSkillSource>, 1: list<string>}
+     */
+    private function filterToOfflineCached(array $sources): array
+    {
+        $ready = [];
+        $skipped = [];
+        foreach ($sources as $candidate) {
+            if (! $this->ingester->isSourceCached($candidate)) {
+                $skipped[] = sprintf(
+                    'remote source `%s@%s` would fetch on a real sync (not in offline cache).',
+                    $candidate->source,
+                    $candidate->version,
+                );
+
+                continue;
+            }
+            $ready[] = $candidate;
+        }
+
+        return [$ready, $skipped];
     }
 
     /**

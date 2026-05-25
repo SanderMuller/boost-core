@@ -20,11 +20,12 @@ final class SkillResolver
      * @param  iterable<Skill>  $host  Host-authored skills from .ai/skills/
      * @param  array<string, iterable<Skill>>  $vendors  Map of vendor-name → skills.
      *                                                   Iteration order = precedence order.
+     * @param  list<array{skill: string, shadowedVendor: string}>  $shadows  Out-param: each host-vs-vendor shadow event recorded as `{skill, shadowedVendor}` so callers can surface the silent override in sync output.
      * @return list<Skill>
      *
      * @throws CollidingSkillsException
      */
-    public function resolve(iterable $host, array $vendors, bool $force = false): array
+    public function resolve(iterable $host, array $vendors, bool $force = false, array &$shadows = []): array
     {
         $resolved = [];
         $vendorsByName = [];
@@ -38,6 +39,8 @@ final class SkillResolver
                 $name = $skill->name;
 
                 if (isset($resolved[$name]) && $resolved[$name]->isHostAuthored()) {
+                    $shadows[] = ['skill' => $name, 'shadowedVendor' => (string) $vendor];
+
                     continue;
                 }
 

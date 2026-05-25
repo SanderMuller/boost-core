@@ -7,6 +7,7 @@ use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\GuidelineLoader;
+use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillTagDiagnostics;
@@ -70,6 +71,14 @@ final readonly class TagReporter
         $guidelineLoader = new GuidelineLoader(new FrontmatterParser());
         $scanner = new VendorScanner(InstalledPackages::fromComposer());
 
+        // Pass the same renderer dispatcher SyncEngine would use, so
+        // `boost tags` / `boost doctor` discover renderer-claimed
+        // extensions (e.g. `.blade.php` with a registered BladeRenderer)
+        // — otherwise reporting commands silently miss the same files
+        // sync would emit, confusing users who rely on tag-reporter for
+        // discovery.
+        $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
+
         $skills = [];
         $guidelines = [];
         foreach ($scanner->discover() as $vendor) {
@@ -78,13 +87,13 @@ final readonly class TagReporter
             }
 
             if ($vendor->skillsPath !== null) {
-                foreach ($skillLoader->load($vendor->skillsPath, $vendor->name) as $skill) {
+                foreach ($skillLoader->load($vendor->skillsPath, $vendor->name, $dispatcher) as $skill) {
                     $skills[] = $skill;
                 }
             }
 
             if ($vendor->guidelinesPath !== null) {
-                foreach ($guidelineLoader->load($vendor->guidelinesPath, $vendor->name) as $guideline) {
+                foreach ($guidelineLoader->load($vendor->guidelinesPath, $vendor->name, $dispatcher) as $guideline) {
                     $guidelines[] = $guideline;
                 }
             }

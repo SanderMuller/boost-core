@@ -12,6 +12,12 @@ final readonly class SyncResult
      *         WHEN the consumer's `withTags()` is empty. Zero when `withTags()` is declared
      *         (intentional filtering) or when no skills were dropped. Drives the post-sync
      *         "discover hidden skills" nudge in `SyncCommand::report()`.
+     * @param  list<array{skill: string, shadowedVendor: string}>  $hostShadows  Host
+     *         `.ai/skills/<name>/SKILL.md` shadowing an allowlisted-vendor skill of the
+     *         same name. Silent override is the documented behavior; the data is surfaced
+     *         so `SyncCommand` can log "shadowed: <name> (vendor: <pkg>)" lines —
+     *         consumers using `withAllowedVendors` + host overrides can audit which
+     *         version actually shipped.
      */
     public function __construct(
         public array $writes,
@@ -19,6 +25,7 @@ final readonly class SyncResult
         public array $errors,
         public bool $check,
         public int $tagFilteredSkillsCount = 0,
+        public array $hostShadows = [],
     ) {}
 
     public function hasDrift(): bool

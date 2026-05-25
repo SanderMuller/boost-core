@@ -42,6 +42,21 @@ final readonly class RemoteSkillIngester
      * @param  SkillRendererDispatcher|null  $renderers  Per-sync dispatcher built from `BoostConfig::skillRenderers`. Caller passes null in user-scope sync (no project config). Default = passthrough-only, matching pre-renderer boost-core behavior. See spec §5.1 (lifecycle constraint).
      * @return array{skills: array<string, list<Skill>>, errors: list<string>}
      */
+    /**
+     * Whether the source is ready to load offline (fully cached, fresh).
+     * Used by callers in `--check` mode to skip sources that would
+     * require a network fetch — keeps `boost sync --check` side-effect-free.
+     */
+    public function isSourceCached(RemoteSkillSource $source): bool
+    {
+        return $this->cache->isReadyOffline($source);
+    }
+
+    /**
+     * @param  list<RemoteSkillSource>  $sources
+     * @param  SkillRendererDispatcher|null  $renderers  Per-sync dispatcher built from `BoostConfig::skillRenderers`. Caller passes null in user-scope sync (no project config). Default = passthrough-only, matching pre-renderer boost-core behavior. See spec §5.1 (lifecycle constraint).
+     * @return array{skills: array<string, list<Skill>>, errors: list<string>}
+     */
     public function ingest(array $sources, ?SkillRendererDispatcher $renderers = null): array
     {
         $dispatcher = $renderers ?? new SkillRendererDispatcher([new PassthroughRenderer()]);

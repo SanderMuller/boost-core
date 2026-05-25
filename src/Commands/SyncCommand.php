@@ -227,6 +227,7 @@ final class SyncCommand extends BoostBaseCommand
         }
 
         $this->noteDeletes($io, $result, $checkOnly, $deleted);
+        $this->noteHostShadows($io, $result);
 
         if ($checkOnly) {
             $io->success(sprintf('No drift. %d file(s) unchanged.%s%s', $unchanged, $symlinkSummary, $emitterSummary));
@@ -266,14 +267,42 @@ final class SyncCommand extends BoostBaseCommand
      * out with only a count in the success summary. Now we list each
      * deleted path so the operator can audit.
      */
+    /**
+     * Log every host-vs-vendor shadow event. Silent override is the
+     * documented behavior, but operators using `withAllowedVendors` +
+     * symlinked host overrides have no way to tell which version
+     * actually ships without this log. Each line names the skill and
+     * the vendor whose copy was shadowed.
+     */
+    private function noteHostShadows(SymfonyStyle $io, SyncResult $result): void
+    {
+        if ($result->hostShadows === []) {
+            return;
+        }
+
+        $io->note(sprintf(
+            '%d host skill(s) shadowed allowlisted-vendor copies:',
+            count($result->hostShadows),
+        ));
+        foreach ($result->hostShadows as $shadow) {
+            $io->writeln(sprintf('  • <fg=cyan>%s</> shadows %s', $shadow['skill'], $shadow['shadowedVendor']));
+        }
+    }
+
     private function noteDeletes(SymfonyStyle $io, SyncResult $result, bool $checkOnly, int $deleted): void
     {
         if ($checkOnly || $deleted <= 0) {
             return;
         }
 
+        // Don't attribute to one cause: deletes can come from
+        //  - tag-filter pruning a previously-installed agent-dir skill
+        //  - remote-skill orphan pruning when a `withRemoteSkills` entry was removed
+        //  - filtered-skill pruner cleaning stale sources
+        // The operator-visible signal is "these paths went away" — they
+        // can audit against `boost.php` to identify the cause.
         $io->warning(sprintf(
-            'Deleted %d file(s) from agent dirs because their source skill is no longer tag-eligible. Paths:',
+            'Deleted %d file(s) from agent dirs. The corresponding sources are no longer eligible (tag-filter, removed `withRemoteSkills` entry, or stale prune). Paths:',
             $deleted,
         ));
         foreach ($result->writes as $write) {

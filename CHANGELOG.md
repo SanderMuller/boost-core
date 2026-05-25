@@ -32,6 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`boost where` (new command) — skill origin tracing.** Lists every skill that would land in agent dirs, grouped by source (`.ai/` host, scanned vendor packages, remote skill sources, host-shadowing-vendor overrides). Same resolution pipeline as `boost sync --check` (tag-filtered, collision-resolved). Caller-injected vendor skills (the wrapper pattern, e.g. project-boost-laravel) are NOT visible — those are runtime-only inputs to `SyncEngine::sync()` and the wrapper package owns its own inspection surface.
+
+- **Host-vs-vendor skill shadowing is no longer silent.** When a host `.ai/skills/<name>/` shadows an allowlisted-vendor skill of the same name, `SyncCommand` now emits `<name> shadows <vendor>` lines so consumers using `withAllowedVendors` + host overrides can audit which copy actually shipped. Plumbed via a new `SyncResult::$hostShadows` field and a `&array $shadows` out-param on `SkillResolver::resolve()`. Both existing host-wins precedence and `CollidingSkillsException` semantics unchanged.
+
+- **`boost sync --check` no longer touches the network or writes to the remote-skill cache.** `RemoteSkillSyncCoordinator::ingestIntoVendorMap()` now accepts a `$checkOnly` flag. In check mode, sources missing from the offline cache are excluded from the ingest call and surfaced as a `would-fetch` advisory in `SyncResult::errors`. Plumbed via a new public `RemoteSkillCache::isReadyOffline()` + `RemoteSkillIngester::isSourceCached()`. Restores the dry-run-purity invariant that pre-companion-refactor consumers relied on.
+
+- **`TagReporter` passes the renderer dispatcher.** `boost tags` and `boost doctor` now discover renderer-claimed extensions (e.g. `.blade.php` with a registered `BladeRenderer`), matching the file set `boost sync` would emit. Previously the reporting commands silently missed those files, confusing users who relied on tag-reporter for discovery.
+
+- **`boost sync` delete-warning attribution.** The inline delete-warning no longer hard-codes "no longer tag-eligible" — deletes can come from tag-filter pruning, removed `withRemoteSkills` entries, or stale-source prune. Message now lists all three possible causes so operators can audit against `boost.php`.
+
 - **`Tag` enum gains `Livewire`, `Volt`, `Inertia`, `Filament`, `Flux`, `Pest`, `Tailwind`.** Surfaces the Laravel-ecosystem tag vocabulary laravel/boost's bundled skills declare, so `withTags(Tag::Livewire, …)` autocompletes properly. Non-authoritative — string fallback continues to work for any vocabulary the enum doesn't cover.
 
 - **`boost sync` lists each deleted path inline.** A delete event (a previously-installed agent-dir skill pruned because its source skill is no longer tag-eligible after a `withTags()` change) previously only surfaced as a count in the success summary. The operator-facing concern: an unexpected delete is destructive and easy to miss. Now `SyncCommand` emits a warning followed by the list of relative paths whenever `deleted > 0`. Behavior unchanged in `--check` mode (where would-delete was already listed). Surfaced by a dogfooding consumer who saw their `fluxui-development` + `wayfinder-development` agent dirs disappear after a `withTags()` filter narrowed.

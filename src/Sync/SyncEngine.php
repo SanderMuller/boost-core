@@ -342,6 +342,27 @@ final readonly class SyncEngine
     }
 
     /**
+     * Resolve the same skill set `sync()` would emit, without writing
+     * anything. Powers `boost where` (origin tracing) — same pipeline as
+     * the live sync (host + scanned vendors + remote, tag-filtered,
+     * collision-resolved), just exposed as a read-only inspection.
+     *
+     * Caller-injected vendor skills (the wrapper-package pattern) are
+     * NOT included — those are runtime-only inputs to `sync()` and the
+     * wrapper owns its own inspection surface.
+     *
+     * @return list<Skill>
+     */
+    public function resolveSkillsForInspection(string $projectRoot): array
+    {
+        $projectRoot = rtrim($projectRoot, '/');
+        $config = $this->configLoader->load($projectRoot);
+        $allowedVendors = $this->discoverAllowedVendors($config);
+
+        return $this->resolveSkills($config, $allowedVendors, false, [], true)['skills'];
+    }
+
+    /**
      * @param  array<string, list<Skill>>  $injectedVendorSkills  Pre-built Skills keyed by source vendor (e.g. `['laravel/boost' => $skills]`). Caller-controlled injection point — covers ecosystems whose layout boost-core's VendorScanner does not match (laravel/boost's `.ai/<pkg>/`, ad-hoc bridges). Tag filter applies the same as for scanned vendors.
      * @param  list<SkillRenderer>  $extraSkillRenderers  Additional renderers to append to `BoostConfig::skillRenderers` for this sync transaction. Caller-controlled — lets a wrapper package (e.g. project-boost-laravel) guarantee its BladeRenderer is registered without forcing users to wire it in `boost.php`. Conflict detection runs against the merged list.
      * @param  array<string, list<Guideline>>  $injectedVendorGuidelines  Pre-built Guidelines keyed by source vendor. Mirrors `$injectedVendorSkills` for the guideline pipeline.
@@ -358,7 +379,7 @@ final readonly class SyncEngine
         /** @var list<string> $guidelineRenderErrors */
         $guidelineRenderErrors = [];
         try {
-            $skillResolution = $this->resolveSkills($config, $allowedVendors, $force, $injectedVendorSkills);
+            $skillResolution = $this->resolveSkills($config, $allowedVendors, $force, $injectedVendorSkills, $checkOnly);
             $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force, $injectedVendorGuidelines, $guidelineRenderErrors);
         } catch (CollidingSkillsException $collidingSkillsException) {
             return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
@@ -417,6 +438,7 @@ final readonly class SyncEngine
             errors: array_merge($fanOutErrors, $remoteErrors),
             check: $checkOnly,
             tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
+            hostShadows: $skillResolution['hostShadows'],
         );
     }
 
@@ -483,9 +505,9 @@ final readonly class SyncEngine
      *
      * @param  list<DiscoveredVendor>  $allowedVendors
      * @param  array<string, list<Skill>>  $injectedVendorSkills  Caller-supplied pre-built skills keyed by source vendor. Tag-filtered before merging into the vendor map. Mirrors the remote-ingest path; see `sync()` docblock.
-     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int, remoteErrors: list<string>}  `remoteErrors` carries both per-source remote ingest failures (lenient mode) and per-file render failures.
+     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int, remoteErrors: list<string>, hostShadows: list<array{skill: string, shadowedVendor: string}>}  `remoteErrors` carries both per-source remote ingest failures (lenient mode) and per-file render failures. `hostShadows` records host `.ai/skills/<name>` shadowing an allowlisted-vendor skill of the same name.
      */
-    private function resolveSkills(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorSkills = []): array
+    private function resolveSkills(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorSkills = [], bool $checkOnly = false): array
     {
         // Per-sync renderer dispatcher — built from the just-loaded config.
         // Cannot live as a ctor field on SyncEngine because BoostConfig is
@@ -545,16 +567,25 @@ final readonly class SyncEngine
             $droppedNames,
             $tagFilteredCount,
             $dispatcher,
+            $checkOnly,
         );
 
+        /** @var list<array{skill: string, shadowedVendor: string}> $hostShadows */
+        $hostShadows = [];
+        $resolvedSkillList = $this->skillResolver->resolve($hostSkills, $vendorSkills, $force, $hostShadows);
+
         return [
-            'skills' => $this->skillResolver->resolve($hostSkills, $vendorSkills, $force),
+            'skills' => $resolvedSkillList,
             // Deduped — the pruner only needs each name once for lookup.
             'droppedNames' => array_values(array_unique($droppedNames)),
             // Summed — the nudge needs the real total per-vendor.
             'tagFilteredCount' => $tagFilteredCount,
             // Per-source remote ingest failures (warn-and-skip mode) + per-file render failures.
             'remoteErrors' => array_merge($remote['errors'], $renderErrors),
+            // Host shadowed an allowlisted vendor skill of the same name —
+            // surfaced for SyncCommand to log so consumers can audit which
+            // version actually shipped.
+            'hostShadows' => $hostShadows,
         ];
     }
 

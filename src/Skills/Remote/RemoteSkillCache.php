@@ -53,6 +53,43 @@ final readonly class RemoteSkillCache
         return new CachedSource(slotDir: $slotDir, resolvedRef: $resolved->resolved);
     }
 
+    /**
+     * True iff the source is fully cached AND the cache slot's manifest
+     * matches the declared skill set — i.e. `ensureCached()` would return
+     * without any network call or disk write. Used by callers in
+     * `--check` mode to decide whether a sync would have side effects:
+     * a cache miss in check mode is a "would-fetch" advisory rather than
+     * an actual fetch.
+     *
+     * For pinned versions (tag, 40-char SHA), checks the slot directly.
+     * For moving refs (`main`, branch names), the resolution cache TTL
+     * determines whether `resolveWithCaching` would re-fetch — we treat
+     * a stale moving-ref resolution as "not ready", since the next sync
+     * would touch the network.
+     */
+    public function isReadyOffline(RemoteSkillSource $source): bool
+    {
+        if (! self::isPinnedVersion($source->version, $source->mode())) {
+            // Moving ref: check resolution-cache TTL without network.
+            $cached = $this->readResolutionCache($source->source);
+            $key = $source->version . ':' . $source->mode();
+            if (! isset($cached[$key])
+                || ! is_array($cached[$key])
+                || ! isset($cached[$key]['resolved'], $cached[$key]['resolved_at'])
+                || ! is_string($cached[$key]['resolved'])
+                || ! is_int($cached[$key]['resolved_at'])
+                || (time() - $cached[$key]['resolved_at']) >= self::MOVING_REF_TTL_SECONDS
+            ) {
+                return false;
+            }
+            $resolved = $cached[$key]['resolved'];
+        } else {
+            $resolved = $source->version;
+        }
+
+        return $this->isSlotFresh($this->slotPath($source->source, $resolved), $source);
+    }
+
     private function resolveWithCaching(RemoteSkillSource $source): ResolvedRef
     {
         if (self::isPinnedVersion($source->version, $source->mode())) {

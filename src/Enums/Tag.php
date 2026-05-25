@@ -23,6 +23,17 @@ enum Tag: string
     case Github = 'github';
     case GithubIssues = 'github-issues';
 
+    // Laravel-ecosystem tags surfaced by laravel/boost's bundled skills.
+    // Listed here for `withTags()` autocomplete; string fallback is still
+    // legal (the enum is non-authoritative).
+    case Livewire = 'livewire';
+    case Volt = 'volt';
+    case Inertia = 'inertia';
+    case Filament = 'filament';
+    case Flux = 'flux';
+    case Pest = 'pest';
+    case Tailwind = 'tailwindcss';
+
     /**
      * Canonical tag normalization, applied identically to a skill's declared
      * tags (`metadata.boost-tags`) and a consumer's `withTags()` declaration

@@ -226,6 +226,8 @@ final class SyncCommand extends BoostBaseCommand
             ));
         }
 
+        $this->noteDeletes($io, $result, $checkOnly, $deleted);
+
         if ($checkOnly) {
             $io->success(sprintf('No drift. %d file(s) unchanged.%s%s', $unchanged, $symlinkSummary, $emitterSummary));
             $this->noteTagFilterGap($io, $result);
@@ -253,6 +255,31 @@ final class SyncCommand extends BoostBaseCommand
                 '%d tagged skill(s) currently filtered out — your `withTags()` is empty. Run `vendor/bin/boost tags` to see them.',
                 $result->tagFilteredSkillsCount,
             ));
+        }
+    }
+
+    /**
+     * Surface destructive deletes inline. Previously delete events showed
+     * only in `--check` output; an unexpected delete on live sync (e.g.
+     * a previously-installed agent-dir skill pruned because its source
+     * skill is no longer tag-eligible after a `withTags()` change) went
+     * out with only a count in the success summary. Now we list each
+     * deleted path so the operator can audit.
+     */
+    private function noteDeletes(SymfonyStyle $io, SyncResult $result, bool $checkOnly, int $deleted): void
+    {
+        if ($checkOnly || $deleted <= 0) {
+            return;
+        }
+
+        $io->warning(sprintf(
+            'Deleted %d file(s) from agent dirs because their source skill is no longer tag-eligible. Paths:',
+            $deleted,
+        ));
+        foreach ($result->writes as $write) {
+            if ($write->action === WriteAction::DELETED) {
+                $io->writeln('  - ' . $write->relativePath);
+            }
         }
     }
 }

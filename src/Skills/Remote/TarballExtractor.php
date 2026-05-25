@@ -5,7 +5,7 @@ namespace SanderMuller\BoostCore\Skills\Remote;
 use PharData;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
-use Throwable;
+use Symfony\Component\Process\Process;
 use UnexpectedValueException;
 
 /**
@@ -35,16 +35,12 @@ final readonly class TarballExtractor
 
     public function extract(string $archivePath, string $destinationPath): void
     {
-        // Extract-then-validate order. The previous pre-validation pass
-        // walked PharData with RecursiveIteratorIterator, which on some
-        // Linux/PHP/libphar combinations left extractTo producing
-        // zero-byte files (state contamination or cache identity — both
-        // empirically reproducible only on CI). Order-flipping sidesteps
-        // PharData iteration entirely: stage the extract to a temp dir,
-        // walk the resulting files on disk (cheap, predictable), reject
-        // if any entry violates the safety contract, atomic-move staging
-        // to destination if all-safe.
-        $phar = $this->openPhar($archivePath);
+        // Use PharData ONCE to detect malformed archives (cheap, throws
+        // UnexpectedValueException on garbage input — preserves the
+        // MALFORMED reason code consumers may switch on). After that
+        // open succeeds, hand the actual extract to the system `tar`
+        // command (see comment below).
+        $this->openPhar($archivePath);
 
         $stagingDir = sys_get_temp_dir() . '/boost-tar-staging-' . bin2hex(random_bytes(8));
         if (! mkdir($stagingDir, 0o755, recursive: true)) {
@@ -55,13 +51,26 @@ final readonly class TarballExtractor
         }
 
         try {
-            try {
-                $phar->extractTo($stagingDir, null, overwrite: true);
-            } catch (Throwable $e) {
+            // PharData::extractTo for `.tar.gz` produces zero-byte files
+            // on some Linux/PHP/libphar combinations (empirically
+            // reproducible only on CI). Shell out to system `tar` instead
+            // — POSIX-standard, available on every supported platform,
+            // and predictable about content extraction.
+            //
+            // `-xzf` for gzipped tarballs; `-C` sets the destination.
+            // No `-p` (preserve permissions) — we don't ship executables
+            // and don't want odd mode bits surviving extraction.
+            $process = new Process(['tar', '-xzf', $archivePath, '-C', $stagingDir]);
+            $process->run();
+            if (! $process->isSuccessful()) {
                 throw new RemoteExtractException(
-                    sprintf('Tarball extraction failed at `%s`: %s', $archivePath, $e->getMessage()),
+                    sprintf(
+                        'Tarball extraction failed at `%s` (tar exit %d): %s',
+                        $archivePath,
+                        $process->getExitCode() ?? -1,
+                        trim($process->getErrorOutput() . "\n" . $process->getOutput()),
+                    ),
                     RemoteExtractException::DISK_FULL,
-                    $e,
                 );
             }
 

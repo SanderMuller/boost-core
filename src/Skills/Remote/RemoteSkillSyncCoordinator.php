@@ -56,6 +56,7 @@ final readonly class RemoteSkillSyncCoordinator
         if ($skippedAdvisories !== []) {
             $remote['errors'] = array_merge($remote['errors'], $skippedAdvisories);
         }
+
         foreach ($remote['skills'] as $sourceName => $remoteSkills) {
             if ($remoteSkills === []) {
                 continue;
@@ -118,6 +119,7 @@ final readonly class RemoteSkillSyncCoordinator
 
                 continue;
             }
+
             $ready[] = $candidate;
         }
 

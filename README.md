@@ -230,6 +230,8 @@ Vendor **guidelines** filter by the same subset rule, from either of two tag sou
 
 The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `vendor/bin/boost tags` lists every tag installed skills and guidelines declare, which of them your `withTags()` currently filters out, and the tags to add to receive them — `boost doctor` carries the same report as one of its sections. When sync drops tagged vendor skills because your `withTags()` is empty, it prints a one-line note pointing at `vendor/bin/boost tags` so the gap surfaces at install time instead of going silent.
 
+`vendor/bin/boost where` complements `tags` — it lists every resolved skill grouped by origin (`.ai/skills/` host, scanned vendor packages, remote skill sources) and annotates host overrides that shadow an allowlisted-vendor copy. Answers "where does skill X come from?", "did my host override the vendor's copy?", and "what will sync write?" in one place. Caller-injected skills (the wrapper pattern, e.g. `project-boost-laravel`) are runtime-only inputs to `SyncEngine::sync()` and not visible to `boost where` — wrapper packages own their own inspection surface.
+
 > [!WARNING]
 > Adding a tag to an **already-shipped** skill is consumer-breaking: every project that has not declared that tag loses the skill. Vendors should treat it as a breaking change (or a loud release-note callout), not a minor tweak.
 

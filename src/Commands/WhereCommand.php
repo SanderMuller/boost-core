@@ -73,6 +73,7 @@ final class WhereCommand extends BoostBaseCommand
                 if ($origin === '.ai/skills/ (host)' && isset($shadowedBy[$skillName])) {
                     $line .= sprintf(' <fg=gray>(shadows %s)</>', $shadowedBy[$skillName]);
                 }
+
                 $io->writeln($line);
             }
         }

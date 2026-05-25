@@ -619,6 +619,7 @@ final readonly class SyncEngine
                 foreach ($this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name, $dispatcher, $renderErrors) as $vendorGuideline) {
                     $loaded[] = $vendorGuideline;
                 }
+
                 $vendorGuidelines[$vendor->name] = $this->guidelineTagFilter->filter($loaded, $config);
             }
         }

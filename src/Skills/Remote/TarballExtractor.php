@@ -5,6 +5,7 @@ namespace SanderMuller\BoostCore\Skills\Remote;
 use PharData;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use SplFileInfo;
 use Symfony\Component\Process\Process;
 use UnexpectedValueException;
 
@@ -102,7 +103,7 @@ final readonly class TarballExtractor
         );
 
         foreach ($iter as $entry) {
-            /** @var \SplFileInfo $entry */
+            /** @var SplFileInfo $entry */
             $relative = ltrim(substr($entry->getPathname(), strlen($stagingDir)), '/');
             $target = $destinationPath . '/' . $relative;
 
@@ -132,6 +133,7 @@ final readonly class TarballExtractor
                         RemoteExtractException::DISK_FULL,
                     );
                 }
+
                 @unlink($entry->getPathname());
             }
         }
@@ -161,7 +163,7 @@ final readonly class TarballExtractor
         );
 
         foreach ($iter as $entry) {
-            /** @var \SplFileInfo $entry */
+            /** @var SplFileInfo $entry */
             ++$count;
             if ($count > $this->maxEntries) {
                 throw new RemoteExtractException(

@@ -83,6 +83,7 @@ final class FileWriter
             if ($segment === '') {
                 continue;
             }
+
             $accumulator .= '/' . $segment;
             if (is_link($accumulator)) {
                 return true;

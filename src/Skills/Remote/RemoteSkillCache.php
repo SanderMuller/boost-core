@@ -82,6 +82,7 @@ final readonly class RemoteSkillCache
             ) {
                 return false;
             }
+
             $resolved = $cached[$key]['resolved'];
         } else {
             $resolved = $source->version;

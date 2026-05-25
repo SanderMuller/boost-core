@@ -355,9 +355,11 @@ final readonly class SyncEngine
 
         $allowedVendors = $this->discoverAllowedVendors($config);
 
+        /** @var list<string> $guidelineRenderErrors */
+        $guidelineRenderErrors = [];
         try {
             $skillResolution = $this->resolveSkills($config, $allowedVendors, $force, $injectedVendorSkills);
-            $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force, $injectedVendorGuidelines);
+            $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force, $injectedVendorGuidelines, $guidelineRenderErrors);
         } catch (CollidingSkillsException $collidingSkillsException) {
             return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
         } catch (SkillSourceCollisionException $sourceCollisionException) {
@@ -368,12 +370,10 @@ final readonly class SyncEngine
             return new SyncResult(writes: [], emitters: [], errors: [$sourceCollisionException->getMessage()], check: $checkOnly);
         }
 
-        $remoteErrors = [];
-
         $resolvedSkills = $skillResolution['skills'];
         $droppedSkillNames = $skillResolution['droppedNames'];
         $tagFilteredCount = $skillResolution['tagFilteredCount'];
-        $remoteErrors = $skillResolution['remoteErrors'];
+        $remoteErrors = array_merge($skillResolution['remoteErrors'], $guidelineRenderErrors);
         $resolvedCommands = $this->resolveCommands($config);
 
         $context = new SyncContext(
@@ -566,22 +566,29 @@ final readonly class SyncEngine
      *
      * @param  list<DiscoveredVendor>  $allowedVendors
      * @param  array<string, list<Guideline>>  $injectedVendorGuidelines  Caller-supplied pre-built guidelines keyed by source vendor. Tag-filtered before merging into the vendor map. Mirrors `resolveSkills()`'s injection path.
+     * @param  list<string>  $renderErrors  Out-param: render failures (lenient mode) accumulate here for caller-side surfacing in SyncResult::errors.
      * @return list<Guideline>
      */
-    private function resolveGuidelines(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorGuidelines = []): array
+    private function resolveGuidelines(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorGuidelines = [], array &$renderErrors = []): array
     {
-        $hostGuidelines = is_dir($config->guidelinesPath)
-            ? $this->guidelineLoader->load($config->guidelinesPath)
-            : [];
+        $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
+
+        $hostGuidelines = [];
+        if (is_dir($config->guidelinesPath)) {
+            foreach ($this->guidelineLoader->load($config->guidelinesPath, null, $dispatcher, $renderErrors) as $hostGuideline) {
+                $hostGuidelines[] = $hostGuideline;
+            }
+        }
 
         /** @var array<string, list<Guideline>> $vendorGuidelines */
         $vendorGuidelines = [];
         foreach ($allowedVendors as $vendor) {
             if ($vendor->guidelinesPath !== null) {
-                $vendorGuidelines[$vendor->name] = $this->guidelineTagFilter->filter(
-                    $this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name),
-                    $config,
-                );
+                $loaded = [];
+                foreach ($this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name, $dispatcher, $renderErrors) as $vendorGuideline) {
+                    $loaded[] = $vendorGuideline;
+                }
+                $vendorGuidelines[$vendor->name] = $this->guidelineTagFilter->filter($loaded, $config);
             }
         }
 

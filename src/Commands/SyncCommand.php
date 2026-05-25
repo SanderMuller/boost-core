@@ -295,20 +295,12 @@ final class SyncCommand extends BoostBaseCommand
             return;
         }
 
-        // Don't attribute to one cause: deletes can come from
-        //  - tag-filter pruning a previously-installed agent-dir skill
-        //  - remote-skill orphan pruning when a `withRemoteSkills` entry was removed
-        //  - filtered-skill pruner cleaning stale sources
-        // The operator-visible signal is "these paths went away" — they
-        // can audit against `boost.php` to identify the cause.
-        $io->warning(sprintf(
-            'Deleted %d file(s) from agent dirs. The corresponding sources are no longer eligible (tag-filter, removed `withRemoteSkills` entry, or stale prune). Paths:',
-            $deleted,
-        ));
-        foreach ($result->writes as $write) {
-            if ($write->action === WriteAction::DELETED) {
-                $io->writeln('  - ' . $write->relativePath);
-            }
+        // Delegate to the canonical attribution renderer so wrapper
+        // commands (project-boost-laravel artisan, future custom CLIs)
+        // produce identical text via `$result->renderDeleteAttribution()`.
+        $attribution = $result->renderDeleteAttribution();
+        if ($attribution !== null) {
+            $io->warning($attribution);
         }
     }
 }

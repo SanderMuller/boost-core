@@ -93,4 +93,53 @@ final readonly class SyncResult
 
         return $count;
     }
+
+    /**
+     * Canonical attribution text for a live sync's destructive deletes.
+     * Returns `null` when nothing was deleted, otherwise a multi-line
+     * string naming the three possible causes (tag-filter, removed
+     * `withRemoteSkills` entry, stale-source prune) followed by the
+     * deleted paths.
+     *
+     * The single source of truth for delete-attribution wording —
+     * boost-core's own `SyncCommand` renders it as a `[WARNING]` block,
+     * wrapper commands (e.g. project-boost-laravel's artisan
+     * `project-boost:sync`) take the same string and route it through
+     * their own logger so the operator-visible audit signal is
+     * identical regardless of invocation surface.
+     *
+     * Returns `null` in check-mode results too — `--check` already
+     * lists `would-delete` paths inline as part of the drift report,
+     * so there's nothing to attribute (no destructive action occurred).
+     */
+    public function renderDeleteAttribution(): ?string
+    {
+        if ($this->check) {
+            return null;
+        }
+
+        $deletedPaths = [];
+        foreach ($this->writes as $write) {
+            if ($write->action === WriteAction::DELETED) {
+                $deletedPaths[] = $write->relativePath;
+            }
+        }
+
+        if ($deletedPaths === []) {
+            return null;
+        }
+
+        $lines = [
+            sprintf(
+                'Deleted %d file(s) from agent dirs. The corresponding sources are no longer eligible (tag-filter, removed `withRemoteSkills` entry, or stale prune). Paths:',
+                count($deletedPaths),
+            ),
+        ];
+
+        foreach ($deletedPaths as $path) {
+            $lines[] = '  - ' . $path;
+        }
+
+        return implode("\n", $lines);
+    }
 }

@@ -127,3 +127,63 @@ it('doctor: surfaces the BOOST_GITHUB_TOKEN note above the source-count threshol
         doctorCleanup($dir);
     }
 });
+
+it('doctor: prints the Codex manual-path note when commands present and Codex selected', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CODEX])');
+    try {
+        mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/deploy.md', "---\ndescription: Ship.\n---\n\nBody.\n");
+
+        $result = runDoctor($dir);
+
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('Command-emit limitations')
+            ->and($result['display'])->toContain('~/.codex/prompts/')
+            ->and($result['display'])->not->toContain('.gemini/commands/');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: prints the Gemini manual-path note when commands present and Gemini selected', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::GEMINI])');
+    try {
+        mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/deploy.md', "---\ndescription: Ship.\n---\n\nBody.\n");
+
+        $result = runDoctor($dir);
+
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('Command-emit limitations')
+            ->and($result['display'])->toContain('.gemini/commands/')
+            ->and($result['display'])->toContain('TOML')
+            ->and($result['display'])->not->toContain('~/.codex/prompts/');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: omits the command-emit limitations section when no .ai/commands/ exists', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CODEX, Agent::GEMINI])');
+    try {
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->not->toContain('Command-emit limitations');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: omits the command-emit limitations section when neither Codex nor Gemini is selected', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/deploy.md', "Body.\n");
+
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->not->toContain('Command-emit limitations');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

@@ -38,14 +38,28 @@ it('emits a command to each Markdown agent command directory', function (AgentTa
     'amp' => [new AmpTarget(), '.agents/commands/deploy.md'],
 ]);
 
-it('emits nothing for agents with no Phase 1 command directory', function (AgentTarget $target): void {
+it('emits nothing for agents with no committable command target', function (AgentTarget $target): void {
     expect($target->commandsDirectoryRelative())->toBeNull()
         ->and($target->planCommands([makeSampleCommand()]))->toBeEmpty();
 })->with([
     'gemini' => [new GeminiTarget()],
-    'kiro' => [new KiroTarget()],
     'codex' => [new CodexTarget()],
 ]);
+
+it('Kiro emits each command as a skill-shaped .kiro/skills/<name>/SKILL.md (its native slash-command surface)', function (): void {
+    $writes = (new KiroTarget())->planCommands([makeSampleCommand()]);
+
+    expect($writes)->toHaveCount(1)
+        ->and($writes[0]->relativePath)->toBe('.kiro/skills/deploy/SKILL.md')
+        ->and($writes[0]->content)->toStartWith("---\n")
+        ->and($writes[0]->content)->toContain('description:')
+        ->and($writes[0]->content)->toContain('Run the deploy.');
+});
+
+it('Kiro keeps `commandsDirectoryRelative()` null so gitignore / dir tooling do not double-count', function (): void {
+    expect((new KiroTarget())->commandsDirectoryRelative())->toBeNull()
+        ->and((new KiroTarget())->gitignorePatterns())->not->toContain('.kiro/commands/');
+});
 
 it('keeps frontmatter for frontmatter-aware agents', function (): void {
     $content = (new ClaudeCodeTarget())->planCommands([makeSampleCommand()])[0]->content;

@@ -52,6 +52,7 @@ final class DoctorCommand extends BoostBaseCommand
 
         $this->reportAgents($io, $config);
         $this->reportSourcePaths($io, $config);
+        $this->reportCommandLimitations($io, $config);
         $this->reportAllowlist($io, $config);
         $this->reportRemoteSkills($io, $config);
         $this->reportTags($io, $config);
@@ -81,6 +82,70 @@ final class DoctorCommand extends BoostBaseCommand
             ['guidelinesPath', $config->guidelinesPath, is_dir($config->guidelinesPath) ? 'exists' : 'MISSING'],
             ['commandsPath', $config->commandsPath, is_dir($config->commandsPath) ? 'exists' : 'MISSING'],
         ]);
+    }
+
+    /**
+     * Surface per-agent command-emit gaps when `.ai/commands/` is in play.
+     *
+     * boost-core writes commands to seven of the nine agents — the six
+     * dedicated-command-dir agents (Phase 1) and Kiro (which emits each
+     * command as a skill-shaped `.kiro/skills/<name>/SKILL.md` via its
+     * native slash-command surface). Two agents have no committable
+     * command target boost-core can write into:
+     *
+     *  - Codex: deprecated personal-only prompts at `~/.codex/prompts/`.
+     *  - Gemini: TOML format; boost-core does not hand-roll a serializer.
+     *
+     * When the project has a `.ai/commands/` directory AND one of those
+     * agents is in `withAgents()`, point the operator at the manual
+     * authoring path instead of silently shipping nothing.
+     */
+    private function reportCommandLimitations(SymfonyStyle $io, BoostConfig $config): void
+    {
+        if (! is_dir($config->commandsPath)) {
+            return;
+        }
+
+        $entries = @scandir($config->commandsPath);
+        $hasCommands = false;
+        if (is_array($entries)) {
+            foreach ($entries as $entry) {
+                if ($entry === '.') {
+                    continue;
+                }
+                if ($entry === '..') {
+                    continue;
+                }
+
+                if (str_ends_with($entry, '.md')) {
+                    $hasCommands = true;
+
+                    break;
+                }
+            }
+        }
+
+        if (! $hasCommands) {
+            return;
+        }
+
+        $lines = [];
+        if (in_array(Agent::CODEX, $config->agents, true)) {
+            $lines[] = 'Codex: prompts are deprecated and personal-only (`~/.codex/prompts/`). boost-core does not write there. To use these commands in Codex, copy `.ai/commands/*.md` into `~/.codex/prompts/` manually.';
+        }
+
+        if (in_array(Agent::GEMINI, $config->agents, true)) {
+            $lines[] = 'Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands directly in `.gemini/commands/<name>.toml` or use a skill instead.';
+        }
+
+        if ($lines === []) {
+            return;
+        }
+
+        $io->section('Command-emit limitations');
+        foreach ($lines as $line) {
+            $io->writeln('<comment>•</comment> ' . $line);
+        }
     }
 
     private function reportAllowlist(SymfonyStyle $io, BoostConfig $config): void

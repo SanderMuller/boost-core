@@ -5,94 +5,166 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.6.2...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.0...HEAD)
+
+## [0.7.0](https://github.com/sandermuller/boost-core/compare/0.6.2...0.7.0) - 2026-05-25
 
 ### Added
 
-- **`SyncResult::renderDeleteAttribution(): ?string`** — canonical attribution renderer for destructive deletes. Returns `null` when nothing was deleted (or in check-mode results), otherwise a multi-line string naming the three possible causes (tag-filter, removed `withRemoteSkills` entry, stale-source prune) followed by the deleted paths. Single source of truth for the attribution wording — boost-core's own `SyncCommand` and any wrapper command (e.g. `project-boost-laravel`'s artisan `project-boost:sync`) use it so the operator-visible delete audit signal stays identical across invocation surfaces. Surfaced by dogfooding consumers running deletes through the wrapper artisan command and missing the attribution that `vendor/bin/boost sync` produces.
+#### `withRemoteSkills(...)` — non-Composer skill sources
 
-- **`skill-origin-tracing` bundled skill** (`resources/boost/skills/skill-origin-tracing.md`). Routes the agent to `boost where` (and `boost tags` for filter questions) whenever the user asks why a skill is present, missing, or which copy is winning. Also documents the wrapper-package limit: caller-injected skills (laravel/boost via `project-boost-laravel`) are runtime-only inputs to `SyncEngine::sync()` and aren't visible to the boost-core CLI — the wrapper owns its own inspection surface.
+Declarative consumption of three real-world shapes that don't fit Composer's vendor model:
 
-- **`SkillRenderer` plugin contract** (`@experimental`, `src/Contracts/SkillRenderer.php`). Lets downstream packages render template-flavored skill bodies (Blade, Twig, …) before per-agent fan-out. Default registry is `PassthroughRenderer` claiming `.md` — behavior is bit-identical to pre-renderer boost-core when no renderer is registered. Register via `BoostConfigBuilder::withSkillRenderers([new BladeRenderer])`; deny by FQCN via `withDisabledRenderers([Foo::class])`. Dispatcher uses longest-extension-first match (so `.blade.php` beats `.php`); first-registered-wins resolves same-extension ties. The implicit `PassthroughRenderer` is re-appended after the deny-list so `.md` always renders. Spec: `internal/specs/skill-renderer-plugin.md`. Reference consumer: [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel)'s `BladeRenderer` which delegates to laravel/boost's `RendersBladeGuidelines` trait for `$assist = GuidelineAssist` runtime context.
+```php
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE])
+    ->withRemoteSkills([
+        // Bundle mode — fetches the named `.skill` release asset, unzips.
+        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', [
+            'composer-upgrade',
+            'phpstan-developer',
+        ]),
 
-- **`BOOST_RENDER_STRICT` env flag.** Mirrors `BOOST_REMOTE_STRICT` but for renderer exceptions. Lenient (default): the offending file is dropped from the sync and the failure is recorded in `SyncResult::errors`. Strict (`=1`/`true`/`on`): the first failure throws `SkillRenderException`, aborting the sync. Kept separate from `REMOTE_STRICT` so a project can keep renders lenient while remote-source resolution is strict (or vice versa).
+        // Path mode — fetches the repo tarball at the given ref, extracts named subdirs.
+        // `'.'` covers whole-repo-is-one-skill layouts (blader/humanizer style).
+        RemoteSkillSource::githubPath('mattpocock/skills', 'main', [
+            'grill-with-docs' => 'skills/engineering/grill-with-docs',
+        ]),
+    ]);
 
-- **Caller-controlled vendor injection** via three new `SyncEngine::sync()` parameters:
-  - `injectedVendorSkills: array<string, list<Skill>>` — pre-built skills keyed by source vendor. Tag-filtered + collision-detected identically to scanned vendors. Covers ecosystems whose layout `VendorScanner` does not match (laravel/boost's `.ai/<pkg>/...` is the motivating case).
-  - `injectedVendorGuidelines: array<string, list<Guideline>>` — same shape for guidelines.
-  - `extraSkillRenderers: list<SkillRenderer>` — additional renderers to append to `BoostConfig::skillRenderers` for one sync transaction. Lets a wrapper package guarantee its renderer is registered without forcing users to wire it in `boost.php`.
+```
+Resolved on the next `composer install` / `update` through the existing `BoostAutoSync` hook — no separate command, no separate cache-warm step. First sync hits the network; later syncs are offline-fast (cache lives at `<project>/.boost-remote-cache/`, auto-added to the managed `.gitignore`). Removing an entry prunes its agent-dir output on next sync; removing an entire source prunes every skill it last contributed.
 
-  Same-vendor name collisions throw explicitly (`SkillResolver` only catches cross-vendor dupes, so an injected skill overlapping a scanned vendor's would silently first-win without this guard).
+Set `BOOST_GITHUB_TOKEN` to lift anonymous GitHub access from 60 to 5000 requests/hour. CI runs that resolve `withRemoteSkills(...)` cold should always export the token. `BOOST_REMOTE_STRICT=1` escalates any remote-source failure (network unreachable, malformed archive, name-mismatch) to an aborting error; default is warn-and-skip. `boost doctor` lists every declared remote source, flags moving refs (`'main'`, `'latest'`, branch names) with a `⚠`, and reports per-skill cache presence — all offline.
 
-### Changed
+`boost sync --check` is **network-free and side-effect-free**: cold-cache sources are surfaced as `would-fetch` advisories in `SyncResult::errors`, never touching the network or writing to the cache.
 
-- **`SkillLoader::load()` accepts a `SkillRendererDispatcher` parameter** (default = passthrough-only). External direct callers that construct a `SkillLoader` are unaffected unless they want to register a non-default renderer. `SyncEngine` builds the per-sync dispatcher from `BoostConfig::skillRenderers` after config-load (the dispatcher cannot live as a ctor field — `BoostConfig` is only known inside `sync()`).
+#### `SkillRenderer` plugin contract (`@experimental`)
 
-- **`RemoteSkillIngester::ingest()` accepts the same dispatcher**, so remote `.blade.php` skills render through the registered renderer too. The internal `loadOne` was generalized from a hard-coded `SKILL.md` lookup to walk the dispatcher's claimed extensions, falling back to `.md`.
+```php
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\ProjectBoostLaravel\Rendering\BladeRenderer;
 
-- **Multi-extension naming fallback fix.** `SKILL.blade.php` with no `name:` frontmatter now resolves to skill name `SKILL` (previously would have been `SKILL.blade` because `getFilenameWithoutExtension()` only strips the last `.`-segment). The dispatcher now returns a `MatchedRenderer { renderer, extension }` tuple so the loader can strip the full matched extension.
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE])
+    ->withSkillRenderers([new BladeRenderer]);
 
-- **`SyncEngine`'s injection-merge logic** extracted to `InjectedVendorMerger` to keep the engine's class-level cognitive complexity tractable.
+```
+Plugin seam for rendering template-flavored skill bodies (`SKILL.blade.php`, `SKILL.twig`, …) before per-agent fan-out. The dispatcher matches **longest-extension-first** (so `.blade.php` beats `.php` when both are claimed); the implicit `PassthroughRenderer` always handles `.md` and is re-appended after any `withDisabledRenderers([FQCN])` deny-list. Render failures default to warn-and-skip (recorded in `SyncResult::errors`); `BOOST_RENDER_STRICT=1` escalates the first failure to an aborting `SkillRenderException`. The flag is separate from `BOOST_REMOTE_STRICT` so a project can keep renders lenient (a single broken Blade skill should not abort CI) while making remote-source resolution strict, or vice versa.
+
+The contract is `@experimental` — pin to an exact boost-core version if building against it. Lock-in happens after a second non-trivial consumer from a different problem domain validates the shape, mirroring the `FileEmitter` plugin lock-in criteria. Reference consumer: [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) ships a `BladeRenderer` that delegates to laravel/boost's `RendersBladeGuidelines` trait, so `.ai/<pkg>/skill/<name>/SKILL.blade.php` files render with the `$assist = GuidelineAssist` runtime context they expect.
+
+`GuidelineLoader` reuses the same dispatcher — a `BladeRenderer` registered for skills also discovers Blade guidelines in `.ai/guidelines/`. Files whose extension no registered renderer claims are silently skipped, bit-identical to pre-renderer boost-core when no renderer is registered.
+
+#### Caller-controlled vendor injection on `SyncEngine::sync()`
+
+```php
+$engine->sync(
+    projectRoot: __DIR__,
+    injectedVendorSkills: ['laravel/boost' => $skills],
+    extraSkillRenderers: [new BladeRenderer],
+    injectedVendorGuidelines: ['laravel/boost' => $guidelines],
+);
+
+```
+Three new optional parameters for wrapper packages whose source layout `VendorScanner` cannot reach (laravel/boost's `.ai/<pkg>/...` is the motivating case — `sandermuller/project-boost-laravel` uses this seam). Tag-filtered and collision-detected identically to scanned vendors. Same-vendor name collisions between injected and scanned skills throw `SkillSourceCollisionException`, caught in `SyncEngine::sync` and converted to a `SyncResult::errors` entry (lenient) or rethrown (strict). All three default to `[]`; existing call sites are unchanged.
+
+#### `boost where` — skill origin tracing
+
+```bash
+vendor/bin/boost where
+
+```
+Lists every skill that would land in agent dirs, grouped by source:
+
+- **`.ai/skills/ (host)`** — host-authored skills, with `(shadows <vendor>)` on overrides.
+- **`<vendor/package>`** — Composer-allowlisted vendors publishing via `resources/boost/skills/`.
+- **`<vendor/package>` from a `RemoteSkillSource`** — non-Composer sources declared via `withRemoteSkills(...)`.
+
+Same resolution pipeline as `boost sync --check` (tag-filtered, collision-resolved). Caller-injected vendor skills (the wrapper pattern, e.g. `project-boost-laravel`) are NOT visible — those are runtime-only inputs to `SyncEngine::sync()` and the wrapper package owns its own inspection surface.
+
+Complements `boost tags` (lists every tag and which would unlock filtered skills) and `boost doctor` (cache freshness + remote source diagnostics).
+
+#### `SyncResult::renderDeleteAttribution(): ?string`
+
+Canonical attribution renderer for destructive deletes. Returns `null` when nothing was deleted (or in check-mode results), otherwise a multi-line string naming the three possible causes (tag-filter, removed `withRemoteSkills` entry, stale-source prune) followed by the deleted paths.
+
+```php
+if ($attribution = $result->renderDeleteAttribution()) {
+    $this->warn($attribution); // Laravel artisan
+    // or $io->warning($attribution); // Symfony console
+}
+
+```
+Single source of truth for the attribution wording — boost-core's own `SyncCommand` and wrapper commands (e.g. `project-boost-laravel`'s artisan `project-boost:sync`, future custom CLIs) use it so the operator-visible delete audit signal stays identical across invocation surfaces. Addresses a gap where wrapper commands that render their own output from `$result->writes` saw the per-line `deleted <path>` action but missed the cause-attribution that `vendor/bin/boost sync` produced. The helper closes the gap symmetrically.
+
+#### `skill-origin-tracing` bundled skill
+
+A `resources/boost/skills/skill-origin-tracing.md` skill that triggers when downstream agents see questions like "why is skill X present", "why is skill Y missing", "where does skill Z come from", or "did host shadow X". Routes them to `boost where` (and `boost tags` for tag-filtered cases) instead of grepping `vendor/`.
+
+#### `Tag` enum gains Laravel-ecosystem cases
+
+`Livewire`, `Volt`, `Inertia`, `Filament`, `Flux`, `Pest`, `Tailwind`. Surfaces the tag vocabulary `laravel/boost`'s bundled skills declare, so `withTags(Tag::Livewire, …)` autocompletes properly. Non-authoritative — string fallback continues to work for any vocabulary the enum doesn't cover.
 
 ### Fixed
 
-- **`boost where` (new command) — skill origin tracing.** Lists every skill that would land in agent dirs, grouped by source (`.ai/` host, scanned vendor packages, remote skill sources, host-shadowing-vendor overrides). Same resolution pipeline as `boost sync --check` (tag-filtered, collision-resolved). Caller-injected vendor skills (the wrapper pattern, e.g. project-boost-laravel) are NOT visible — those are runtime-only inputs to `SyncEngine::sync()` and the wrapper package owns its own inspection surface.
+- **`GuidelineLoader` discovers `.blade.php` (and any renderer-registered extension) in `.ai/guidelines/`.** Previously globbed `*.md` only — host-authored Blade guidelines were silently dropped, causing content loss in `CLAUDE.md` for users with templated guidelines.
+- **`FileWriter` refuses to follow user-placed symlinks.** A sync write under `.claude/skills/<name>/` that would resolve through a user-placed symlink (e.g. `.claude/skills/<name>` → `../../.ai/skills/<name>/`) now bails with `WriteAction::SKIPPED_SYMLINK` and surfaces in the summary as `skipped-symlink=N`. Preserves the "live symlinks owned by consumer" contract `SyncEngine::pruneDeadSymlinks()` documented but the write path did not honor.
+- **`boost sync --check` is network-free and writes-free.** `RemoteSkillSyncCoordinator::ingestIntoVendorMap()` accepts a `$checkOnly` flag; sources missing from the offline cache are excluded from the ingest call and surfaced as a `would-fetch` advisory in `SyncResult::errors`. Restores the dry-run-purity invariant that pre-companion-refactor consumers relied on.
+- **Host-vs-vendor skill shadowing is surfaced.** A host `.ai/skills/<name>/` that shadows an allowlisted-vendor skill of the same name now produces a `<name> shadows <vendor>` line in `SyncCommand`'s output. Plumbed via a new `SyncResult::$hostShadows` field and a `&array $shadows` out-param on `SkillResolver::resolve()`. Existing host-wins precedence and `CollidingSkillsException` semantics unchanged.
+- **`boost sync` lists each deleted path inline + attributes the cause.** A delete event (a previously-installed agent-dir skill pruned because its source skill is no longer tag-eligible after a `withTags()` change, or a removed `withRemoteSkills` entry, or a stale-source prune) previously surfaced only as a count in the success summary. `SyncCommand` now emits a warning naming the three possible causes followed by the list of relative paths whenever `deleted > 0`. Behavior unchanged in `--check` mode (where would-delete was already listed).
+- **`TagReporter` passes the renderer dispatcher.** `boost tags` and `boost doctor` now discover renderer-claimed extensions (e.g. `.blade.php` with a registered `BladeRenderer`), matching the file set `boost sync` would emit.
+- **`RemoteSkillIngester` honors `BOOST_RENDER_STRICT`.** Render failures inside the per-skill loop now escalate via `SkillRenderException` when the flag is set, mirroring `SkillLoader`'s strict path.
+- **`locateSkillFile` prefers the canonical `SKILL.<ext>` across all globs.** A remote-skill cache slot containing both `README.md` and `SKILL.blade.php` now correctly loads the latter; previously the first-glob-with-any-match silently ingested README as the skill body.
+- **`RemoteSkillIngester` surfaces same-source different-version skill collisions.** Two `withRemoteSkills` entries pointing at the same repo at different versions both listing the same skill name now produce a clear error (lenient: `SyncResult::errors`; strict: `RemoteFetchException`).
+- **`RemoteSkillSyncCoordinator` detects collisions with scanned/injected vendor maps.** A remote source sharing a vendor key with an already-populated entry throws `SkillSourceCollisionException`, caught by `SyncEngine::sync` and converted to a `SyncResult::errors` entry.
+- **`extraSkillRenderers` no longer shadow user-registered renderers.** Extras are inserted between user renderers and the trailing implicit `PassthroughRenderer`. Final order: `[...user, ...extras, Passthrough]`. With first-match-wins dispatch, the user's `boost.php` registry stays authoritative.
+- **`TarballExtractor` archive-path prefix length corrected.** The strip-length for in-archive entry names now includes the `phar://` URL prefix that `PharData` iteration prepends. (Linux CI rendered this as a PharData-vs-`tar` regression and we pivoted to system `tar -xzf` via Symfony Process for portability.)
+- **`BundleExtractor::assertNotSymlink` fails closed on unreadable external attributes.** A crafted ZIP that suppresses attribute readability would previously bypass the symlink check; now throws `RemoteExtractException::SYMLINK`.
+- **`SkillLoader` falls back to `getPathname()` when `getRealPath()` returns false** (broken symlinks, open_basedir restrictions, file disappears between Finder enumeration and the realpath call). Previously hit a `TypeError` on the false case.
+- **`BoostConfigBuilder` distinguishes implicit vs explicit `PassthroughRenderer` by object identity.** A user passing `new PassthroughRenderer()` via `withSkillRenderers` is now treated as a regular renderer for conflict detection.
+- **Multi-extension naming fallback fix.** `SKILL.blade.php` with no `name:` frontmatter now resolves to skill name `SKILL` (previously would have been `SKILL.blade`). The dispatcher now returns a `MatchedRenderer { renderer, extension }` tuple so the loader can strip the full matched extension.
 
-- **Host-vs-vendor skill shadowing is no longer silent.** When a host `.ai/skills/<name>/` shadows an allowlisted-vendor skill of the same name, `SyncCommand` now emits `<name> shadows <vendor>` lines so consumers using `withAllowedVendors` + host overrides can audit which copy actually shipped. Plumbed via a new `SyncResult::$hostShadows` field and a `&array $shadows` out-param on `SkillResolver::resolve()`. Both existing host-wins precedence and `CollidingSkillsException` semantics unchanged.
+### Changed
 
-- **`boost sync --check` no longer touches the network or writes to the remote-skill cache.** `RemoteSkillSyncCoordinator::ingestIntoVendorMap()` now accepts a `$checkOnly` flag. In check mode, sources missing from the offline cache are excluded from the ingest call and surfaced as a `would-fetch` advisory in `SyncResult::errors`. Plumbed via a new public `RemoteSkillCache::isReadyOffline()` + `RemoteSkillIngester::isSourceCached()`. Restores the dry-run-purity invariant that pre-companion-refactor consumers relied on.
-
-- **`TagReporter` passes the renderer dispatcher.** `boost tags` and `boost doctor` now discover renderer-claimed extensions (e.g. `.blade.php` with a registered `BladeRenderer`), matching the file set `boost sync` would emit. Previously the reporting commands silently missed those files, confusing users who relied on tag-reporter for discovery.
-
-- **`boost sync` delete-warning attribution.** The inline delete-warning no longer hard-codes "no longer tag-eligible" — deletes can come from tag-filter pruning, removed `withRemoteSkills` entries, or stale-source prune. Message now lists all three possible causes so operators can audit against `boost.php`.
-
-- **`Tag` enum gains `Livewire`, `Volt`, `Inertia`, `Filament`, `Flux`, `Pest`, `Tailwind`.** Surfaces the Laravel-ecosystem tag vocabulary laravel/boost's bundled skills declare, so `withTags(Tag::Livewire, …)` autocompletes properly. Non-authoritative — string fallback continues to work for any vocabulary the enum doesn't cover.
-
-- **`boost sync` lists each deleted path inline.** A delete event (a previously-installed agent-dir skill pruned because its source skill is no longer tag-eligible after a `withTags()` change) previously only surfaced as a count in the success summary. The operator-facing concern: an unexpected delete is destructive and easy to miss. Now `SyncCommand` emits a warning followed by the list of relative paths whenever `deleted > 0`. Behavior unchanged in `--check` mode (where would-delete was already listed). Surfaced by a dogfooding consumer who saw their `fluxui-development` + `wayfinder-development` agent dirs disappear after a `withTags()` filter narrowed.
-
-- **`GuidelineLoader` discovers `.blade.php` (and any renderer-registered extension) in `.ai/guidelines/`.** Previously globbed `*.md` only — host-authored Blade guidelines (e.g. `core.blade.php` for a project-specific block) were silently dropped, causing content loss in `CLAUDE.md` for users with templated guidelines. Now mirrors `SkillLoader`'s shape: extension handling driven by the same `SkillRendererDispatcher`, renderers reused across the skill and guideline surfaces (a `BladeRenderer` registered for skills works for guidelines too). Files whose extension no registered renderer claims are silently skipped — behavior bit-identical to pre-renderer boost-core when no renderer is registered. Surfaced by a dogfooding consumer whose `CLAUDE.md` lost an 11kB Blade-rendered project-specific block on first sync.
-
-- **`FileWriter` refuses to follow user-placed symlinks** — `SKIPPED_SYMLINK` `WriteAction` (new). Previously a sync write of `.claude/skills/<name>/SKILL.md` would silently overwrite the file behind a user-placed symlink (e.g. `.claude/skills/<name>` → `../../.ai/skills/<name>/`), destroying the source the symlink was meant to read from. The writer now walks each path segment under `$projectRoot` and bails with `WriteAction::SKIPPED_SYMLINK` on the first one that is a symlink. Mirrors the "live symlinks owned by consumer" contract that `SyncEngine::pruneDeadSymlinks()` documented but the write path did not honor. `SyncCommand` surfaces the count as `skipped-symlink=%d` in its summary plus a warning line pointing the user at `--check` to inspect paths. Surfaced by a dogfooding consumer with 17 dir-symlinks.
-
-- **`extraSkillRenderers` no longer shadow user-registered renderers.** Extras are now inserted between user renderers and the trailing implicit `PassthroughRenderer`. Final order: `[...user, ...extras, Passthrough]`. With first-match-wins dispatch, the user's `boost.php` registry stays authoritative; extras override only the implicit passthrough — the documented use case.
-
-- **`RemoteSkillIngester` honors `BOOST_RENDER_STRICT`.** Render failures inside the per-skill loop now escalate via `SkillRenderException` when the flag is set, mirroring `SkillLoader`'s strict path. Previously only `BOOST_REMOTE_STRICT` could promote a remote-skill render failure to a sync abort.
-
-- **`locateSkillFile` prefers the canonical `SKILL.<ext>` across all globs.** A remote-skill cache slot containing both `README.md` and `SKILL.blade.php` now correctly loads the latter. Previously the first-glob-with-any-match returned, which silently ingested README as the skill body when alphabetical order put it first.
-
-- **`RemoteSkillIngester` surfaces same-source different-version skill collisions.** Two `withRemoteSkills` entries pointing at the same repo at different versions both listing the same skill name now produce a clear error (lenient: `SyncResult::errors`; strict: `RemoteFetchException`). Previously the second skill silently first-won.
-
-- **`RemoteSkillSyncCoordinator` detects collisions with scanned/injected vendor maps.** A remote source sharing a vendor key with an already-populated entry now throws a `SkillSourceCollisionException` caught by `SyncEngine::sync` and converted to a `SyncResult::errors` entry. Mirrors `InjectedVendorMerger`'s invariant for the remote path.
-
-- **`TarballExtractor` archive-path prefix length corrected.** The strip-length for in-archive entry names now includes the `phar://` URL prefix that `PharData` iteration prepends (was off by 7 chars). Error messages now name the right path; archive entries flagged as path-traversal still rejected, but for the right reason.
-
-- **`BundleExtractor::assertNotSymlink` fails closed on unreadable external attributes.** A crafted ZIP that suppresses attribute readability would previously bypass the symlink check; now throws `RemoteExtractException::SYMLINK` with a clear message.
-
-- **`SkillLoader` falls back to `getPathname()` when `getRealPath()` returns false** (broken symlinks, open_basedir restrictions, file disappears between Finder enumeration and the realpath call). `Skill::sourcePath` is typed `string`; the previous direct assignment would have thrown `TypeError` on the false case.
-
-- **`BoostConfigBuilder` distinguishes implicit vs explicit `PassthroughRenderer` by object identity.** A user passing `new PassthroughRenderer()` via `withSkillRenderers` is now treated as a regular renderer for conflict detection — including colliding with other md-claiming renderers. The implicit passthrough appended by the builder is still silently yielded on user-registered `md` claims.
+- **`SkillLoader::load()` accepts a `SkillRendererDispatcher` parameter** (default = passthrough-only). External direct callers that construct a `SkillLoader` are unaffected unless they want to register a non-default renderer. `SyncEngine` builds the per-sync dispatcher from `BoostConfig::skillRenderers` after config-load.
+- **`RemoteSkillIngester::ingest()` accepts the same dispatcher**, so remote `.blade.php` skills render through the registered renderer too. The internal `loadOne` was generalized from a hard-coded `SKILL.md` lookup to walk the dispatcher's claimed extensions, falling back to `.md`.
+- **`SyncEngine`'s injection-merge logic** extracted to `InjectedVendorMerger` to keep the engine's class-level cognitive complexity tractable.
 
 ### Added (internal — public exception class)
 
 - **`SkillSourceCollisionException`** (`src/Sync/SkillSourceCollisionException.php`). Thrown by `InjectedVendorMerger` and `RemoteSkillSyncCoordinator` when caller-config (injected vendor map / remote source declaration) would silently overwrite an existing entry under the same vendor key. Caught in `SyncEngine::sync()` and converted to a `SyncResult` with the message as an error — consumers that wrap `sync()` and expect it to never throw on user-config issues keep working. Distinct from `CollidingSkillsException` (which models cross-vendor name collisions detected by `SkillResolver`).
+
+### Upgrade notes
+
+No migration required from 0.6.x. The three additive surfaces (`withRemoteSkills`, `SkillRenderer`, `SyncEngine::sync` injection params) are opt-in; existing projects keep working unchanged. See `UPGRADING.md` for adoption notes.
+
+`@experimental` APIs (`SkillRenderer`, the three injection params): pin to an exact boost-core version (`"sandermuller/boost-core": "0.7.0"` rather than `"^0.7.0"`) if your project depends on the precise shape. The shape survived the entire rc cycle without churn, but lock-in waits for a second non-trivial consumer from a different problem domain.
+
+### Companion package status
+
+[`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) — the reference Laravel companion that consumes laravel/boost-bundled skills via the injection seam, ships its own `BladeRenderer`, and exposes a Laravel artisan `project-boost:sync` command — accepts 0.7.0 stable on its existing `^0.7.0-rc1` constraint without composer.json changes. Cut a `composer update sandermuller/boost-core` to pick up stable.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/0.6.2...0.7.0
 
 ## [0.6.2](https://github.com/sandermuller/boost-core/compare/0.6.1...0.6.2) - 2026-05-23
 
 ### Fixed
 
 - **`boost sync` emits a one-line note when tagged vendor skills are silently filtered out.** Triggered when (a) the consumer's `withTags()` is empty AND (b) at least one vendor skill was dropped specifically by tag-mismatch:
-
+  
   ```
   ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
           Run `vendor/bin/boost tags` to see them.
-
+  
+  
   ```
   The nudge is precise about its cause — `withExcludedSkills` denials and malformed-frontmatter drops are NOT counted, so the message never misleads consumers who intentionally excluded skills or have a broken vendor manifest. Per-vendor tag-mismatch drops are summed without cross-vendor name deduplication, so two vendors each hiding a same-named skill count as two.
-
+  
   Consumers with `withTags(...)` already declared see no nudge — explicit filtering is intentional, not noise.
-
+  
 - **`SkillTagFilter::filter()` now returns `droppedByTag: int`** alongside `droppedNames` — the data-flow change that powers the nudge. Existing callers of `kept` and `droppedNames` are unaffected; the return is additive.
-
+  
 
 ### Upgrade notes
 
@@ -164,6 +236,7 @@ boost-core is no longer a Composer plugin. It ships as a plain `type: library` �
   
   ```php
   ->withExcludedGuidelines(['acme/pack:database-safety'])
+  
   
   
   
@@ -373,6 +446,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   
   
   
+  
     ```
 
 ### Fixed
@@ -406,6 +480,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
   
   
   

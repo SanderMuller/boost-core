@@ -5,7 +5,69 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.0...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.1...HEAD)
+
+## [0.7.1](https://github.com/sandermuller/boost-core/compare/0.7.0...0.7.1) - 2026-05-25
+
+### TL;DR
+
+- **Kiro joins the command fan-out as the seventh emit target.** A `.ai/commands/<name>.md` source now lands at `.kiro/skills/<name>/SKILL.md` — Kiro's slash-command surface IS its committed skills directory, so `/<name>` becomes invocable through the existing skill discovery. No new directory, no TOML, no per-agent config knob.
+- **`boost doctor` calls out Codex and Gemini explicitly.** When `.ai/commands/` contains `.md` files (recursive — `sub/foo.md` counts) AND Codex or Gemini is in `withAgents()`, doctor prints a `Command-emit limitations` section pointing operators at the manual authoring path (`~/.codex/prompts/` for Codex; `.gemini/commands/<name>.toml` for Gemini). Previously both were silently skipped — operators only learned the commands weren't being written by manually checking each agent dir.
+- **No upgrade work required from 0.7.0.** All additive; existing projects that don't populate `.ai/commands/` see no behavioral change.
+
+### Added
+
+#### Kiro command emit — `.kiro/skills/<name>/SKILL.md`
+
+`KiroTarget::planCommands()` overrides the base implementation to emit each command as a skill-shaped file under Kiro's committed skills directory. Kiro treats anything committed under `.kiro/skills/<name>/` as both a skill AND a slash-command, so a single emit reaches both invocation paths.
+
+```bash
+# author once
+.ai/commands/deploy.md
+
+# fans out to (excerpt — full agent set unchanged from 0.7.0)
+.claude/commands/deploy.md
+.cursor/commands/deploy.md
+.kiro/skills/deploy/SKILL.md   # ← new in 0.7.1
+
+```
+`commandsDirectoryRelative()` stays `null` for Kiro so the managed `.gitignore` block, directory tooling, and gitignore-pattern reporters don't double-count `.kiro/commands/` (a directory Kiro doesn't use). The skill directory `.kiro/skills/` is already covered by the existing gitignore pattern.
+
+The render path goes through `AgentTarget::formatCommandContent()`, identical to how skill emits go through `formatSkillContent()` — so subclass overrides and future render hooks apply symmetrically across both surfaces.
+
+#### `boost doctor` — command-emit limitations section
+
+```
+Command-emit limitations
+• Codex: prompts are deprecated and personal-only (`~/.codex/prompts/`). boost-core does not write
+  there. To use these commands in Codex, copy your `.ai/commands/**/*.md` files into
+  `~/.codex/prompts/` manually.
+• Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands
+  directly in `.gemini/commands/<name>.toml` or use a skill instead.
+
+```
+The section only renders when both conditions are met:
+
+1. The configured `commandsPath` exists AND contains at least one `*.md` file (recursive scan via Finder — same shape `CommandLoader` uses).
+2. `withAgents()` includes Codex and/or Gemini.
+
+The source path in the Codex message resolves from `$config->commandsPath`, so `withCommandsPath(__DIR__ . '/custom-commands')` produces accurate guidance instead of a hardcoded `.ai/commands/` reference.
+
+### Why this shape — Codex and Gemini
+
+Neither agent has a committable command target boost-core can sensibly write into:
+
+- **Codex** ships custom prompts as deprecated personal-only files under `~/.codex/prompts/`. There is no repo-committed target.
+- **Gemini** uses TOML for its command files. Hand-rolling a TOML serializer for one outlier agent fails the cost/coverage test, and there is no upstream convention to mirror (laravel/boost ships no Gemini-command sync, so there's no shape to align with).
+
+Rather than fake-ship into a folder neither agent watches, or silently skip both with no operator signal, 0.7.1 makes the gap discoverable via `boost doctor` and points at the manual authoring path. Re-open if Gemini accepts Markdown command files in a future release, or if a second TOML-emitting agent surfaces.
+
+### Known limitations
+
+- **Kiro skill-vs-command name collision.** A project with both `.ai/skills/deploy/SKILL.md` and `.ai/commands/deploy.md` will have both written to `.kiro/skills/deploy/SKILL.md` — the latter wins by execution order. The collision is invisible to operators today. Phase 4 of the agent-commands-sync work (vendor commands + collision resolution) will close this — tracked.
+- **Arguments / placeholders unchanged from 0.7.0.** This release covers argument-less command sync only. The argument transpilation layer remains the Phase 3 deferral documented at 0.7.0.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/0.7.0...0.7.1
 
 ## [0.7.0](https://github.com/sandermuller/boost-core/compare/0.6.2...0.7.0) - 2026-05-25
 
@@ -32,6 +94,7 @@ return BoostConfig::configure()
         ]),
     ]);
 
+
 ```
 Resolved on the next `composer install` / `update` through the existing `BoostAutoSync` hook — no separate command, no separate cache-warm step. First sync hits the network; later syncs are offline-fast (cache lives at `<project>/.boost-remote-cache/`, auto-added to the managed `.gitignore`). Removing an entry prunes its agent-dir output on next sync; removing an entire source prunes every skill it last contributed.
 
@@ -48,6 +111,7 @@ use SanderMuller\ProjectBoostLaravel\Rendering\BladeRenderer;
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE])
     ->withSkillRenderers([new BladeRenderer]);
+
 
 ```
 Plugin seam for rendering template-flavored skill bodies (`SKILL.blade.php`, `SKILL.twig`, …) before per-agent fan-out. The dispatcher matches **longest-extension-first** (so `.blade.php` beats `.php` when both are claimed); the implicit `PassthroughRenderer` always handles `.md` and is re-appended after any `withDisabledRenderers([FQCN])` deny-list. Render failures default to warn-and-skip (recorded in `SyncResult::errors`); `BOOST_RENDER_STRICT=1` escalates the first failure to an aborting `SkillRenderException`. The flag is separate from `BOOST_REMOTE_STRICT` so a project can keep renders lenient (a single broken Blade skill should not abort CI) while making remote-source resolution strict, or vice versa.
@@ -66,6 +130,7 @@ $engine->sync(
     injectedVendorGuidelines: ['laravel/boost' => $guidelines],
 );
 
+
 ```
 Three new optional parameters for wrapper packages whose source layout `VendorScanner` cannot reach (laravel/boost's `.ai/<pkg>/...` is the motivating case — `sandermuller/project-boost-laravel` uses this seam). Tag-filtered and collision-detected identically to scanned vendors. Same-vendor name collisions between injected and scanned skills throw `SkillSourceCollisionException`, caught in `SyncEngine::sync` and converted to a `SyncResult::errors` entry (lenient) or rethrown (strict). All three default to `[]`; existing call sites are unchanged.
 
@@ -73,6 +138,7 @@ Three new optional parameters for wrapper packages whose source layout `VendorSc
 
 ```bash
 vendor/bin/boost where
+
 
 ```
 Lists every skill that would land in agent dirs, grouped by source:
@@ -94,6 +160,7 @@ if ($attribution = $result->renderDeleteAttribution()) {
     $this->warn($attribution); // Laravel artisan
     // or $io->warning($attribution); // Symfony console
 }
+
 
 ```
 Single source of truth for the attribution wording — boost-core's own `SyncCommand` and wrapper commands (e.g. `project-boost-laravel`'s artisan `project-boost:sync`, future custom CLIs) use it so the operator-visible delete audit signal stays identical across invocation surfaces. Addresses a gap where wrapper commands that render their own output from `$result->writes` saw the per-line `deleted <path>` action but missed the cause-attribution that `vendor/bin/boost sync` produced. The helper closes the gap symmetrically.
@@ -156,6 +223,7 @@ No migration required from 0.6.x. The three additive surfaces (`withRemoteSkills
   ```
   ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
           Run `vendor/bin/boost tags` to see them.
+  
   
   
   ```
@@ -236,6 +304,7 @@ boost-core is no longer a Composer plugin. It ships as a plain `type: library` �
   
   ```php
   ->withExcludedGuidelines(['acme/pack:database-safety'])
+  
   
   
   
@@ -447,6 +516,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   
   
   
+  
     ```
 
 ### Fixed
@@ -480,6 +550,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
   
   
   

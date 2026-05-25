@@ -38,7 +38,7 @@ final class KiroTarget extends AgentTarget
         foreach ($commands as $command) {
             $writes[] = new PendingWrite(
                 relativePath: $this->skillsDirectoryRelative() . '/' . $command->name . '/' . self::SKILL_FILE,
-                content: $this->renderFrontmatter($command->frontmatter) . $command->body,
+                content: $this->formatCommandContent($command),
             );
         }
 

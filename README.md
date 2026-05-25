@@ -6,6 +6,7 @@
 [![Tests](https://img.shields.io/github/actions/workflow/status/sandermuller/boost-core/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/sandermuller/boost-core/actions/workflows/run-tests.yml)
 [![Total Downloads](https://img.shields.io/packagist/dt/sandermuller/boost-core.svg?style=flat-square)](https://packagist.org/packages/sandermuller/boost-core)
 [![License](https://img.shields.io/packagist/l/sandermuller/boost-core.svg?style=flat-square)](LICENSE)
+[![Laravel Boost](https://badge.laravel.cloud/boost-badge.svg?style=flat-square)](https://github.com/laravel/boost)
 
 ## Install
 
@@ -89,18 +90,21 @@ require __DIR__ . '/../vendor/autoload.php';
 
 ## Commands
 
-`.ai/commands/*.md` holds reusable prompt templates — the slash-command files agents surface in their command palette. `boost sync` fans each one out to the six agents with a command surface:
+`.ai/commands/*.md` holds reusable prompt templates — the slash-command files agents surface in their command palette. `boost sync` fans each one out to the seven agents with a command surface:
 
-| Agent       | Command directory                            |
-| ----------- | -------------------------------------------- |
-| Claude Code | `.claude/commands/`                          |
-| Cursor      | `.cursor/commands/`                          |
-| Copilot     | `.github/prompts/` (as `<name>.prompt.md`)   |
-| Junie       | `.junie/commands/`                           |
-| OpenCode    | `.opencode/commands/`                        |
-| Amp         | `.agents/commands/`                          |
+| Agent       | Command target                                  |
+| ----------- | ----------------------------------------------- |
+| Claude Code | `.claude/commands/`                             |
+| Cursor      | `.cursor/commands/`                             |
+| Copilot     | `.github/prompts/` (as `<name>.prompt.md`)      |
+| Junie       | `.junie/commands/`                              |
+| OpenCode    | `.opencode/commands/`                           |
+| Amp         | `.agents/commands/`                             |
+| Kiro        | `.kiro/skills/<name>/SKILL.md` (slash-command)  |
 
-Codex, Gemini, and Kiro have no command surface — they are skipped. The source directory defaults to `.ai/commands`; override it with `->withCommandsPath(...)` in `boost.php`.
+Kiro has no dedicated command directory — its committed `.kiro/skills/` is the slash-command surface, so a `.ai/commands/<name>.md` lands as `.kiro/skills/<name>/SKILL.md`.
+
+Codex and Gemini have no committable target boost-core can write into — Codex's prompts (`~/.codex/prompts/`) are deprecated and personal-only, Gemini uses TOML. When `.ai/commands/` is populated and one of those agents is in `withAgents()`, `boost doctor` prints the manual authoring path so the gap isn't silent. The source directory defaults to `.ai/commands`; override it with `->withCommandsPath(...)` in `boost.php`.
 
 ## Managed `.gitignore`
 

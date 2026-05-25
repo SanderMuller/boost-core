@@ -13,6 +13,7 @@ use SanderMuller\BoostCore\Sync\SyncEngine;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Finder\Finder;
 use Throwable;
 
 /**
@@ -106,35 +107,36 @@ final class DoctorCommand extends BoostBaseCommand
             return;
         }
 
-        $entries = @scandir($config->commandsPath);
-        $hasCommands = false;
-        if (is_array($entries)) {
-            foreach ($entries as $entry) {
-                if ($entry === '.') {
-                    continue;
-                }
-                if ($entry === '..') {
-                    continue;
-                }
-
-                if (str_ends_with($entry, '.md')) {
-                    $hasCommands = true;
-
-                    break;
-                }
-            }
-        }
+        // Mirror `CommandLoader`'s scan exactly: Finder, recursive,
+        // `*.md`, ignore dotfiles. Anything that loader would emit, this
+        // surface must consider — otherwise doctor's limitation note
+        // disagrees with what sync actually does for a `.ai/commands/sub/`
+        // layout.
+        $hasCommands = (new Finder())
+            ->files()
+            ->in($config->commandsPath)
+            ->name('*.md')
+            ->ignoreDotFiles(true)
+            ->hasResults();
 
         if (! $hasCommands) {
             return;
         }
 
+        // Resolve to a project-root-relative source path for the operator
+        // message — works for the default `.ai/commands` AND any
+        // `withCommandsPath(...)` override, and accurately covers nested
+        // `<commands>/sub/*.md` layouts because CommandLoader recurses.
+        $sourcePath = $config->commandsPath;
         $lines = [];
-        if (in_array(Agent::CODEX, $config->agents, true)) {
-            $lines[] = 'Codex: prompts are deprecated and personal-only (`~/.codex/prompts/`). boost-core does not write there. To use these commands in Codex, copy `.ai/commands/*.md` into `~/.codex/prompts/` manually.';
+        if ($config->hasAgent(Agent::CODEX)) {
+            $lines[] = sprintf(
+                'Codex: prompts are deprecated and personal-only (`~/.codex/prompts/`). boost-core does not write there. To use these commands in Codex, copy your `%s/**/*.md` files into `~/.codex/prompts/` manually.',
+                $sourcePath,
+            );
         }
 
-        if (in_array(Agent::GEMINI, $config->agents, true)) {
+        if ($config->hasAgent(Agent::GEMINI)) {
             $lines[] = 'Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands directly in `.gemini/commands/<name>.toml` or use a skill instead.';
         }
 

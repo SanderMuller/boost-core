@@ -11,6 +11,7 @@ use SanderMuller\BoostCore\Agents\JunieTarget;
 use SanderMuller\BoostCore\Agents\KiroTarget;
 use SanderMuller\BoostCore\Agents\OpenCodeTarget;
 use SanderMuller\BoostCore\Skills\Command;
+use SanderMuller\BoostCore\Skills\Skill;
 
 function makeSampleCommand(): Command
 {
@@ -84,4 +85,29 @@ it('lists the command directory in gitignore patterns for a command-capable agen
 
 it('omits a command directory from gitignore patterns for an agent without one', function (): void {
     expect((new GeminiTarget())->gitignorePatterns())->not->toContain('.gemini/commands/');
+});
+
+it('Kiro command emit content is identical to the equivalent skill-shaped emit (same renderer hooks)', function (): void {
+    // Belt-and-suspenders: Kiro emits a command into its skills surface,
+    // so the rendered content must equal what an equivalent Skill would
+    // render through formatSkillContent(). Deriving the expected value
+    // from the same Skill object the base renderer would produce avoids
+    // brittle hardcoded YAML — a harmless Yaml::dump formatting tweak
+    // doesn't break this test; an actual divergence between Kiro's
+    // command rendering and skill rendering does.
+    $command = makeSampleCommand();
+    $kiro = new KiroTarget();
+    $write = $kiro->planCommands([$command])[0];
+
+    $equivalentSkill = new Skill(
+        name: $command->name,
+        description: $command->description,
+        frontmatter: $command->frontmatter,
+        body: $command->body,
+        sourcePath: $command->sourcePath,
+        sourceVendor: $command->sourceVendor,
+    );
+    $expected = $kiro->formatSkillContent($equivalentSkill);
+
+    expect($write->content)->toBe($expected);
 });

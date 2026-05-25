@@ -187,3 +187,74 @@ it('doctor: omits the command-emit limitations section when neither Codex nor Ge
         doctorCleanup($dir);
     }
 });
+
+it('doctor: prints both notes when commands present and both Codex AND Gemini selected', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CODEX, Agent::GEMINI])');
+    try {
+        mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/deploy.md', "Body.\n");
+
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('Command-emit limitations')
+            ->and($result['display'])->toContain('~/.codex/prompts/')
+            ->and($result['display'])->toContain('.gemini/commands/');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: ignores non-.md files in .ai/commands/ for limitation triggering', function (): void {
+    // Regression guard — only `.md` is a Phase 1 command source. A stray
+    // `.txt` / `.bak` / dotfile in `.ai/commands/` must NOT trigger the
+    // limitations section, since it isn't going to be emitted anyway.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CODEX])');
+    try {
+        mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/notes.txt', "Not a command.\n");
+        file_put_contents($dir . '/.ai/commands/.DS_Store', '');
+
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->not->toContain('Command-emit limitations');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: omits the limitations section for Kiro alone — Kiro has a native (skill-shaped) command emit', function (): void {
+    // Regression guard: Kiro is intentionally NOT in the limitations
+    // list, because KiroTarget::planCommands() emits each command as
+    // a `.kiro/skills/<name>/SKILL.md`. A future regression that mistakenly
+    // adds Kiro to the manual-path lines would tell users to author Kiro
+    // commands manually even though boost-core syncs them.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::KIRO])');
+    try {
+        mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/deploy.md', "Body.\n");
+
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->not->toContain('Command-emit limitations');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: surfaces the limitations note when a nested command (.ai/commands/sub/deploy.md) exists', function (): void {
+    // Regression for code-review finding #2 — doctor must mirror
+    // CommandLoader's recursive Finder scan, not a one-level scandir.
+    // A command in a subdirectory IS emitted by sync; doctor must agree.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CODEX])');
+    try {
+        mkdir($dir . '/.ai/commands/sub', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/sub/deploy.md', "Body.\n");
+
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('Command-emit limitations')
+            ->and($result['display'])->toContain('~/.codex/prompts/');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

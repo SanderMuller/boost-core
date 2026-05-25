@@ -35,37 +35,47 @@ final readonly class TarballExtractor
 
     public function extract(string $archivePath, string $destinationPath): void
     {
+        // Use SEPARATE PharData instances for the safety walk and the
+        // extraction. RecursiveIteratorIterator over PharData advances the
+        // archive's internal iterator state; on some Linux/PHP/libphar
+        // combinations subsequent `extractTo` then writes zero-byte files
+        // (the iterator is at EOF; the extractor's gzip stream handle
+        // depends on the shared internal cursor). macOS happens not to hit
+        // this — empirically reproducible only in CI.
+        $safetyPhar = $this->openPhar($archivePath);
+        $this->assertAllEntriesSafe($safetyPhar, $archivePath);
+        unset($safetyPhar);
+
+        if (! is_dir($destinationPath) && ! mkdir($destinationPath, 0o755, recursive: true) && ! is_dir($destinationPath)) {
+            throw new RemoteExtractException(
+                sprintf('Cannot create destination directory `%s`.', $destinationPath),
+                RemoteExtractException::DISK_FULL,
+            );
+        }
+
+        $extractPhar = $this->openPhar($archivePath);
+
         try {
-            $phar = new PharData($archivePath);
+            $extractPhar->extractTo($destinationPath, null, overwrite: true);
+        } catch (Throwable $e) {
+            throw new RemoteExtractException(
+                sprintf('Tarball extraction failed at `%s`: %s', $destinationPath, $e->getMessage()),
+                RemoteExtractException::DISK_FULL,
+                $e,
+            );
+        }
+    }
+
+    private function openPhar(string $archivePath): PharData
+    {
+        try {
+            return new PharData($archivePath);
         } catch (UnexpectedValueException $unexpectedValueException) {
             throw new RemoteExtractException(
                 sprintf('Malformed tarball at `%s`: %s', $archivePath, $unexpectedValueException->getMessage()),
                 RemoteExtractException::MALFORMED,
                 $unexpectedValueException,
             );
-        }
-
-        try {
-            $this->assertAllEntriesSafe($phar, $archivePath);
-
-            if (! is_dir($destinationPath) && ! mkdir($destinationPath, 0o755, recursive: true) && ! is_dir($destinationPath)) {
-                throw new RemoteExtractException(
-                    sprintf('Cannot create destination directory `%s`.', $destinationPath),
-                    RemoteExtractException::DISK_FULL,
-                );
-            }
-
-            try {
-                $phar->extractTo($destinationPath, null, overwrite: true);
-            } catch (Throwable $e) {
-                throw new RemoteExtractException(
-                    sprintf('Tarball extraction failed at `%s`: %s', $destinationPath, $e->getMessage()),
-                    RemoteExtractException::DISK_FULL,
-                    $e,
-                );
-            }
-        } finally {
-            // PharData has no explicit close; nothing to release.
         }
     }
 

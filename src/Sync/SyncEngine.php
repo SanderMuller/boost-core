@@ -595,8 +595,15 @@ final readonly class SyncEngine
             return null;
         }
 
+        // Match what `resolveSkills()` does internally so `--diff` agrees
+        // with `boost where` / `boost sync --check`: pass the configured
+        // renderer dispatcher so `.blade.php`-style skills are discovered,
+        // and tag-filter the vendor's skill set so a `withTags()` drop
+        // doesn't leak into the diff.
+        $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
+
         $hostPath = null;
-        foreach ($this->skillLoader->load($config->skillsPath) as $hostSkill) {
+        foreach ($this->skillLoader->load($config->skillsPath, null, $dispatcher) as $hostSkill) {
             if ($hostSkill->name === $skillName) {
                 $hostPath = $hostSkill->sourcePath;
 
@@ -614,7 +621,14 @@ final readonly class SyncEngine
                 continue;
             }
 
-            foreach ($this->skillLoader->load($vendor->skillsPath, $vendor->name) as $vendorSkill) {
+            $vendorSkills = [];
+            foreach ($this->skillLoader->load($vendor->skillsPath, $vendor->name, $dispatcher) as $vendorSkill) {
+                $vendorSkills[] = $vendorSkill;
+            }
+
+            $kept = $this->skillTagFilter->filter($vendorSkills, $config)['kept'];
+
+            foreach ($kept as $vendorSkill) {
                 if ($vendorSkill->name === $skillName) {
                     return [
                         'hostPath' => $hostPath,

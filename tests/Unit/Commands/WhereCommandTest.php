@@ -2,6 +2,8 @@
 
 use Composer\Console\Application as ComposerApplication;
 use SanderMuller\BoostCore\Commands\WhereCommand;
+use SanderMuller\BoostCore\Sync\InstalledPackages;
+use SanderMuller\BoostCore\Sync\PackageInfo;
 use Symfony\Component\Console\Tester\CommandTester;
 
 function whereTempProject(string $boostBody): string
@@ -244,15 +246,95 @@ it('boost where --diff: friendly error when host skill does not exist', function
     }
 });
 
-it('boost where --diff: friendly success path when host file is byte-identical to vendor copy', function (): void {
-    // Stand up a fake vendor + host skill with identical content via
-    // direct invocation of resolveSkillShadowPaths through SyncEngine
-    // is tricky in unit scope (needs Composer InstalledVersions). For
-    // a lightweight regression, test the contract via direct
-    // invocation: write a host skill + a fixture vendor dir + assert
-    // resolveSkillShadowPaths returns the pair.
-    //
-    // Full end-to-end is covered by EndToEndSyncTest where vendor
-    // fixtures plug into the real allowlist + scan pipeline.
-    expect(true)->toBeTrue();
-})->skip('Vendor-scan happy path requires Composer InstalledVersions fixture; covered in EndToEndSyncTest.');
+// ============================================================================
+// `--diff` happy paths: byte-identical + full unified diff. The fixture mirrors
+// ResolveSkillShadowPathsTest's shape — a host skill plus a fake allowlisted
+// vendor under a temp dir, injected via WhereCommand's $injectedPackages seam.
+// ============================================================================
+
+function whereDiffFixture(callable $body): void
+{
+    $root = sys_get_temp_dir() . '/boost-where-diff-' . bin2hex(random_bytes(8));
+    $vendorDir = sys_get_temp_dir() . '/boost-where-diff-vendor-' . bin2hex(random_bytes(8));
+    mkdir($root . '/.ai/skills', 0o755, recursive: true);
+    mkdir($vendorDir . '/resources/boost/skills', 0o755, recursive: true);
+    file_put_contents($vendorDir . '/composer.json', json_encode(['name' => 'acme/skills'], JSON_THROW_ON_ERROR));
+    file_put_contents(
+        $root . '/boost.php',
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/skills']);\n",
+    );
+
+    try {
+        $body($root, $vendorDir);
+    } finally {
+        foreach ([$root, $vendorDir] as $dir) {
+            if (! is_dir($dir)) {
+                continue;
+            }
+
+            $iter = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            /** @var SplFileInfo $f */
+            foreach ($iter as $f) {
+                $path = $f->getPathname();
+                $f->isDir() ? @rmdir($path) : @unlink($path);
+            }
+
+            @rmdir($dir);
+        }
+    }
+}
+
+function whereDiffSkillFile(string $dir, string $name, string $body): void
+{
+    $skillDir = $dir . '/' . $name;
+    if (! is_dir($skillDir)) {
+        mkdir($skillDir, 0o755, recursive: true);
+    }
+
+    file_put_contents($skillDir . '/SKILL.md', "---\nname: {$name}\ndescription: Test.\n---\n\n{$body}");
+}
+
+it('boost where --diff: byte-identical host + vendor surfaces the "earns nothing" success message', function (): void {
+    whereDiffFixture(function (string $root, string $vendorDir): void {
+        whereDiffSkillFile($root . '/.ai/skills', 'deploy', 'shared body');
+        whereDiffSkillFile($vendorDir . '/resources/boost/skills', 'deploy', 'shared body');
+
+        $packages = new InstalledPackages([
+            'acme/skills' => new PackageInfo('acme/skills', '1.0.0', $vendorDir),
+        ]);
+        $command = new WhereCommand($packages);
+        (new ComposerApplication())->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $root, '--diff' => 'deploy']);
+
+        expect($exit)->toBe(0)
+            ->and($tester->getDisplay())->toContain('byte-identical')
+            ->and($tester->getDisplay())->toContain('earns nothing');
+    });
+});
+
+it('boost where --diff: divergent host + vendor renders a unified diff with header lines', function (): void {
+    whereDiffFixture(function (string $root, string $vendorDir): void {
+        whereDiffSkillFile($root . '/.ai/skills', 'deploy', "host-version body line\n");
+        whereDiffSkillFile($vendorDir . '/resources/boost/skills', 'deploy', "vendor-version body line\n");
+
+        $packages = new InstalledPackages([
+            'acme/skills' => new PackageInfo('acme/skills', '1.0.0', $vendorDir),
+        ]);
+        $command = new WhereCommand($packages);
+        (new ComposerApplication())->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $root, '--diff' => 'deploy']);
+
+        $display = $tester->getDisplay();
+        expect($exit)->toBe(0)
+            ->and($display)->toContain('Shadow diff')
+            ->and($display)->toContain('--- vendor:')
+            ->and($display)->toContain('+++ host:')
+            ->and($display)->toContain('-vendor-version body line')
+            ->and($display)->toContain('+host-version body line');
+    });
+});

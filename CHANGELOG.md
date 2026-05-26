@@ -5,6 +5,13 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.3...HEAD)
+
+### Added
+
+- **`boost where --diff=<skill>`** — unified diff between a host-authored skill and the allowlisted vendor copy it shadows. Three outcomes: a unified diff with `--- vendor:` / `+++ host:` headers when the two diverge, a "byte-identical — override earns nothing" hint when they match, or a friendly error when the named skill isn't a shadow. Uses `sebastian/diff` (promoted from transitive dev-dep to direct require). Resolution shares the renderer dispatcher + tag filter with `boost sync`, so `.blade.php` skills and tag-filtered vendor copies diff against what would actually ship.
+- **`SyncEngine::resolveSkillShadowPaths(projectRoot, skillName)`** — new public inspection helper backing `--diff`. Returns `{hostPath, vendorPath, vendor}` when the named host skill shadows an allowlisted vendor's skill of the same name (renderer + tag-filter applied), `null` otherwise. Remote skill sources are NOT considered — the shadow concept is scoped to scanned Composer vendors.
+
 ## [0.7.3](https://github.com/sandermuller/boost-core/compare/0.7.2...0.7.3) - 2026-05-26
 
 ### TL;DR

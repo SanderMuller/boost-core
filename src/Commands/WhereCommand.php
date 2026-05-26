@@ -6,6 +6,7 @@ use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
 use SanderMuller\BoostCore\Skills\Command as BoostCommand;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SebastianBergmann\Diff\Differ;
 use SebastianBergmann\Diff\Output\UnifiedDiffOutputBuilder;
@@ -31,6 +32,15 @@ use Throwable;
  */
 final class WhereCommand extends BoostBaseCommand
 {
+    public function __construct(
+        // Injection seam for tests — null means "read the real Composer
+        // runtime via InstalledPackages::fromComposer()" inside
+        // SyncEngine::default($this->injectedPackages). Production calls go through default().
+        private readonly ?InstalledPackages $injectedPackages = null,
+    ) {
+        parent::__construct();
+    }
+
     protected function configure(): void
     {
         $this
@@ -56,8 +66,8 @@ final class WhereCommand extends BoostBaseCommand
         }
 
         try {
-            $result = SyncEngine::default()->sync($projectRoot, checkOnly: true);
-            $inspection = SyncEngine::default()->resolveForInspection($projectRoot);
+            $result = SyncEngine::default($this->injectedPackages)->sync($projectRoot, checkOnly: true);
+            $inspection = SyncEngine::default($this->injectedPackages)->resolveForInspection($projectRoot);
         } catch (BoostConfigNotFoundException $e) {
             $io->error($e->getMessage());
 
@@ -246,7 +256,7 @@ final class WhereCommand extends BoostBaseCommand
     private function executeDiff(SymfonyStyle $io, string $projectRoot, string $skillName): int
     {
         try {
-            $paths = SyncEngine::default()->resolveSkillShadowPaths($projectRoot, $skillName);
+            $paths = SyncEngine::default($this->injectedPackages)->resolveSkillShadowPaths($projectRoot, $skillName);
         } catch (BoostConfigNotFoundException $e) {
             $io->error($e->getMessage());
 

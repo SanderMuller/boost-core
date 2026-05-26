@@ -37,6 +37,22 @@ Output is split into three top-level sections — **SKILLS**, **GUIDELINES**, **
 
 Items that DO NOT appear in `boost where` output were dropped by the tag filter, by `withExcludedSkills` / `withExcludedGuidelines`, or by a malformed `metadata.boost-tags` ("fail closed"). Cross-check with `boost tags` (see below) to see what was filtered and why. Commands are host-only today (vendor commands are a deferred backlog item) so a missing command is most likely just a missing file under `.ai/commands/`.
 
+## Diffing a shadowed skill — `boost where --diff=<name>`
+
+When the SKILLS section shows a `(shadows <vendor>)` annotation, the natural follow-up question is "what exactly differs in this override". Pass the skill name as `--diff=<name>`:
+
+```bash
+vendor/bin/boost where --diff=deploy
+```
+
+Three outcomes:
+
+- **Unified diff** — the host file and vendor file differ; `---` / `+++` headers name both paths and the diff body shows the line-level changes (vendor = `---`, host = `+++`).
+- **Byte-identical** — the override earns nothing; the command prints a friendly hint to remove the host copy and ship the vendor version.
+- **Not a shadow** — the named skill doesn't exist host-side, or no allowlisted vendor publishes a skill of the same name. Friendly error pointing back at `boost where` for the resolved origin map.
+
+`--diff` shares the resolution pipeline with `boost sync` — renderers (Blade etc.) and `withTags()` filtering apply, so a `.blade.php` skill or a tag-filtered vendor copy diffs against what would actually ship, not what's on disk pre-filter.
+
 ## Companion-injected skills (`project-boost-laravel` etc.)
 
 `boost where` shows host + scanned-vendor + remote skills only. Caller-injected skills — the wrapper pattern used by `sandermuller/project-boost-laravel` to surface `laravel/boost`-bundled skills — are runtime-only inputs to `SyncEngine::sync()` and aren't visible from the boost-core CLI.

@@ -236,6 +236,8 @@ The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open
 
 `vendor/bin/boost where` complements `tags` — it lists every resolved skill, guideline, and command grouped by origin (`.ai/` host, scanned vendor packages, remote skill sources) under three top-level sections, and annotates host overrides that shadow an allowlisted-vendor copy inline. Answers "where does X come from?", "did my host override the vendor's copy?", and "what will sync write?" in one place. Caller-injected items (the wrapper pattern, e.g. `project-boost-laravel`) are runtime-only inputs to `SyncEngine::sync()` and not visible to `boost where` — wrapper packages own their own inspection surface.
 
+`vendor/bin/boost where --diff=<skill>` follows up on a `(shadows <vendor>)` annotation with the next natural question — *what exactly differs*. Pass a host-shadowed skill name and the command prints a unified diff between the host override and the vendor's upstream copy. A byte-identical pair surfaces a "the override earns nothing — consider removing" hint; a missing host or no-vendor match yields a friendly error pointing at `boost where` for the resolved origin map.
+
 > [!WARNING]
 > Adding a tag to an **already-shipped** skill is consumer-breaking: every project that has not declared that tag loses the skill. Vendors should treat it as a breaking change (or a loud release-note callout), not a minor tweak.
 

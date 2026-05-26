@@ -5,6 +5,7 @@ use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigWriteException;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Enums\Tag;
 
 function tempConfigPath(string $contents): string
 {
@@ -208,6 +209,120 @@ PHP);
             ->toContain("'acme/bar',\n")
             // Empty array stays inline.
             ->toContain('->withDisabledEmitters([])');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('inserts withTags with a mix of Tag::* and raw string args (variadic, not array)', function (): void {
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Enums\Tag;
+return BoostConfig::configure()
+    ->withAgents([])
+    ->withAllowedVendors([]);
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update($path, [], [], [], ['php', 'custom-org-tag']);
+
+        $written = file_get_contents($path);
+        // `php` matches Tag::Php → emitted as `Tag::Php`; `custom-org-tag` stays a string.
+        expect($written)->toContain("->withTags(Tag::Php, 'custom-org-tag')");
+
+        $config = (new BoostConfigLoader())->load(dirname($path), $path);
+        expect($config->tags)->toEqual(['php', 'custom-org-tag']);
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('emits fully-qualified Tag when the host config has no `use Tag` import', function (): void {
+    // No `use SanderMuller\BoostCore\Enums\Tag;` line — writer must
+    // fall back to `\SanderMuller\BoostCore\Enums\Tag::Php` so the
+    // file still resolves.
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+return BoostConfig::configure()
+    ->withAgents([])
+    ->withAllowedVendors([]);
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update($path, [], [], [], ['php']);
+        $written = (string) file_get_contents($path);
+        expect($written)->toContain(Tag::class . '::Php');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('replaces an existing withTags() call when one is already in the chain', function (): void {
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Tag;
+return BoostConfig::configure()
+    ->withAgents([])
+    ->withTags(Tag::Php, 'old-tag')
+    ->withAllowedVendors([]);
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update($path, [], [], [], ['laravel']);
+        $written = (string) file_get_contents($path);
+        expect($written)->toContain('->withTags(Tag::Laravel)')
+            ->and($written)->not->toContain('old-tag');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('removes withTags() from the chain when the picker passes an empty list', function (): void {
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Tag;
+return BoostConfig::configure()
+    ->withAgents([])
+    ->withTags(Tag::Php)
+    ->withAllowedVendors([]);
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update($path, [], [], [], []);
+        $written = (string) file_get_contents($path);
+        expect($written)->not->toContain('withTags');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('leaves an existing withTags() call untouched when tags arg is null (the install-picker no-op signal)', function (): void {
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Tag;
+return BoostConfig::configure()
+    ->withAgents([])
+    ->withTags(Tag::Php, 'jira')
+    ->withAllowedVendors([]);
+PHP);
+
+    try {
+        // Null = "I have nothing to say about tags" — common when no
+        // allowlisted vendor publishes anything tagged.
+        (new BoostConfigWriter())->update($path, [], [], []);
+        $written = (string) file_get_contents($path);
+        expect($written)->toContain("->withTags(Tag::Php, 'jira')");
     } finally {
         @unlink($path);
     }

@@ -5,6 +5,7 @@ namespace SanderMuller\BoostCore\Commands;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
+use SanderMuller\BoostCore\Discovery\AvailableTagsDiscovery;
 use SanderMuller\BoostCore\Discovery\FirstPartyPrefixes;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
@@ -73,6 +74,7 @@ final class InstallCommand extends BoostBaseCommand
 
         $agents = $this->pickAgents($config);
         $vendors = $this->pickVendors($config, $availableVendors);
+        $tags = $this->pickTags($config, $vendors, $packages);
 
         try {
             $this->writer->update(
@@ -80,6 +82,7 @@ final class InstallCommand extends BoostBaseCommand
                 $agents,
                 $vendors,
                 $config->disabledEmitters,
+                $tags,
             );
         } catch (Throwable $throwable) {
             $io->error($throwable->getMessage());
@@ -148,6 +151,52 @@ final class InstallCommand extends BoostBaseCommand
         );
 
         return $picked;
+    }
+
+    /**
+     * Multi-select tag picker. Discovers the union of tags declared by
+     * the just-selected vendors' skills + guidelines, pre-checks any
+     * tags already in `$config->tags`, and returns the operator's
+     * choice. Tag enum cases (`Tag::Php`) and the Tag enum's lowercase
+     * string values both compare against the discovered tags equally —
+     * the writer renders each entry as `Tag::CaseName` when possible.
+     *
+     * Returns `null` when there's nothing to pick from (no vendors
+     * publish tagged content), which tells the writer to leave the
+     * existing `withTags(...)` call untouched.
+     *
+     * @param  list<string>  $vendors  vendor names from the vendor picker
+     * @return list<string>|null
+     */
+    private function pickTags(BoostConfig $config, array $vendors, InstalledPackages $packages): ?array
+    {
+        $available = (new AvailableTagsDiscovery($packages))->discover($vendors);
+        if ($available === []) {
+            return null;
+        }
+
+        $declared = $config->tags;
+
+        $options = [];
+        foreach ($available as $tag => $unlockCount) {
+            $options[$tag] = sprintf('%s  (unlocks %d skill/guideline)', $tag, $unlockCount);
+        }
+
+        // Pre-check currently-declared tags that actually exist in the
+        // available set. Declared-but-unavailable tags are dropped from
+        // the default — they'd be re-introduced as raw strings the
+        // picker can't display, surprising the operator.
+        $defaults = array_values(array_intersect($declared, array_keys($available)));
+
+        /** @var list<string> $picked */
+        $picked = multiselect(
+            label: 'Which tags should boost-core enable? (vendor skills/guidelines ship only when their tags are a subset of these)',
+            options: $options,
+            default: $defaults,
+            hint: 'Each tagged vendor skill ships only when every tag it declares is checked here. Untagged skills always ship.',
+        );
+
+        return array_values($picked);
     }
 
     /**

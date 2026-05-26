@@ -570,6 +570,65 @@ final readonly class SyncEngine
     }
 
     /**
+     * For a host skill that shadows an allowlisted vendor's skill of the
+     * same name, return both source-file paths so `boost where --diff`
+     * can compute a unified diff of the override against the upstream
+     * copy. Returns null when:
+     *
+     *  - no host skill named `$skillName` exists, OR
+     *  - the host skill is NOT shadowing a vendor (no allowlisted vendor
+     *    publishes a skill of the same name), OR
+     *  - the shadowed vendor's source file is unreadable.
+     *
+     * Remote skill sources are NOT considered — the shadow concept
+     * applies to scanned Composer vendors (the `withAllowedVendors`
+     * pipeline), not the `withRemoteSkills` cache-backed pipeline.
+     *
+     * @return array{hostPath: string, vendorPath: string, vendor: string}|null
+     */
+    public function resolveSkillShadowPaths(string $projectRoot, string $skillName): ?array
+    {
+        $projectRoot = rtrim($projectRoot, '/');
+        $config = $this->configLoader->load($projectRoot);
+
+        if (! is_dir($config->skillsPath)) {
+            return null;
+        }
+
+        $hostPath = null;
+        foreach ($this->skillLoader->load($config->skillsPath) as $hostSkill) {
+            if ($hostSkill->name === $skillName) {
+                $hostPath = $hostSkill->sourcePath;
+
+                break;
+            }
+        }
+
+        if ($hostPath === null) {
+            return null;
+        }
+
+        $allowedVendors = $this->discoverAllowedVendors($config);
+        foreach ($allowedVendors as $vendor) {
+            if ($vendor->skillsPath === null) {
+                continue;
+            }
+
+            foreach ($this->skillLoader->load($vendor->skillsPath, $vendor->name) as $vendorSkill) {
+                if ($vendorSkill->name === $skillName) {
+                    return [
+                        'hostPath' => $hostPath,
+                        'vendorPath' => $vendorSkill->sourcePath,
+                        'vendor' => $vendor->name,
+                    ];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Load host + vendor skills, tag-filter each vendor's set, resolve
      * collisions. Vendor skills are filtered BEFORE resolution so only
      * shippable skills compete (see SkillTagFilter docblock); host skills

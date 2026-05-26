@@ -7,7 +7,10 @@ use SanderMuller\BoostCore\Skills\Command as BoostCommand;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Sync\SyncEngine;
+use SebastianBergmann\Diff\Differ;
+use SebastianBergmann\Diff\Output\UnifiedDiffOutputBuilder;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
@@ -34,12 +37,23 @@ final class WhereCommand extends BoostBaseCommand
             ->setName('boost:where')
             ->setDescription('Show every skill, guideline, and command grouped by its origin: host `.ai/`, scanned vendor packages, remote skill sources, and host overrides.');
         $this->addWorkingDirOption();
+        $this->addOption(
+            'diff',
+            null,
+            InputOption::VALUE_REQUIRED,
+            'For a single host skill that shadows an allowlisted vendor copy, print a unified diff between the host file and the vendor file. Pass the skill name as the value: `--diff=deploy`.',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
+
+        $diffSkill = $input->getOption('diff');
+        if (is_string($diffSkill) && $diffSkill !== '') {
+            return $this->executeDiff($io, $projectRoot, $diffSkill);
+        }
 
         try {
             $result = SyncEngine::default()->sync($projectRoot, checkOnly: true);
@@ -219,5 +233,68 @@ final class WhereCommand extends BoostBaseCommand
         };
 
         return sprintf('%s · %s · %d %s(s)', $tag, $origin, $count, $itemNoun);
+    }
+
+    /**
+     * `boost where --diff=<name>` — show a unified diff between a host
+     * skill that shadows an allowlisted vendor copy and the vendor's
+     * upstream version. Answers "what exactly differs in this override"
+     * so a maintainer can decide whether the host copy still earns its
+     * keep vs upstream, or whether it can be dropped + replaced with
+     * the vendor version.
+     */
+    private function executeDiff(SymfonyStyle $io, string $projectRoot, string $skillName): int
+    {
+        try {
+            $paths = SyncEngine::default()->resolveSkillShadowPaths($projectRoot, $skillName);
+        } catch (BoostConfigNotFoundException $e) {
+            $io->error($e->getMessage());
+
+            return self::FAILURE;
+        } catch (Throwable $e) {
+            $io->error('boost:where --diff failed: ' . $e->getMessage());
+
+            return self::FAILURE;
+        }
+
+        if ($paths === null) {
+            $io->error(sprintf(
+                'Skill `%s` is not shadowing an allowlisted vendor copy. Either the host skill is missing from `.ai/skills/`, or no allowlisted vendor publishes a skill of the same name. Run `boost where` (no flag) to see the resolved origin map.',
+                $skillName,
+            ));
+
+            return self::FAILURE;
+        }
+
+        $hostContent = @file_get_contents($paths['hostPath']);
+        $vendorContent = @file_get_contents($paths['vendorPath']);
+
+        if ($hostContent === false || $vendorContent === false) {
+            $io->error('Could not read one or both skill source files for diff.');
+
+            return self::FAILURE;
+        }
+
+        // Identical content is a legitimate "no override needed" signal.
+        if ($hostContent === $vendorContent) {
+            $io->success(sprintf(
+                'Host skill `%s` is byte-identical to the `%s` vendor copy. The override earns nothing — consider removing `%s` and shipping the vendor version.',
+                $skillName,
+                $paths['vendor'],
+                $paths['hostPath'],
+            ));
+
+            return self::SUCCESS;
+        }
+
+        $io->writeln(sprintf('<fg=blue;options=bold>Shadow diff — `%s` (host) vs `%s` (vendor)</>', $skillName, $paths['vendor']));
+        $io->writeln('<fg=gray>--- vendor: ' . $paths['vendorPath'] . '</>');
+        $io->writeln('<fg=gray>+++ host:   ' . $paths['hostPath'] . '</>');
+        $io->newLine();
+
+        $differ = new Differ(new UnifiedDiffOutputBuilder('', false));
+        $io->write($differ->diff($vendorContent, $hostContent));
+
+        return self::SUCCESS;
     }
 }

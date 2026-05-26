@@ -5,8 +5,6 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.3...HEAD)
-
 ## [0.7.3](https://github.com/sandermuller/boost-core/compare/0.7.2...0.7.3) - 2026-05-26
 
 ### TL;DR
@@ -175,8 +173,6 @@ composer update sandermuller/boost-core
 No `boost.php` change required.
 
 If you're a wrapper author who calls `SyncEngine::resolveSkillsForInspection()` directly: pull `['skills']` from the returned array. Everyone else: no action.
-
-> **Note (CHANGELOG meta):** the `update-changelog` GitHub Actions workflow did not fire on the 0.7.2 release event — a transient Actions misfire, not a configuration issue. This section was manually prepended to keep CHANGELOG.md in sync with the published release.
 
 ## [0.7.1](https://github.com/sandermuller/boost-core/compare/0.7.0...0.7.1) - 2026-05-25
 

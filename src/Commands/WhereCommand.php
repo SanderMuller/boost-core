@@ -3,6 +3,8 @@
 namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
+use SanderMuller\BoostCore\Skills\Command as BoostCommand;
+use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use Symfony\Component\Console\Input\InputInterface;
@@ -11,21 +13,18 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
 
 /**
- * `boost where` — list every skill that would land in agent dirs, grouped
- * by its origin (host `.ai/`, scanned vendor package, remote skill source).
- * Also lists host-shadowed allowlisted-vendor skills so consumers using
- * `withAllowedVendors` + host overrides can audit which copy actually
- * ships.
+ * `boost where` — list every skill, guideline, and command that would
+ * land in agent dirs, grouped by origin (host `.ai/`, scanned vendor
+ * package, remote skill source). Skills also surface host-vs-vendor
+ * shadowing inline so consumers using `withAllowedVendors` + host
+ * overrides can audit which copy actually ships.
  *
- * Resolution path is the same as `boost sync --check` — same tag filter,
- * same collision rules. Skills shadowed by the host show under the host
- * group with a `(shadows: <vendor>)` annotation.
- *
- * Caller-injected vendor skills (the companion-package pattern that
- * project-boost-laravel uses for laravel/boost-bundled skills) are NOT
- * visible from this command — they are runtime-only inputs to
- * `SyncEngine::sync(injectedVendorSkills: ...)` and require the wrapper
- * package's own CLI surface to enumerate.
+ * Resolution path is the same as `boost sync --check` — tag-filtered,
+ * collision-resolved. Caller-injected vendors (the wrapper-package
+ * pattern that `project-boost-laravel` uses for laravel/boost-bundled
+ * skills) are NOT visible from this command — they are runtime-only
+ * inputs to `SyncEngine::sync(injectedVendorSkills: ...)` and require
+ * the wrapper package's own CLI surface to enumerate.
  */
 final class WhereCommand extends BoostBaseCommand
 {
@@ -33,7 +32,7 @@ final class WhereCommand extends BoostBaseCommand
     {
         $this
             ->setName('boost:where')
-            ->setDescription('Show every skill grouped by its origin: host `.ai/`, scanned vendor packages, remote skill sources, and host overrides.');
+            ->setDescription('Show every skill, guideline, and command grouped by its origin: host `.ai/`, scanned vendor packages, remote skill sources, and host overrides.');
         $this->addWorkingDirOption();
     }
 
@@ -54,33 +53,21 @@ final class WhereCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
-        $inspection = $this->collectResolvedSkills($projectRoot);
-        if ($inspection['skills'] === []) {
-            $io->success('No skills resolved. (Did you run `boost install`? Is `.ai/skills/` populated and are vendors allowlisted in `boost.php`?)');
+        $inspection = SyncEngine::default()->resolveForInspection($projectRoot);
+
+        if ($inspection['skills'] === [] && $inspection['guidelines'] === [] && $inspection['commands'] === []) {
+            $io->success('Nothing resolved. (Did you run `boost install`? Is `.ai/` populated and are vendors allowlisted in `boost.php`?)');
 
             return self::SUCCESS;
         }
 
-        $byOrigin = $this->groupByOrigin($inspection['skills']);
         $remoteKeys = array_flip($inspection['remoteSourceKeys']);
         $scannedKeys = array_flip($inspection['scannedVendorKeys']);
         $shadowedBy = $this->shadowIndex($result->hostShadows);
 
-        ksort($byOrigin);
-        foreach ($byOrigin as $origin => $skills) {
-            $isRemote = isset($remoteKeys[$origin]);
-            $isVendor = isset($scannedKeys[$origin]);
-            $io->section($this->renderOrigin($origin, count($skills), $isRemote, $isVendor));
-            sort($skills);
-            foreach ($skills as $skillName) {
-                $line = '  • ' . $skillName;
-                if ($origin === '.ai/skills/ (host)' && isset($shadowedBy[$skillName])) {
-                    $line .= sprintf(' <fg=gray>(shadows %s)</>', $shadowedBy[$skillName]);
-                }
-
-                $io->writeln($line);
-            }
-        }
+        $this->renderCategory($io, 'SKILLS', '.ai/skills/ (host)', $this->groupSkillsByOrigin($inspection['skills']), $remoteKeys, $scannedKeys, $shadowedBy, 'skill');
+        $this->renderCategory($io, 'GUIDELINES', '.ai/guidelines/ (host)', $this->groupGuidelinesByOrigin($inspection['guidelines']), $remoteKeys, $scannedKeys, [], 'guideline');
+        $this->renderCategory($io, 'COMMANDS', '.ai/commands/ (host)', $this->groupCommandsByOrigin($inspection['commands']), $remoteKeys, $scannedKeys, [], 'command');
 
         if ($result->hostShadows !== []) {
             $io->newLine();
@@ -94,29 +81,90 @@ final class WhereCommand extends BoostBaseCommand
     }
 
     /**
-     * Reuse the resolved-skill set from a check-mode sync via a second
-     * pass through the engine. Cheaper alternative would be exposing
-     * resolveSkills publicly, but the cost difference is negligible and
-     * one private entry point keeps the contract tight.
-     *
-     * @return array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
+     * @param  array<string, list<string>>  $byOrigin
+     * @param  array<string, int>  $remoteKeys
+     * @param  array<string, int>  $scannedKeys
+     * @param  array<string, string>  $shadowedBy
      */
-    private function collectResolvedSkills(string $projectRoot): array
-    {
-        return SyncEngine::default()->resolveSkillsForInspection($projectRoot);
+    private function renderCategory(
+        SymfonyStyle $io,
+        string $title,
+        string $hostOrigin,
+        array $byOrigin,
+        array $remoteKeys,
+        array $scannedKeys,
+        array $shadowedBy,
+        string $itemNoun,
+    ): void {
+        if ($byOrigin === []) {
+            return;
+        }
+
+        $io->newLine();
+        $io->writeln(sprintf('<fg=blue;options=bold>%s</>', $title));
+        $io->writeln(str_repeat('═', mb_strlen($title)));
+
+        ksort($byOrigin);
+        foreach ($byOrigin as $origin => $names) {
+            $isRemote = isset($remoteKeys[$origin]);
+            $isVendor = isset($scannedKeys[$origin]);
+            $io->newLine();
+            $io->writeln($this->renderOrigin($origin, count($names), $isRemote, $isVendor, $hostOrigin, $itemNoun));
+            sort($names);
+            foreach ($names as $name) {
+                $line = '  • ' . $name;
+                if ($origin === $hostOrigin && isset($shadowedBy[$name])) {
+                    $line .= sprintf(' <fg=gray>(shadows %s)</>', $shadowedBy[$name]);
+                }
+
+                $io->writeln($line);
+            }
+        }
     }
 
     /**
      * @param  list<Skill>  $skills
      * @return array<string, list<string>>
      */
-    private function groupByOrigin(array $skills): array
+    private function groupSkillsByOrigin(array $skills): array
     {
         $byOrigin = [];
         foreach ($skills as $skill) {
             $origin = $skill->sourceVendor ?? '.ai/skills/ (host)';
             $byOrigin[$origin] ??= [];
             $byOrigin[$origin][] = $skill->name;
+        }
+
+        return $byOrigin;
+    }
+
+    /**
+     * @param  list<Guideline>  $guidelines
+     * @return array<string, list<string>>
+     */
+    private function groupGuidelinesByOrigin(array $guidelines): array
+    {
+        $byOrigin = [];
+        foreach ($guidelines as $guideline) {
+            $origin = $guideline->sourceVendor ?? '.ai/guidelines/ (host)';
+            $byOrigin[$origin] ??= [];
+            $byOrigin[$origin][] = $guideline->name;
+        }
+
+        return $byOrigin;
+    }
+
+    /**
+     * @param  list<BoostCommand>  $commands
+     * @return array<string, list<string>>
+     */
+    private function groupCommandsByOrigin(array $commands): array
+    {
+        $byOrigin = [];
+        foreach ($commands as $command) {
+            $origin = $command->sourceVendor ?? '.ai/commands/ (host)';
+            $byOrigin[$origin] ??= [];
+            $byOrigin[$origin][] = $command->name;
         }
 
         return $byOrigin;
@@ -136,21 +184,21 @@ final class WhereCommand extends BoostBaseCommand
         return $idx;
     }
 
-    private function renderOrigin(string $origin, int $count, bool $isRemote, bool $isVendor): string
+    private function renderOrigin(string $origin, int $count, bool $isRemote, bool $isVendor, string $hostOrigin, string $itemNoun): string
     {
         // A `<vendor>/<package>` key can legally belong to both a
         // scanned Composer vendor AND a `withRemoteSkills(...)` entry
-        // (their skills must still be name-unique, enforced upstream),
-        // so the label must be precise about the mixed case rather than
-        // pick one side and lie. The host case beats everything.
+        // (their item names must still be unique upstream), so the
+        // label must name the mixed case rather than pick one side and
+        // lie. The host case beats everything.
         $tag = match (true) {
-            $origin === '.ai/skills/ (host)' => '<fg=green>host</>',
+            $origin === $hostOrigin => '<fg=green>host</>',
             $isRemote && $isVendor => '<fg=magenta>vendor+remote</>',
             $isRemote => '<fg=magenta>remote</>',
             $isVendor => '<fg=cyan>vendor</>',
             default => '<fg=yellow>unknown</>',
         };
 
-        return sprintf('%s · %s · %d skill(s)', $tag, $origin, $count);
+        return sprintf('%s · %s · %d %s(s)', $tag, $origin, $count, $itemNoun);
     }
 }

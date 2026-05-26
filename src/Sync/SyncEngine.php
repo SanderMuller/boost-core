@@ -343,31 +343,33 @@ final readonly class SyncEngine
     }
 
     /**
-     * Resolve the same skill set `sync()` would emit, without writing
-     * anything. Powers `boost where` (origin tracing) — same pipeline as
-     * the live sync (host + scanned vendors + remote, tag-filtered,
-     * collision-resolved), just exposed as a read-only inspection.
+     * Resolve the same skill / guideline / command set `sync()` would
+     * emit, without writing anything. Powers `boost where` (origin
+     * tracing) — same pipeline as the live sync (host + scanned vendors
+     * + remote, tag-filtered, collision-resolved), exposed as a
+     * read-only inspection.
      *
-     * Returns the resolved skills along with both classification keys
-     * the caller needs to label each origin precisely:
+     * Each resolved item carries a `sourceVendor` field (or null for
+     * host). The two key lists let the caller distinguish what the
+     * `<vendor>/<package>` string actually represents:
      *
      *  - `scannedVendorKeys` — Composer-installed allowlisted vendors
-     *    that publish skills.
+     *    publishing skills/guidelines (the `VendorScanner` pipeline).
      *  - `remoteSourceKeys` — `<owner>/<repo>` source keys declared via
-     *    `withRemoteSkills(...)`.
+     *    `withRemoteSkills(...)` (skills only — guidelines have no
+     *    remote pipeline today).
      *
-     * These overlap is legal (a vendor name + a remote source can share
-     * the same `<owner>/<repo>` key as long as their skill names don't
-     * collide). `WhereCommand` consumes both lists to render unambiguous
-     * labels — a key in both is "vendor+remote", not just one or the other.
+     * Overlap is legal (a `<vendor>/<package>` key can participate in
+     * both, as long as skill names stay unique upstream). `WhereCommand`
+     * consumes both lists to render unambiguous labels.
      *
-     * Caller-injected vendor skills (the wrapper-package pattern) are
-     * NOT included — those are runtime-only inputs to `sync()` and the
+     * Caller-injected vendors (the wrapper-package pattern) are NOT
+     * included — those are runtime-only inputs to `sync()` and the
      * wrapper owns its own inspection surface.
      *
-     * @return array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
+     * @return array{skills: list<Skill>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
      */
-    public function resolveSkillsForInspection(string $projectRoot): array
+    public function resolveForInspection(string $projectRoot): array
     {
         $projectRoot = rtrim($projectRoot, '/');
         $config = $this->configLoader->load($projectRoot);
@@ -378,18 +380,38 @@ final readonly class SyncEngine
             $config->remoteSkills,
         );
 
-        // Scanned vendor keys = packages on the allowlist that the
-        // vendor scanner can actually see publishing — the precise set
-        // whose sourceVendor will be labeled `vendor` in `boost where`.
         $scannedVendorKeys = array_map(
             static fn (DiscoveredVendor $vendor): string => $vendor->name,
             $allowedVendors,
         );
 
+        $renderErrors = [];
+
         return [
             'skills' => $this->resolveSkills($config, $allowedVendors, false, [], true)['skills'],
+            'guidelines' => $this->resolveGuidelines($config, $allowedVendors, false, [], $renderErrors),
+            'commands' => $this->resolveCommands($config),
             'remoteSourceKeys' => array_values($remoteSourceKeys),
             'scannedVendorKeys' => array_values($scannedVendorKeys),
+        ];
+    }
+
+    /**
+     * Back-compat thin wrapper around `resolveForInspection()`. Kept so
+     * 0.7.1/0.7.2 external callers (none documented; internal-facing
+     * inspection API) keep working. New callers should use the broader
+     * method directly.
+     *
+     * @return array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
+     */
+    public function resolveSkillsForInspection(string $projectRoot): array
+    {
+        $full = $this->resolveForInspection($projectRoot);
+
+        return [
+            'skills' => $full['skills'],
+            'remoteSourceKeys' => $full['remoteSourceKeys'],
+            'scannedVendorKeys' => $full['scannedVendorKeys'],
         ];
     }
 

@@ -17,6 +17,7 @@ final readonly class Command
      * @param  string|null  $sourceVendor  Composer vendor/package name. `null` = host-authored.
      * @param  list<string>  $tags  Normalized tags from the `metadata.boost-tags` frontmatter field. Empty = untagged. Inert until vendor commands ship (spec Phase 4).
      * @param  bool  $tagsValid  False when `metadata.boost-tags` is present but malformed.
+     * @param  list<string>  $argumentDeclarations  Names declared in the `arguments:` frontmatter list — drives per-agent named-arg emit (e.g. Junie's all-required mode, Claude's `arguments:` frontmatter mirror). Empty = no named args declared. Phase 3 of the agent-commands-sync spec.
      */
     public function __construct(
         public string $name,
@@ -27,6 +28,7 @@ final readonly class Command
         public ?string $sourceVendor,
         public array $tags = [],
         public bool $tagsValid = true,
+        public array $argumentDeclarations = [],
     ) {}
 
     public function isHostAuthored(): bool

@@ -3,7 +3,10 @@
 namespace SanderMuller\BoostCore\Agents;
 
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Skills\ArgumentParser;
+use SanderMuller\BoostCore\Skills\ArgumentToken;
 use SanderMuller\BoostCore\Skills\Command;
+use SanderMuller\BoostCore\Skills\CommandTranspileResult;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Sync\PendingWrite;
@@ -115,25 +118,46 @@ abstract class AgentTarget
      * in the agent's command directory. Empty when the agent has no command
      * directory ({@see commandsDirectoryRelative()} null).
      *
+     * Returns `{writes, warnings}` so per-command transpile warnings
+     * (e.g. "Cursor has no placeholder support; body emitted verbatim")
+     * thread back up to `SyncResult::errors`. Warnings are lenient — they
+     * surface to the operator but never abort the sync.
+     *
      * @param  list<Command>  $commands
-     * @return list<PendingWrite>
+     * @return array{writes: list<PendingWrite>, warnings: list<string>}
      */
     public function planCommands(array $commands): array
     {
         $directory = $this->commandsDirectoryRelative();
         if ($directory === null) {
-            return [];
+            return ['writes' => [], 'warnings' => []];
         }
 
         $writes = [];
+        $warnings = [];
         foreach ($commands as $command) {
+            $transpiled = $this->transpileCommandBody($command);
             $writes[] = new PendingWrite(
                 relativePath: $directory . '/' . $command->name . '.' . $this->commandFileExtension(),
-                content: $this->formatCommandContent($command),
+                content: $this->wrapTranspiledBody($command, $transpiled->content),
             );
+            foreach ($transpiled->warnings as $warning) {
+                $warnings[] = sprintf('[%s] %s: %s', $this->agent()->value, $command->name, $warning);
+            }
         }
 
-        return $writes;
+        return ['writes' => $writes, 'warnings' => $warnings];
+    }
+
+    /**
+     * Wrap a transpiled body with this agent's frontmatter shape. Default
+     * = `formatCommandContent` behaviour (frontmatter + body). Cursor and
+     * Amp override to body-only since their formats can't carry
+     * frontmatter without leaking it into the prompt.
+     */
+    protected function wrapTranspiledBody(Command $command, string $transpiledBody): string
+    {
+        return $this->renderFrontmatter($command->frontmatter) . $transpiledBody;
     }
 
     /**
@@ -155,15 +179,54 @@ abstract class AgentTarget
     }
 
     /**
-     * Render one command to its on-disk form. Default: frontmatter + body, as
-     * the frontmatter-aware agents (Claude Code, Copilot, Junie, OpenCode)
-     * expect. Cursor and Amp override to body-only — their command formats
-     * treat the whole file as the prompt, so a frontmatter block would leak
-     * into it.
+     * Render one command to its on-disk form WITHOUT argument transpilation.
+     * Kept for callers that want the raw body (tests, doctor diagnostics).
+     * The `planCommands()` emit path goes through `transpileCommandBody()`
+     * + `wrapTranspiledBody()` to apply per-agent argument rules.
      */
     public function formatCommandContent(Command $command): string
     {
         return $this->renderFrontmatter($command->frontmatter) . $command->body;
+    }
+
+    /**
+     * Transpile the command body's canonical argument placeholders
+     * (`$ARGUMENTS`, `$1`, `$name`) into this agent's native shape.
+     *
+     * Default = "no placeholder support" — every placeholder produces a
+     * warning and is emitted verbatim. Cursor and Amp use this default
+     * (their command formats document no placeholder syntax). Every
+     * other emit-capable target overrides with its agent-specific rules.
+     *
+     * Spec: `internal/specs/agent-commands-sync.md` Phase 3.
+     */
+    public function transpileCommandBody(Command $command): CommandTranspileResult
+    {
+        $tokens = (new ArgumentParser())->parse($command->body);
+        $hasPlaceholder = false;
+        $out = '';
+
+        foreach ($tokens as $token) {
+            if ($token->kind === ArgumentToken::KIND_LITERAL) {
+                $out .= $token->value;
+
+                continue;
+            }
+
+            $hasPlaceholder = true;
+            $out .= match ($token->kind) {
+                ArgumentToken::KIND_ARGUMENTS => '$ARGUMENTS',
+                ArgumentToken::KIND_POSITIONAL => '$' . $token->position,
+                ArgumentToken::KIND_NAMED => '$' . $token->value,
+                default => '',
+            };
+        }
+
+        $warnings = $hasPlaceholder
+            ? [sprintf('%s has no placeholder syntax; canonical placeholders emitted verbatim.', $this->agent()->value)]
+            : [];
+
+        return new CommandTranspileResult(content: $out, warnings: $warnings);
     }
 
     /**

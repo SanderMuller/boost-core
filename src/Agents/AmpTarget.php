@@ -35,4 +35,15 @@ final class AmpTarget extends AgentTarget
     {
         return $command->body;
     }
+
+    /**
+     * Same body-only contract for the `planCommands()` transpile path:
+     * drop the source frontmatter, keep only the transpiled body. The
+     * base `transpileCommandBody()` emits placeholders verbatim AND
+     * surfaces an "Amp has no placeholder syntax" warning per command.
+     */
+    protected function wrapTranspiledBody(Command $command, string $transpiledBody): string
+    {
+        return $transpiledBody;
+    }
 }

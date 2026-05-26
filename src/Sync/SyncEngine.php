@@ -951,8 +951,13 @@ final readonly class SyncEngine
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
 
-            foreach ($target->planCommands($commands) as $pending) {
+            $planned = $target->planCommands($commands);
+            foreach ($planned['writes'] as $pending) {
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
+            }
+
+            foreach ($planned['warnings'] as $warning) {
+                $errors[] = $warning;
             }
         }
 

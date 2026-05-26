@@ -106,6 +106,8 @@ Kiro has no dedicated command directory — its committed `.kiro/skills/` is the
 
 Codex and Gemini have no committable target boost-core can write into — Codex's prompts (`~/.codex/prompts/`) are deprecated and personal-only, Gemini uses TOML. When `.ai/commands/` is populated and one of those agents is in `withAgents()`, `boost doctor` prints the manual authoring path so the gap isn't silent. The source directory defaults to `.ai/commands`; override it with `->withCommandsPath(...)` in `boost.php`.
 
+**Argument placeholders are transpiled per-agent.** Author once in `.ai/commands/<name>.md` using the canonical syntax — `$ARGUMENTS` (unsplit), `$1`/`$2`/… (one-indexed positional), `$name` (named, optionally declared in frontmatter `arguments:`), `\$ARGUMENTS`/`\$1`/`\$name` for literal escapes — and boost-core converts to each agent's native shape on sync. Claude Code is zero-indexed natively so the transpiler emits `$0` for source `$1`; Copilot gets `${input:args}` / `${input:argN}` / `${input:name}`; Junie auto-names positional placeholders to `$argN` with a warning recommending you declare them in `arguments:`; OpenCode + Kiro get their native shapes. Cursor + Amp have no placeholder support — the source emits verbatim with a per-command warning. The bundled `command-arguments` skill documents the canonical syntax + per-agent transpilation table + the lossy modes.
+
 ## Managed `.gitignore`
 
 `boost:sync` maintains a managed block in `.gitignore` so generated agent dirs (`.claude/skills/`, `.cursor/skills/`, `CLAUDE.md`, `AGENTS.md`, ...) stay out of version control. Edit skills in `.ai/` only; the fan-out regenerates on next install.

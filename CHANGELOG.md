@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.5...HEAD)
 
+### Added
+
+- **Command argument transpilation** — Phase 3 of the agent-commands-sync spec, originally resolved as PUNT then reversed when follow-up research showed the "command primitive is dying" framing was based on a cherry-picked sample. Author commands in `.ai/commands/<name>.md` using ONE canonical syntax (`$ARGUMENTS` unsplit, `$1`/`$2`/… one-indexed positional, `$name` named, `\$` escape) and boost-core transpiles to each agent's native shape on sync.
+    - Claude Code (zero-indexed natively): `$1` source → `$0` emit.
+    - Copilot: `$ARGUMENTS` → `${input:args}`, `$N` → `${input:argN}`, `$name` → `${input:name}`.
+    - Junie (all-named-required contract): positional placeholders auto-name to `$argN` + per-command warning recommending the operator declare them in the source `arguments:` frontmatter list.
+    - OpenCode: native passthrough, named placeholders uppercased (`$name` → `$NAME`).
+    - Kiro: positional `${N}` brace form; named placeholders warn (not natively documented).
+    - Cursor + Amp (no placeholder syntax): body emits verbatim with a per-command warning.
+    - Gemini + Codex: doctor-only, unchanged from 0.7.1.
+    - Warnings route through `SyncResult::errors` (lenient — sync continues, operator sees the lines).
+- **`Command::argumentDeclarations`** — new field populated from the optional frontmatter `arguments:` list. Drives Junie's named-required contract + serves as the host-side declaration for Claude/Copilot/OpenCode named-arg emit.
+- **`command-arguments` bundled skill** (`resources/boost/skills/command-arguments.md`) — rewritten from doc-only to "canonical syntax + per-agent transpile table." Documents the canonical, the per-agent transpilation, the lossy modes + warnings, strategy guide. Triggers on "how do command arguments work", "what placeholder syntax should I use", "why does $ARGUMENTS show literally on Cursor", "what does $1 mean on Claude vs OpenCode".
+
+### Changed
+
+- **`AgentTarget::planCommands()` return shape changed** from `list<PendingWrite>` to `array{writes: list<PendingWrite>, warnings: list<string>}`. Internal-facing — no external callers documented. The new `warnings` channel surfaces per-command transpile issues (e.g. "Cursor has no placeholder syntax; canonical placeholders emitted verbatim") that previously had nowhere to go.
+
 ## [0.7.5](https://github.com/sandermuller/boost-core/compare/0.7.4...0.7.5) - 2026-05-26
 
 ### TL;DR

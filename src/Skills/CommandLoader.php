@@ -42,6 +42,7 @@ final readonly class CommandLoader
                 : null;
 
             [$tags, $tagsValid] = BoostTags::parse($parsed->frontmatter);
+            $argumentDeclarations = $this->parseArgumentDeclarations($parsed->frontmatter);
 
             yield new Command(
                 name: $name,
@@ -52,8 +53,44 @@ final readonly class CommandLoader
                 sourceVendor: $sourceVendor,
                 tags: $tags,
                 tagsValid: $tagsValid,
+                argumentDeclarations: $argumentDeclarations,
             );
         }
+    }
+
+    /**
+     * Parse the optional `arguments:` frontmatter list into an ordered
+     * list of declared argument names. Accepts:
+     *  - YAML list: `arguments: [issue, branch]` → ['issue', 'branch']
+     *  - Block form: `arguments:\n  - issue\n  - branch`
+     *
+     * Non-string entries and malformed shapes are silently dropped —
+     * the transpiler is the bouncer for "declared args match body
+     * placeholders," and a malformed declaration is treated identically
+     * to no declaration.
+     *
+     * @param  array<string, mixed>  $frontmatter
+     * @return list<string>
+     */
+    private function parseArgumentDeclarations(array $frontmatter): array
+    {
+        $declarations = $frontmatter['arguments'] ?? null;
+        if (! is_array($declarations)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($declarations as $entry) {
+            if (! is_string($entry)) {
+                continue;
+            }
+            if ($entry === '') {
+                continue;
+            }
+            $out[] = $entry;
+        }
+
+        return $out;
     }
 
     /**

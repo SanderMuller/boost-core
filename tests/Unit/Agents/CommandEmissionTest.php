@@ -26,10 +26,10 @@ function makeSampleCommand(): Command
 }
 
 it('emits a command to each Markdown agent command directory', function (AgentTarget $target, string $expectedPath): void {
-    $writes = $target->planCommands([makeSampleCommand()]);
+    $planned = $target->planCommands([makeSampleCommand()]);
 
-    expect($writes)->toHaveCount(1)
-        ->and($writes[0]->relativePath)->toBe($expectedPath);
+    expect($planned['writes'])->toHaveCount(1)
+        ->and($planned['writes'][0]->relativePath)->toBe($expectedPath);
 })->with([
     'claude' => [new ClaudeCodeTarget(), '.claude/commands/deploy.md'],
     'cursor' => [new CursorTarget(), '.cursor/commands/deploy.md'],
@@ -40,21 +40,22 @@ it('emits a command to each Markdown agent command directory', function (AgentTa
 ]);
 
 it('emits nothing for agents with no committable command target', function (AgentTarget $target): void {
+    $planned = $target->planCommands([makeSampleCommand()]);
     expect($target->commandsDirectoryRelative())->toBeNull()
-        ->and($target->planCommands([makeSampleCommand()]))->toBeEmpty();
+        ->and($planned['writes'])->toBeEmpty();
 })->with([
     'gemini' => [new GeminiTarget()],
     'codex' => [new CodexTarget()],
 ]);
 
 it('Kiro emits each command as a skill-shaped .kiro/skills/<name>/SKILL.md (its native slash-command surface)', function (): void {
-    $writes = (new KiroTarget())->planCommands([makeSampleCommand()]);
+    $planned = (new KiroTarget())->planCommands([makeSampleCommand()]);
 
-    expect($writes)->toHaveCount(1)
-        ->and($writes[0]->relativePath)->toBe('.kiro/skills/deploy/SKILL.md')
-        ->and($writes[0]->content)->toStartWith("---\n")
-        ->and($writes[0]->content)->toContain('description:')
-        ->and($writes[0]->content)->toContain('Run the deploy.');
+    expect($planned['writes'])->toHaveCount(1)
+        ->and($planned['writes'][0]->relativePath)->toBe('.kiro/skills/deploy/SKILL.md')
+        ->and($planned['writes'][0]->content)->toStartWith("---\n")
+        ->and($planned['writes'][0]->content)->toContain('description:')
+        ->and($planned['writes'][0]->content)->toContain('Run the deploy.');
 });
 
 it('Kiro keeps `commandsDirectoryRelative()` null so gitignore / dir tooling do not double-count', function (): void {
@@ -63,7 +64,7 @@ it('Kiro keeps `commandsDirectoryRelative()` null so gitignore / dir tooling do 
 });
 
 it('keeps frontmatter for frontmatter-aware agents', function (): void {
-    $content = (new ClaudeCodeTarget())->planCommands([makeSampleCommand()])[0]->content;
+    $content = (new ClaudeCodeTarget())->planCommands([makeSampleCommand()])['writes'][0]->content;
 
     expect($content)->toStartWith("---\n")
         ->and($content)->toContain('description:')
@@ -71,7 +72,7 @@ it('keeps frontmatter for frontmatter-aware agents', function (): void {
 });
 
 it('drops frontmatter for Cursor and Amp — the whole file is the prompt', function (AgentTarget $target): void {
-    $content = $target->planCommands([makeSampleCommand()])[0]->content;
+    $content = $target->planCommands([makeSampleCommand()])['writes'][0]->content;
 
     expect($content)->toBe("Run the deploy.\n");
 })->with([
@@ -97,7 +98,7 @@ it('Kiro command emit content is identical to the equivalent skill-shaped emit (
     // command rendering and skill rendering does.
     $command = makeSampleCommand();
     $kiro = new KiroTarget();
-    $write = $kiro->planCommands([$command])[0];
+    $write = $kiro->planCommands([$command])['writes'][0];
 
     $equivalentSkill = new Skill(
         name: $command->name,

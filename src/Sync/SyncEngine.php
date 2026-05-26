@@ -350,24 +350,27 @@ final readonly class SyncEngine
      * read-only inspection.
      *
      * Each resolved item carries a `sourceVendor` field (or null for
-     * host). The two key lists let the caller distinguish what the
-     * `<vendor>/<package>` string actually represents:
+     * host). The key lists let the caller label each origin precisely
+     * PER CATEGORY — a vendor publishing only guidelines must not show
+     * up as a `vendor` source for the SKILLS section, and the remote-
+     * skills pipeline is skills-only so guidelines/commands never get
+     * the `remote` label:
      *
-     *  - `scannedVendorKeys` — Composer-installed allowlisted vendors
-     *    publishing skills/guidelines (the `VendorScanner` pipeline).
-     *  - `remoteSourceKeys` — `<owner>/<repo>` source keys declared via
-     *    `withRemoteSkills(...)` (skills only — guidelines have no
-     *    remote pipeline today).
+     *  - `remoteSourceKeys` — `<owner>/<repo>` keys from `withRemoteSkills(...)`.
+     *    SKILLS-only — there is no remote-guideline or remote-command pipeline.
+     *  - `scannedSkillVendorKeys` — allowlisted vendors that publish skills.
+     *  - `scannedGuidelineVendorKeys` — allowlisted vendors that publish guidelines.
      *
      * Overlap is legal (a `<vendor>/<package>` key can participate in
-     * both, as long as skill names stay unique upstream). `WhereCommand`
-     * consumes both lists to render unambiguous labels.
+     * both `withRemoteSkills` and the scanned-vendor skill set as long
+     * as skill names stay unique upstream). `WhereCommand` consumes
+     * the per-category sets to render unambiguous labels.
      *
      * Caller-injected vendors (the wrapper-package pattern) are NOT
      * included — those are runtime-only inputs to `sync()` and the
      * wrapper owns its own inspection surface.
      *
-     * @return array{skills: list<Skill>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
+     * @return array{skills: list<Skill>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedSkillVendorKeys: list<string>, scannedGuidelineVendorKeys: list<string>}
      */
     public function resolveForInspection(string $projectRoot): array
     {
@@ -380,10 +383,17 @@ final readonly class SyncEngine
             $config->remoteSkills,
         );
 
-        $scannedVendorKeys = array_map(
-            static fn (DiscoveredVendor $vendor): string => $vendor->name,
-            $allowedVendors,
-        );
+        $scannedSkillVendorKeys = [];
+        $scannedGuidelineVendorKeys = [];
+        foreach ($allowedVendors as $vendor) {
+            if ($vendor->publishesSkills()) {
+                $scannedSkillVendorKeys[] = $vendor->name;
+            }
+
+            if ($vendor->guidelinesPath !== null) {
+                $scannedGuidelineVendorKeys[] = $vendor->name;
+            }
+        }
 
         $renderErrors = [];
 
@@ -392,7 +402,8 @@ final readonly class SyncEngine
             'guidelines' => $this->resolveGuidelines($config, $allowedVendors, false, [], $renderErrors),
             'commands' => $this->resolveCommands($config),
             'remoteSourceKeys' => array_values($remoteSourceKeys),
-            'scannedVendorKeys' => array_values($scannedVendorKeys),
+            'scannedSkillVendorKeys' => $scannedSkillVendorKeys,
+            'scannedGuidelineVendorKeys' => $scannedGuidelineVendorKeys,
         ];
     }
 
@@ -402,16 +413,24 @@ final readonly class SyncEngine
      * inspection API) keep working. New callers should use the broader
      * method directly.
      *
+     * Preserves the 0.7.2 `scannedVendorKeys` shape — the union of every
+     * allowlisted vendor that publishes anything, regardless of category.
+     *
      * @return array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
      */
     public function resolveSkillsForInspection(string $projectRoot): array
     {
         $full = $this->resolveForInspection($projectRoot);
 
+        $scannedUnion = array_values(array_unique([
+            ...$full['scannedSkillVendorKeys'],
+            ...$full['scannedGuidelineVendorKeys'],
+        ]));
+
         return [
             'skills' => $full['skills'],
             'remoteSourceKeys' => $full['remoteSourceKeys'],
-            'scannedVendorKeys' => $full['scannedVendorKeys'],
+            'scannedVendorKeys' => $scannedUnion,
         ];
     }
 

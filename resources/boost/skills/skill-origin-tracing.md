@@ -1,22 +1,22 @@
 ---
 name: skill-origin-tracing
-description: 'Trace where a skill comes from or why one is missing/unexpected. Triggers when the user asks: "why is skill X present", "why is skill Y missing", "where does skill Z come from", "which package ships X", "is X from host or vendor", "did host shadow X", "what skills will boost sync", "why did boost sync remove a skill", "what version of X is being used".'
+description: 'Trace where a skill, guideline, or command comes from or why one is missing/unexpected. Triggers when the user asks: "why is skill X present", "why is guideline Y missing", "where does command Z come from", "which package ships X", "is X from host or vendor", "did host shadow X", "what will boost sync write", "why did boost sync remove X", "which version of X is being used".'
 ---
 
-# Trace a skill's origin
+# Trace a skill, guideline, or command origin
 
 ## When to apply
 
-Activate this skill whenever the user wants to know **where a skill came from, why it's present, why it's missing, or which copy is winning when two sources publish the same name**. Don't guess from the codebase — use `boost where`.
+Activate this skill whenever the user wants to know **where a skill, guideline, or command came from, why it's present, why it's missing, or which copy is winning when two sources publish the same name**. Don't guess from the codebase — use `boost where`.
 
 Common phrasings to watch for:
 
 - "Why is `<name>` present / missing / not in my .claude/skills?"
 - "Where does `<name>` come from?"
 - "Which package ships `<name>`?"
-- "Is `<name>` from my `.ai/skills/` or from a vendor package?"
+- "Is `<name>` from my `.ai/` or from a vendor package?"
 - "Did my host override `<name>`?"
-- "What skills will `boost sync` write?"
+- "What will `boost sync` write?"
 - "Why did `boost sync` remove `<name>`?"
 - "Which version of `<name>` is being used?"
 
@@ -28,13 +28,14 @@ Run from the project root:
 vendor/bin/boost where
 ```
 
-Output groups every resolved skill by origin:
+Output is split into three top-level sections — **SKILLS**, **GUIDELINES**, **COMMANDS** — each grouped by origin. Empty sections are silently omitted (a host-only project with no commands won't render a COMMANDS header at all). Within each section, every group is labeled with one of these tags:
 
-- **`.ai/skills/ (host)`** — host-authored skills. A `(shadows <vendor>)` annotation flags host skills that override an allowlisted-vendor skill of the same name.
-- **`<vendor/package>`** — a Composer-allowlisted vendor publishing skills via `resources/boost/skills/`.
-- **`<vendor/package>` from a `RemoteSkillSource`** — non-Composer source declared via `withRemoteSkills(...)` in `boost.php` (GitHub `.skill` bundles, repo subdirs).
+- **`host`** — `.ai/skills/`, `.ai/guidelines/`, `.ai/commands/` (project-authored). On the SKILLS section, a `(shadows <vendor>)` annotation flags host skills that override an allowlisted-vendor skill of the same name.
+- **`vendor`** — a Composer-allowlisted vendor publishing via `resources/boost/skills/` or `resources/boost/guidelines/`.
+- **`remote`** — non-Composer source declared via `withRemoteSkills(...)` in `boost.php` (GitHub `.skill` bundles, repo subdirs). Skills only — there is no remote-guideline or remote-command pipeline today.
+- **`vendor+remote`** — rare but legal: an `<owner>/<repo>` key participates in both a scanned Composer vendor AND a `withRemoteSkills(...)` declaration (skill names must still be unique upstream).
 
-Skills that DO NOT appear in `boost where` output were dropped by the tag filter, by `withExcludedSkills`, or by a malformed `metadata.boost-tags` ("fail closed"). Cross-check with `boost tags` (see below) to see what was filtered and why.
+Items that DO NOT appear in `boost where` output were dropped by the tag filter, by `withExcludedSkills` / `withExcludedGuidelines`, or by a malformed `metadata.boost-tags` ("fail closed"). Cross-check with `boost tags` (see below) to see what was filtered and why. Commands are host-only today (vendor commands are a deferred backlog item) so a missing command is most likely just a missing file under `.ai/commands/`.
 
 ## Companion-injected skills (`project-boost-laravel` etc.)
 

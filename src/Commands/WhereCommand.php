@@ -43,6 +43,7 @@ final class WhereCommand extends BoostBaseCommand
 
         try {
             $result = SyncEngine::default()->sync($projectRoot, checkOnly: true);
+            $inspection = SyncEngine::default()->resolveForInspection($projectRoot);
         } catch (BoostConfigNotFoundException $e) {
             $io->error($e->getMessage());
 
@@ -53,7 +54,17 @@ final class WhereCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
-        $inspection = SyncEngine::default()->resolveForInspection($projectRoot);
+        // Sync may have caught + converted errors (collisions, render
+        // failures, remote-source issues) into `SyncResult::errors`
+        // rather than throwing — surface them so the operator sees what
+        // the live sync would surface, not a falsely-clean origin map.
+        if ($result->hasErrors()) {
+            foreach ($result->errors as $error) {
+                $io->error($error);
+            }
+
+            return self::FAILURE;
+        }
 
         if ($inspection['skills'] === [] && $inspection['guidelines'] === [] && $inspection['commands'] === []) {
             $io->success('Nothing resolved. (Did you run `boost install`? Is `.ai/` populated and are vendors allowlisted in `boost.php`?)');
@@ -62,12 +73,20 @@ final class WhereCommand extends BoostBaseCommand
         }
 
         $remoteKeys = array_flip($inspection['remoteSourceKeys']);
-        $scannedKeys = array_flip($inspection['scannedVendorKeys']);
+        $scannedSkillKeys = array_flip($inspection['scannedSkillVendorKeys']);
+        $scannedGuidelineKeys = array_flip($inspection['scannedGuidelineVendorKeys']);
         $shadowedBy = $this->shadowIndex($result->hostShadows);
 
-        $this->renderCategory($io, 'SKILLS', '.ai/skills/ (host)', $this->groupSkillsByOrigin($inspection['skills']), $remoteKeys, $scannedKeys, $shadowedBy, 'skill');
-        $this->renderCategory($io, 'GUIDELINES', '.ai/guidelines/ (host)', $this->groupGuidelinesByOrigin($inspection['guidelines']), $remoteKeys, $scannedKeys, [], 'guideline');
-        $this->renderCategory($io, 'COMMANDS', '.ai/commands/ (host)', $this->groupCommandsByOrigin($inspection['commands']), $remoteKeys, $scannedKeys, [], 'command');
+        // Per-category label inputs — keeps each section from
+        // mislabeling an origin based on a sibling pipeline:
+        //  - SKILLS: scanned skill vendors + remote sources.
+        //  - GUIDELINES: scanned guideline vendors only (no remote-
+        //    guideline pipeline exists today, so isRemote = false).
+        //  - COMMANDS: Phase 1 host-only (vendor commands deferred to
+        //    Phase 4 of agent-commands-sync), so both flags = false.
+        $this->renderCategory($io, 'SKILLS', '.ai/skills/ (host)', $this->groupSkillsByOrigin($inspection['skills']), $remoteKeys, $scannedSkillKeys, $shadowedBy, 'skill');
+        $this->renderCategory($io, 'GUIDELINES', '.ai/guidelines/ (host)', $this->groupGuidelinesByOrigin($inspection['guidelines']), [], $scannedGuidelineKeys, [], 'guideline');
+        $this->renderCategory($io, 'COMMANDS', '.ai/commands/ (host)', $this->groupCommandsByOrigin($inspection['commands']), [], [], [], 'command');
 
         if ($result->hostShadows !== []) {
             $io->newLine();

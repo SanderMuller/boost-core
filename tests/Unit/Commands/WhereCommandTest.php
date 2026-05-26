@@ -190,3 +190,23 @@ it('boost where: never emits the old ambiguous `vendor or remote` label', functi
         whereCleanup($dir);
     }
 });
+
+it('boost where: surfaces sync-time errors and exits non-zero rather than rendering a falsely clean origin map', function (): void {
+    // Configure a boost.php with `withRemoteSkills` against a source not
+    // in the offline cache → sync's --check path surfaces a
+    // `would-fetch` advisory in SyncResult::errors. `boost where` must
+    // surface that to the operator AND exit FAILURE — silent rendering
+    // of a partial inspection map would lie about what sync would do.
+    $body = "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withRemoteSkills([\n"
+        . "    RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.0.0', ['composer-upgrade']),\n"
+        . '])';
+    $dir = whereTempProject($body);
+    try {
+        whereHostSkill($dir, 'deploy');
+        $result = runWhere($dir);
+        expect($result['exit'])->not->toBe(0)
+            ->and($result['display'])->toContain('would fetch on a real sync');
+    } finally {
+        whereCleanup($dir);
+    }
+});

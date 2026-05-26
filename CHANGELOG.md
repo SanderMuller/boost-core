@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.2...HEAD)
 
+### Added
+
+- **`boost where` now covers guidelines and commands alongside skills.** Previously the command was skills-only — guidelines and commands weren't surfaced even though they go through the same sync pipeline. Output now renders three top-level categories (SKILLS / GUIDELINES / COMMANDS), each with origin-grouped subsections using the same `host` / `vendor` / `remote` / `vendor+remote` label scheme. Empty categories are silently omitted, so a host-only project with no commands sees no COMMANDS header. Skills still carry the inline `(shadows <vendor>)` annotation for host-vs-vendor overrides.
+
+### Changed
+
+- **Inspection helper return shape adjusted.** `SyncEngine::resolveForInspection()` is a new method returning `array{skills, guidelines, commands, remoteSourceKeys, scannedSkillVendorKeys, scannedGuidelineVendorKeys}`. The 0.7.2 `resolveSkillsForInspection()` becomes a thin back-compat wrapper that delegates and projects to the older 3-key shape (union of skill + guideline scanned vendor keys preserved). `WhereCommand` uses the new method to label each category with its correct per-category vendor universe — a vendor that publishes only guidelines no longer mislabels a remote-only skill source as `vendor+remote`, and the `remote` label is correctly restricted to skills.
+
+### Fixed
+
+- **`boost where` surfaces sync-time errors instead of silently rendering a partial inspection.** The check-mode `sync()` call returns errors via `SyncResult::errors` (remote-source collisions, render failures, would-fetch advisories under `--check`). Previously `boost where` ignored `hasErrors()` and proceeded to render the inspection, masking what the live sync would surface. Now errors print and the command exits FAILURE.
+
 ## [0.7.2](https://github.com/sandermuller/boost-core/compare/0.7.1...0.7.2) - 2026-05-26
 
 Patch release. One new diagnostic (`boost doctor --check-versions`) and a precision fix in `boost where`'s origin labels. All additive — projects on 0.7.1 can upgrade without config changes; the new flag is opt-in and the label rendering only sharpens existing output.

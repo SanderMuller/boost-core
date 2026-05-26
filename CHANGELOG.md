@@ -5,16 +5,66 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.4...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.5...HEAD)
+
+## [0.7.5](https://github.com/sandermuller/boost-core/compare/0.7.4...0.7.5) - 2026-05-26
+
+### TL;DR
+
+- **Three-step interactive install.** `vendor/bin/boost install` now walks **agents → vendors → tags** in sequence. The tag picker shows every tag declared by the selected vendors with an "unlocks N skill/guideline" hint per row; pre-checks tags already in `withTags(...)`; persists the operator's choice as variadic `withTags(Tag::CaseName, 'raw-string', …)` — Tag enum cases when matched, raw strings otherwise.
+- **Renderer-aware discovery.** The picker reads the host's existing `withSkillRenderers([...])` configuration on re-install, so `.blade.php`-tagged vendor assets surface alongside plain Markdown. Custom renderer setups never silently hide their tags from the picker.
+- **Hand-curated tags survive re-installs.** Tags declared in `boost.php` that no installed vendor publishes (org-internal tags, tags added ahead of vendor support) are preserved silently — the picker controls visible tags only, never strips invisible ones.
+- **No upgrade work required from 0.7.4.** Pure additive UX. Hand-edited `boost.php` files continue to work unchanged; the picker only edits when you run `boost install`.
 
 ### Added
 
-- **`boost install` tag picker** — the interactive installer now runs a third multiselect after the agent + vendor pickers. It discovers every tag declared by the just-selected vendors' skills + guidelines (using the host's configured `withSkillRenderers([...])` so `.blade.php`-tagged assets surface), labels each option with an `unlocks N skill/guideline` hint, and pre-checks already-declared tags. The choice is persisted into `boost.php` via the AST writer as `->withTags(Tag::CaseName, 'raw-string', …)` — Tag enum cases when they match, raw strings otherwise. Tags declared in `boost.php` that no installed vendor publishes are preserved silently across re-installs.
-- **`AvailableTagsDiscovery`** — new helper that walks selected vendors via `VendorScanner` and returns `tag → unlock-count` (sorted, deterministic). Backs the picker; also available for any downstream caller wanting the same data.
+#### Interactive tag picker
+
+```
+ ┌ Which tags should boost-core enable? ─────────────────────────────────┐
+ │ › ◼ php           (unlocks 4 skill/guideline)                         │
+ │   ◻ laravel       (unlocks 2 skill/guideline)                         │
+ │   ◼ jira          (unlocks 1 skill/guideline)                         │
+ │   ◻ tailwindcss   (unlocks 1 skill/guideline)                         │
+ └────────────────────────────────────────────────────────────────────────┘
+
+```
+Runs after the vendor picker. Pre-checks any tag already declared in `withTags(...)` AND present in the discovered set; declared-but-undiscovered tags (e.g. org-internal tags, tags added ahead of vendor support) are preserved silently and merged back into the final selection.
+
+Empty operator selection clears `withTags(...)` from the chain entirely. Skipping the picker (no vendors publish anything tagged) leaves any existing `withTags()` call untouched.
+
+#### `AvailableTagsDiscovery`
+
+```php
+$counts = (new AvailableTagsDiscovery($packages))->discover($vendorNames, $renderers);
+// ['github' => 1, 'jira' => 1, 'php' => 2, ...]
+
+```
+Public helper that walks selected vendors via `VendorScanner`, loads their skills + guidelines through the caller's renderer dispatcher (auto-appends the implicit `PassthroughRenderer`), and returns a sorted `tag → unlock-count` map. Backs the picker; also usable directly by downstream tooling that wants the same data.
 
 ### Changed
 
-- **`BoostConfigWriter::update()` gained an optional `?array $tags` parameter.** `null` = leave existing `withTags()` untouched (the picker's no-op signal when there's nothing to pick from), `[]` = remove `withTags(...)` from the chain entirely, non-empty = insert/replace with variadic args. Values are normalized (trim + lowercase + drop empty + dedupe) before AST emit so write/read drift through `BoostConfigBuilder` is impossible.
+#### `BoostConfigWriter::update()` accepts an optional `?array $tags`
+
+```php
+$writer->update(
+    configPath: __DIR__ . '/boost.php',
+    agents: $agents,
+    allowedVendors: $vendors,
+    disabledEmitters: [],
+    tags: ['php', 'jira'],          // new — null/[] / non-empty trio of behaviors
+);
+
+```
+Three behaviors:
+
+- **`null`** (default) — leave the existing `withTags(...)` call untouched. The install picker passes `null` when there's nothing to pick from, so the writer can't accidentally clear a hand-curated tag list.
+- **`[]`** — remove `withTags(...)` from the chain entirely. The operator unchecked every visible option.
+- **non-empty** — insert or replace `withTags(<args>)`. Each tag normalized (trim + lowercase + drop empty + dedupe) defensively, then emitted as `Tag::CaseName` when it matches a `Tag` enum case, raw string otherwise. Write/read round-trip through `BoostConfigBuilder::withTags()` is guaranteed.
+
+Format-preservation behavior unchanged — the cloned-tree printing still reproduces every untouched node byte-for-byte from the original tokens; only the `withTags(...)` call is re-rendered.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/0.7.4...0.7.5
 
 ## [0.7.4](https://github.com/sandermuller/boost-core/compare/0.7.3...0.7.4) - 2026-05-26
 
@@ -30,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ```bash
 vendor/bin/boost where --diff=deploy
+
 
 ```
 Resolves a single named host skill and the upstream vendor copy it shadows. Three exit paths:
@@ -47,12 +98,14 @@ Shadow diff — `deploy` (host) vs `acme/skills` (vendor)
 -Run the deploy.
 +Run the deploy. (with our extra step)
 
+
 ```
 **Byte-identical** — host and vendor copies match exactly. The command prints:
 
 ```
 [OK] Host skill `deploy` is byte-identical to the `acme/skills` vendor copy.
      The override earns nothing — consider removing `<host path>` and shipping the vendor version.
+
 
 ```
 **Not a shadow** — the named skill doesn't exist host-side OR no allowlisted vendor publishes a skill of the same name. The command exits FAILURE with a friendly pointer at `boost where` for the resolved origin map.
@@ -71,6 +124,7 @@ New public inspection helper backing `--diff`. Returns `array{hostPath: string, 
 
 ```bash
 composer update sandermuller/boost-core
+
 
 ```
 No `boost.php` change required. The new flag is purely additive; existing `boost where` (no flag) renders the same three-category origin map.
@@ -128,6 +182,7 @@ host · .ai/commands/ (host) · 1 command(s)
   • deploy
 
 
+
 ```
 Each category renders only when it has resolved items — empty sections vanish. The label scheme established in 0.7.2 carries across all three categories:
 
@@ -152,6 +207,7 @@ $inspection = SyncEngine::default()->resolveForInspection($projectRoot);
 // $inspection['scannedGuidelineVendorKeys']   — list<string>
 
 
+
 ```
 The 0.7.2 `SyncEngine::resolveSkillsForInspection()` is preserved as a thin back-compat wrapper that delegates to the new method and projects the result into the 0.7.2 shape (`{skills, remoteSourceKeys, scannedVendorKeys}` with `scannedVendorKeys` = the union of skill + guideline vendor sets). External callers wrapping the 0.7.2 method directly keep working without changes.
 
@@ -164,6 +220,7 @@ The 0.7.2 `SyncEngine::resolveSkillsForInspection()` is preserved as a thin back
 
 ```bash
 composer update sandermuller/boost-core
+
 
 
 ```
@@ -191,6 +248,7 @@ Patch release. One new diagnostic (`boost doctor --check-versions`) and a precis
 vendor/bin/boost doctor --check-versions
 
 
+
 ```
 When the flag is set, doctor enumerates installed boost-* family packages, identifies the ones whose install path is OUTSIDE the project's `vendor/` (the Composer `path` repo signature, including the `symlink: true` default), and compares each against the latest stable version Packagist publishes.
 
@@ -206,6 +264,7 @@ Path-repo version check
 
 Path repos silently override Packagist resolution for matching constraints.
 Remove unused `repositories[]` entries from composer.json + re-run `composer update` to pull from Packagist.
+
 
 
 ```
@@ -241,6 +300,7 @@ $inspection = $engine->resolveSkillsForInspection($projectRoot);
 // $inspection['scannedVendorKeys']  — list<string>
 
 
+
 ```
 Internal-facing inspection API — no documented public consumers besides `WhereCommand` itself. External callers wrapping the method directly would need to dereference `['skills']`. Surfaced in the changelog under Changed (not Fixed) for that reason.
 
@@ -248,6 +308,7 @@ Internal-facing inspection API — no documented public consumers besides `Where
 
 ```bash
 composer update sandermuller/boost-core
+
 
 
 ```
@@ -280,6 +341,7 @@ If you're a wrapper author who calls `SyncEngine::resolveSkillsForInspection()` 
 
 
 
+
 ```
 `commandsDirectoryRelative()` stays `null` for Kiro so the managed `.gitignore` block, directory tooling, and gitignore-pattern reporters don't double-count `.kiro/commands/` (a directory Kiro doesn't use). The skill directory `.kiro/skills/` is already covered by the existing gitignore pattern.
 
@@ -294,6 +356,7 @@ Command-emit limitations
   `~/.codex/prompts/` manually.
 • Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands
   directly in `.gemini/commands/<name>.toml` or use a skill instead.
+
 
 
 
@@ -349,6 +412,7 @@ return BoostConfig::configure()
 
 
 
+
 ```
 Resolved on the next `composer install` / `update` through the existing `BoostAutoSync` hook — no separate command, no separate cache-warm step. First sync hits the network; later syncs are offline-fast (cache lives at `<project>/.boost-remote-cache/`, auto-added to the managed `.gitignore`). Removing an entry prunes its agent-dir output on next sync; removing an entire source prunes every skill it last contributed.
 
@@ -365,6 +429,7 @@ use SanderMuller\ProjectBoostLaravel\Rendering\BladeRenderer;
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE])
     ->withSkillRenderers([new BladeRenderer]);
+
 
 
 
@@ -389,6 +454,7 @@ $engine->sync(
 
 
 
+
 ```
 Three new optional parameters for wrapper packages whose source layout `VendorScanner` cannot reach (laravel/boost's `.ai/<pkg>/...` is the motivating case — `sandermuller/project-boost-laravel` uses this seam). Tag-filtered and collision-detected identically to scanned vendors. Same-vendor name collisions between injected and scanned skills throw `SkillSourceCollisionException`, caught in `SyncEngine::sync` and converted to a `SyncResult::errors` entry (lenient) or rethrown (strict). All three default to `[]`; existing call sites are unchanged.
 
@@ -396,6 +462,7 @@ Three new optional parameters for wrapper packages whose source layout `VendorSc
 
 ```bash
 vendor/bin/boost where
+
 
 
 
@@ -420,6 +487,7 @@ if ($attribution = $result->renderDeleteAttribution()) {
     $this->warn($attribution); // Laravel artisan
     // or $io->warning($attribution); // Symfony console
 }
+
 
 
 
@@ -485,6 +553,7 @@ No migration required from 0.6.x. The three additive surfaces (`withRemoteSkills
   ```
   ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
           Run `vendor/bin/boost tags` to see them.
+  
   
   
   
@@ -568,6 +637,7 @@ boost-core is no longer a Composer plugin. It ships as a plain `type: library` �
   
   ```php
   ->withExcludedGuidelines(['acme/pack:database-safety'])
+  
   
   
   
@@ -785,6 +855,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   
   
   
+  
     ```
 
 ### Fixed
@@ -818,6 +889,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
   
   
   

@@ -5,12 +5,70 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.3...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.4...HEAD)
+
+## [0.7.4](https://github.com/sandermuller/boost-core/compare/0.7.3...0.7.4) - 2026-05-26
+
+### TL;DR
+
+- **`boost where --diff=<skill>`** — pass a host-shadowed skill name and the command prints a unified diff between the host file and the vendor's upstream copy. Three outcomes: a real diff with `--- vendor:` / `+++ host:` headers when the two diverge, a "byte-identical — override earns nothing" hint when they match, or a friendly error when the named skill isn't shadowing anything. Built on `sebastian/diff` (promoted from transitive dev-dep to direct require).
+- **Resolution pipeline aligned with `boost sync`.** The shadow lookup uses the same `SkillRendererDispatcher` and tag filter as a real sync, so `.blade.php` skills are discoverable and tag-filtered vendor copies are excluded — `--diff` diffs against what would actually ship, not what's on disk pre-filter.
+- **No upgrade work required from 0.7.3.** The new flag is opt-in; existing invocations of `boost where` are unchanged.
 
 ### Added
 
-- **`boost where --diff=<skill>`** — unified diff between a host-authored skill and the allowlisted vendor copy it shadows. Three outcomes: a unified diff with `--- vendor:` / `+++ host:` headers when the two diverge, a "byte-identical — override earns nothing" hint when they match, or a friendly error when the named skill isn't a shadow. Uses `sebastian/diff` (promoted from transitive dev-dep to direct require). Resolution shares the renderer dispatcher + tag filter with `boost sync`, so `.blade.php` skills and tag-filtered vendor copies diff against what would actually ship.
-- **`SyncEngine::resolveSkillShadowPaths(projectRoot, skillName)`** — new public inspection helper backing `--diff`. Returns `{hostPath, vendorPath, vendor}` when the named host skill shadows an allowlisted vendor's skill of the same name (renderer + tag-filter applied), `null` otherwise. Remote skill sources are NOT considered — the shadow concept is scoped to scanned Composer vendors.
+#### `boost where --diff=<skill>`
+
+```bash
+vendor/bin/boost where --diff=deploy
+
+```
+Resolves a single named host skill and the upstream vendor copy it shadows. Three exit paths:
+
+**Unified diff** — the two files differ. Output names both paths and shows line-level changes (vendor lines are `-`, host lines are `+`):
+
+```
+Shadow diff — `deploy` (host) vs `acme/skills` (vendor)
+--- vendor: /…/vendor/acme/skills/resources/boost/skills/deploy/SKILL.md
++++ host:   /…/.ai/skills/deploy/SKILL.md
+
+@@ -3,3 +3,3 @@
+ ---
+
+-Run the deploy.
++Run the deploy. (with our extra step)
+
+```
+**Byte-identical** — host and vendor copies match exactly. The command prints:
+
+```
+[OK] Host skill `deploy` is byte-identical to the `acme/skills` vendor copy.
+     The override earns nothing — consider removing `<host path>` and shipping the vendor version.
+
+```
+**Not a shadow** — the named skill doesn't exist host-side OR no allowlisted vendor publishes a skill of the same name. The command exits FAILURE with a friendly pointer at `boost where` for the resolved origin map.
+
+Remote skill sources are NOT considered — the shadow concept applies only to scanned Composer vendors (`withAllowedVendors`). A skill from `withRemoteSkills(...)` cannot be shadowed in the boost-core resolution model.
+
+#### `SyncEngine::resolveSkillShadowPaths(string $projectRoot, string $skillName): ?array`
+
+New public inspection helper backing `--diff`. Returns `array{hostPath: string, vendorPath: string, vendor: string}` when both files exist and the host name matches an allowlisted vendor's skill, `null` otherwise. Same pipeline as `boost sync` — renderer dispatcher + tag filter applied before name-matching, so the result agrees with what a live sync would do.
+
+### Changed
+
+- **`sebastian/diff` promoted to direct require.** Previously available transitively through `phpunit/phpunit` in dev installs, now declared in `composer.json` `require` so end-user installs of boost-core ship with it. Adds ~50 KB to vendor; no further transitive deps.
+
+### Upgrade
+
+```bash
+composer update sandermuller/boost-core
+
+```
+No `boost.php` change required. The new flag is purely additive; existing `boost where` (no flag) renders the same three-category origin map.
+
+If you script `boost where` output: `--diff=<name>` is a new opt-in mode that produces different output (unified diff or success/error message) — the no-flag invocation is unchanged.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/0.7.3...0.7.4
 
 ## [0.7.3](https://github.com/sandermuller/boost-core/compare/0.7.2...0.7.3) - 2026-05-26
 
@@ -60,6 +118,7 @@ COMMANDS
 host · .ai/commands/ (host) · 1 command(s)
   • deploy
 
+
 ```
 Each category renders only when it has resolved items — empty sections vanish. The label scheme established in 0.7.2 carries across all three categories:
 
@@ -83,6 +142,7 @@ $inspection = SyncEngine::default()->resolveForInspection($projectRoot);
 // $inspection['scannedSkillVendorKeys']       — list<string>
 // $inspection['scannedGuidelineVendorKeys']   — list<string>
 
+
 ```
 The 0.7.2 `SyncEngine::resolveSkillsForInspection()` is preserved as a thin back-compat wrapper that delegates to the new method and projects the result into the 0.7.2 shape (`{skills, remoteSourceKeys, scannedVendorKeys}` with `scannedVendorKeys` = the union of skill + guideline vendor sets). External callers wrapping the 0.7.2 method directly keep working without changes.
 
@@ -95,6 +155,7 @@ The 0.7.2 `SyncEngine::resolveSkillsForInspection()` is preserved as a thin back
 
 ```bash
 composer update sandermuller/boost-core
+
 
 ```
 No `boost.php` change required. If you script `boost where` output: the per-skill bullet lines are unchanged (`  • <name>` with optional `(shadows <vendor>)` suffix). What changed is the surrounding section headers — SKILLS / GUIDELINES / COMMANDS now bracket the per-origin groups.
@@ -120,6 +181,7 @@ Patch release. One new diagnostic (`boost doctor --check-versions`) and a precis
 ```bash
 vendor/bin/boost doctor --check-versions
 
+
 ```
 When the flag is set, doctor enumerates installed boost-* family packages, identifies the ones whose install path is OUTSIDE the project's `vendor/` (the Composer `path` repo signature, including the `symlink: true` default), and compares each against the latest stable version Packagist publishes.
 
@@ -135,6 +197,7 @@ Path-repo version check
 
 Path repos silently override Packagist resolution for matching constraints.
 Remove unused `repositories[]` entries from composer.json + re-run `composer update` to pull from Packagist.
+
 
 ```
 One HTTP call per shadowed package against `repo.packagist.org`. Failed lookups (timeout, 404, malformed response) surface as `lookup failed` per row and never fatal. The check is fully read-only and gated behind the flag, so `boost doctor` without the flag remains network-free.
@@ -168,6 +231,7 @@ $inspection = $engine->resolveSkillsForInspection($projectRoot);
 // $inspection['remoteSourceKeys']   — list<string>
 // $inspection['scannedVendorKeys']  — list<string>
 
+
 ```
 Internal-facing inspection API — no documented public consumers besides `WhereCommand` itself. External callers wrapping the method directly would need to dereference `['skills']`. Surfaced in the changelog under Changed (not Fixed) for that reason.
 
@@ -175,6 +239,7 @@ Internal-facing inspection API — no documented public consumers besides `Where
 
 ```bash
 composer update sandermuller/boost-core
+
 
 ```
 No `boost.php` change required.
@@ -205,6 +270,7 @@ If you're a wrapper author who calls `SyncEngine::resolveSkillsForInspection()` 
 .kiro/skills/deploy/SKILL.md   # ← new in 0.7.1
 
 
+
 ```
 `commandsDirectoryRelative()` stays `null` for Kiro so the managed `.gitignore` block, directory tooling, and gitignore-pattern reporters don't double-count `.kiro/commands/` (a directory Kiro doesn't use). The skill directory `.kiro/skills/` is already covered by the existing gitignore pattern.
 
@@ -219,6 +285,7 @@ Command-emit limitations
   `~/.codex/prompts/` manually.
 • Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands
   directly in `.gemini/commands/<name>.toml` or use a skill instead.
+
 
 
 ```
@@ -272,6 +339,7 @@ return BoostConfig::configure()
 
 
 
+
 ```
 Resolved on the next `composer install` / `update` through the existing `BoostAutoSync` hook — no separate command, no separate cache-warm step. First sync hits the network; later syncs are offline-fast (cache lives at `<project>/.boost-remote-cache/`, auto-added to the managed `.gitignore`). Removing an entry prunes its agent-dir output on next sync; removing an entire source prunes every skill it last contributed.
 
@@ -288,6 +356,7 @@ use SanderMuller\ProjectBoostLaravel\Rendering\BladeRenderer;
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE])
     ->withSkillRenderers([new BladeRenderer]);
+
 
 
 
@@ -310,6 +379,7 @@ $engine->sync(
 
 
 
+
 ```
 Three new optional parameters for wrapper packages whose source layout `VendorScanner` cannot reach (laravel/boost's `.ai/<pkg>/...` is the motivating case — `sandermuller/project-boost-laravel` uses this seam). Tag-filtered and collision-detected identically to scanned vendors. Same-vendor name collisions between injected and scanned skills throw `SkillSourceCollisionException`, caught in `SyncEngine::sync` and converted to a `SyncResult::errors` entry (lenient) or rethrown (strict). All three default to `[]`; existing call sites are unchanged.
 
@@ -317,6 +387,7 @@ Three new optional parameters for wrapper packages whose source layout `VendorSc
 
 ```bash
 vendor/bin/boost where
+
 
 
 
@@ -340,6 +411,7 @@ if ($attribution = $result->renderDeleteAttribution()) {
     $this->warn($attribution); // Laravel artisan
     // or $io->warning($attribution); // Symfony console
 }
+
 
 
 
@@ -404,6 +476,7 @@ No migration required from 0.6.x. The three additive surfaces (`withRemoteSkills
   ```
   ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
           Run `vendor/bin/boost tags` to see them.
+  
   
   
   
@@ -486,6 +559,7 @@ boost-core is no longer a Composer plugin. It ships as a plain `type: library` �
   
   ```php
   ->withExcludedGuidelines(['acme/pack:database-safety'])
+  
   
   
   
@@ -701,6 +775,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   
   
   
+  
     ```
 
 ### Fixed
@@ -734,6 +809,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
   
   
   

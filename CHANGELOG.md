@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.6...HEAD)
 
+### Changed
+
+- **`command-arguments` bundled skill** now documents that commands are host-authored only — `resources/boost/commands/` in installed Composer packages is NOT scanned. Resolves OQ4 / Phase 4 of the agent-commands-sync spec as "host-only, defer vendor commands": commands are project-specific far more often than skills are, no concrete real-world example surfaced for a vendor wanting to ship a command, and the cost of supporting vendor commands (four-way collision matrix on Kiro alone: host skill / host command / vendor skill / vendor command, all targeting the same `.kiro/skills/<name>/SKILL.md`) significantly exceeds the value. The agent-commands-sync spec is now fully resolved — Phases 1, 2, 3 shipped; Phase 4 closed.
+
 ## [0.7.6](https://github.com/sandermuller/boost-core/compare/0.7.5...0.7.6) - 2026-05-26
 
 ### TL;DR

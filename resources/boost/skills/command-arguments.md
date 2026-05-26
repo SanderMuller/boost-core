@@ -83,6 +83,7 @@ boost-core's transpiler converts each canonical placeholder to the agent's nativ
 
 - Validate that arguments declared in frontmatter match placeholders in the body (a body using `$3` with only two declarations is the operator's call).
 - Substitute literal values at sync time — placeholders are filled by each agent at command-invocation time.
+- Discover vendor-shipped commands. `.ai/commands/` is host-authored only — `resources/boost/commands/` in installed Composer packages is NOT scanned. Commands are project-specific far more often than skills are; if you need to share a command across projects, either author it in each project's `.ai/commands/` or distribute it as documentation. (Vendor commands were considered as Phase 4 of the agent-commands-sync spec and explicitly deferred.)
 
 ## See also
 

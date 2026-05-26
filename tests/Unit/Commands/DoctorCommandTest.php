@@ -2,12 +2,21 @@
 
 use Composer\Console\Application as ComposerApplication;
 use SanderMuller\BoostCore\Commands\DoctorCommand;
+use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
+use SanderMuller\BoostCore\Skills\Remote\HttpResponse;
+use SanderMuller\BoostCore\Sync\InstalledPackages;
+use SanderMuller\BoostCore\Sync\PackageInfo;
+use SanderMuller\BoostCore\Tests\Doubles\Remote\FakeHttpTransport;
 use Symfony\Component\Console\Tester\CommandTester;
 
 function doctorTempProject(string $boostBody): string
 {
     $dir = sys_get_temp_dir() . '/boost-doctor-' . bin2hex(random_bytes(8));
     mkdir($dir, 0o755, recursive: true);
+    // PathRepoDetector resolves `$projectRoot/vendor/` via realpath() and
+    // returns empty if that directory doesn't exist — so tests asserting
+    // the --check-versions path-repo flow need a vendor/ stub here.
+    mkdir($dir . '/vendor', 0o755, recursive: true);
     file_put_contents(
         $dir . '/boost.php',
         "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nuse SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\nreturn {$boostBody};\n",
@@ -276,21 +285,161 @@ it('doctor: surfaces the limitations note when a nested command (.ai/commands/su
 
 it('doctor --check-versions: omits section by default (offline-only) and adds it when the flag is passed', function (): void {
     // Routine `boost doctor` stays fully offline — the path-repo section
-    // only renders behind the explicit opt-in. With no path-repo'd
-    // family package installed in this temp project (the typical case),
-    // the section's "nothing to compare" line appears under --check-versions
-    // and is absent otherwise.
+    // only renders behind the explicit opt-in. Inject an empty
+    // InstalledPackages so the assertion holds regardless of the
+    // boost-core working-dir test runner's own installed family packages
+    // (which DO live outside the temp project's vendor/ and would be
+    // flagged with the real fromComposer() reader).
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
     try {
         $offline = runDoctor($dir);
         expect($offline['exit'])->toBe(0)
             ->and($offline['display'])->not->toContain('Path-repo version check');
 
-        $opted = runDoctorWithOption($dir, '--check-versions');
-        expect($opted['exit'])->toBe(0)
-            ->and($opted['display'])->toContain('Path-repo version check')
-            ->and($opted['display'])->toContain('No family packages installed from a path repo.');
+        $command = new DoctorCommand(
+            injectedPackages: new InstalledPackages([]),
+        );
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir, '--check-versions' => true]);
+
+        expect($exit)->toBe(0)
+            ->and($tester->getDisplay())->toContain('Path-repo version check')
+            ->and($tester->getDisplay())->toContain('No family packages installed from a path repo.');
     } finally {
         doctorCleanup($dir);
+    }
+});
+
+it('doctor --check-versions: flags a shadowed family package with the ⚠ Packagist newer indicator', function (): void {
+    // Happy path the unit-test trio could not reach without DI on
+    // DoctorCommand. Wire an InstalledPackages fake with a sibling-
+    // pathed family package + a FakeHttpTransport returning a newer
+    // Packagist version → assert the row + flag.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $sibling = sys_get_temp_dir() . '/sibling-boost-core-' . bin2hex(random_bytes(8));
+    mkdir($sibling, 0o755, recursive: true);
+
+    try {
+        $fakePackages = new InstalledPackages([
+            'sandermuller/boost-core' => new PackageInfo(
+                name: 'sandermuller/boost-core',
+                version: '0.7.0',
+                installPath: $sibling,
+            ),
+        ]);
+
+        $url = 'https://repo.packagist.org/p2/sandermuller/boost-core.json';
+        $body = (string) json_encode([
+            'packages' => [
+                'sandermuller/boost-core' => [
+                    ['version' => '0.7.1', 'version_normalized' => '0.7.1.0'],
+                ],
+            ],
+        ]);
+        $fakeTransport = (new FakeHttpTransport())
+            ->expect($url, new HttpResponse(200, $body, [], $url));
+
+        $command = new DoctorCommand(
+            packagist: new PackagistVersionLookup($fakeTransport),
+            injectedPackages: $fakePackages,
+        );
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir, '--check-versions' => true]);
+
+        $display = $tester->getDisplay();
+        expect($exit)->toBe(0)
+            ->and($display)->toContain('Path-repo version check')
+            ->and($display)->toContain('sandermuller/boost-core')
+            ->and($display)->toContain('0.7.0')
+            ->and($display)->toContain('0.7.1')
+            ->and($display)->toContain('Packagist newer');
+    } finally {
+        doctorCleanup($dir);
+        @rmdir($sibling);
+    }
+});
+
+it('doctor --check-versions: no ⚠ when installed equals Packagist latest stable', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $sibling = sys_get_temp_dir() . '/sibling-boost-core-' . bin2hex(random_bytes(8));
+    mkdir($sibling, 0o755, recursive: true);
+
+    try {
+        $fakePackages = new InstalledPackages([
+            'sandermuller/boost-core' => new PackageInfo(
+                name: 'sandermuller/boost-core',
+                version: '0.7.1',
+                installPath: $sibling,
+            ),
+        ]);
+
+        $url = 'https://repo.packagist.org/p2/sandermuller/boost-core.json';
+        $body = (string) json_encode([
+            'packages' => [
+                'sandermuller/boost-core' => [
+                    ['version' => '0.7.1', 'version_normalized' => '0.7.1.0'],
+                ],
+            ],
+        ]);
+        $fakeTransport = (new FakeHttpTransport())
+            ->expect($url, new HttpResponse(200, $body, [], $url));
+
+        $command = new DoctorCommand(
+            packagist: new PackagistVersionLookup($fakeTransport),
+            injectedPackages: $fakePackages,
+        );
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir, '--check-versions' => true]);
+
+        $display = $tester->getDisplay();
+        expect($exit)->toBe(0)
+            ->and($display)->toContain('Path-repo version check')
+            ->and($display)->not->toContain('Packagist newer');
+    } finally {
+        doctorCleanup($dir);
+        @rmdir($sibling);
+    }
+});
+
+it('doctor --check-versions: surfaces "lookup failed" without ⚠ when Packagist call returns null', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $sibling = sys_get_temp_dir() . '/sibling-boost-core-' . bin2hex(random_bytes(8));
+    mkdir($sibling, 0o755, recursive: true);
+
+    try {
+        $fakePackages = new InstalledPackages([
+            'sandermuller/boost-core' => new PackageInfo(
+                name: 'sandermuller/boost-core',
+                version: '0.7.0',
+                installPath: $sibling,
+            ),
+        ]);
+
+        $url = 'https://repo.packagist.org/p2/sandermuller/boost-core.json';
+        $fakeTransport = (new FakeHttpTransport())
+            ->expect($url, new HttpResponse(503, '', [], $url));
+
+        $command = new DoctorCommand(
+            packagist: new PackagistVersionLookup($fakeTransport),
+            injectedPackages: $fakePackages,
+        );
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir, '--check-versions' => true]);
+
+        $display = $tester->getDisplay();
+        expect($exit)->toBe(0)
+            ->and($display)->toContain('lookup failed')
+            ->and($display)->not->toContain('Packagist newer');
+    } finally {
+        doctorCleanup($dir);
+        @rmdir($sibling);
     }
 });

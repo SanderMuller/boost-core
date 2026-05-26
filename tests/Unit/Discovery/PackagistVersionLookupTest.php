@@ -74,3 +74,30 @@ it('returns null when only prerelease versions are published', function (): void
 
     expect((new PackagistVersionLookup($transport))->latestStable('sandermuller/boost-core'))->toBeNull();
 });
+
+it('URL-encodes the package name so a hostile/typo name cannot alter the URL', function (): void {
+    // A whitespace in the name (impossible for real Composer packages
+    // but a defensive guard) must encode and request the encoded URL.
+    $encodedUrl = 'https://repo.packagist.org/p2/foo/bar%20baz.json';
+    $body = (string) json_encode([
+        'packages' => [
+            'foo/bar baz' => [['version' => '1.0.0', 'version_normalized' => '1.0.0.0']],
+        ],
+    ]);
+    $transport = (new FakeHttpTransport())->expect($encodedUrl, new HttpResponse(200, $body, [], $encodedUrl));
+
+    expect((new PackagistVersionLookup($transport))->latestStable('foo/bar baz'))->toBe('1.0.0');
+});
+
+it('accepts a v-prefixed version tag when only the `version` field is present', function (): void {
+    $url = 'https://repo.packagist.org/p2/sandermuller/boost-core.json';
+    // No version_normalized — only the human tag form, which often has a leading `v`.
+    $body = (string) json_encode([
+        'packages' => [
+            'sandermuller/boost-core' => [['version' => 'v0.7.1']],
+        ],
+    ]);
+    $transport = (new FakeHttpTransport())->expect($url, new HttpResponse(200, $body, [], $url));
+
+    expect((new PackagistVersionLookup($transport))->latestStable('sandermuller/boost-core'))->toBe('0.7.1');
+});

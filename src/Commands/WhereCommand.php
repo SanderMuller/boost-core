@@ -54,19 +54,23 @@ final class WhereCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
-        $resolved = $this->collectResolvedSkills($projectRoot);
-        if ($resolved === []) {
+        $inspection = $this->collectResolvedSkills($projectRoot);
+        if ($inspection['skills'] === []) {
             $io->success('No skills resolved. (Did you run `boost install`? Is `.ai/skills/` populated and are vendors allowlisted in `boost.php`?)');
 
             return self::SUCCESS;
         }
 
-        $byOrigin = $this->groupByOrigin($resolved);
+        $byOrigin = $this->groupByOrigin($inspection['skills']);
+        $remoteKeys = array_flip($inspection['remoteSourceKeys']);
+        $scannedKeys = array_flip($inspection['scannedVendorKeys']);
         $shadowedBy = $this->shadowIndex($result->hostShadows);
 
         ksort($byOrigin);
         foreach ($byOrigin as $origin => $skills) {
-            $io->section($this->renderOrigin($origin, count($skills)));
+            $isRemote = isset($remoteKeys[$origin]);
+            $isVendor = isset($scannedKeys[$origin]);
+            $io->section($this->renderOrigin($origin, count($skills), $isRemote, $isVendor));
             sort($skills);
             foreach ($skills as $skillName) {
                 $line = '  • ' . $skillName;
@@ -95,7 +99,7 @@ final class WhereCommand extends BoostBaseCommand
      * resolveSkills publicly, but the cost difference is negligible and
      * one private entry point keeps the contract tight.
      *
-     * @return list<Skill>
+     * @return array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
      */
     private function collectResolvedSkills(string $projectRoot): array
     {
@@ -132,11 +136,18 @@ final class WhereCommand extends BoostBaseCommand
         return $idx;
     }
 
-    private function renderOrigin(string $origin, int $count): string
+    private function renderOrigin(string $origin, int $count, bool $isRemote, bool $isVendor): string
     {
+        // A `<vendor>/<package>` key can legally belong to both a
+        // scanned Composer vendor AND a `withRemoteSkills(...)` entry
+        // (their skills must still be name-unique, enforced upstream),
+        // so the label must be precise about the mixed case rather than
+        // pick one side and lie. The host case beats everything.
         $tag = match (true) {
             $origin === '.ai/skills/ (host)' => '<fg=green>host</>',
-            str_contains($origin, '/') => '<fg=cyan>vendor or remote</>',
+            $isRemote && $isVendor => '<fg=magenta>vendor+remote</>',
+            $isRemote => '<fg=magenta>remote</>',
+            $isVendor => '<fg=cyan>vendor</>',
             default => '<fg=yellow>unknown</>',
         };
 

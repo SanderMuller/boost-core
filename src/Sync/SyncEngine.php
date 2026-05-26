@@ -34,6 +34,7 @@ use SanderMuller\BoostCore\Skills\Remote\GitHubFetcher;
 use SanderMuller\BoostCore\Skills\Remote\RemoteOrphanPruner;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillIngester;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSyncCoordinator;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Skill;
@@ -347,11 +348,24 @@ final readonly class SyncEngine
      * the live sync (host + scanned vendors + remote, tag-filtered,
      * collision-resolved), just exposed as a read-only inspection.
      *
+     * Returns the resolved skills along with both classification keys
+     * the caller needs to label each origin precisely:
+     *
+     *  - `scannedVendorKeys` — Composer-installed allowlisted vendors
+     *    that publish skills.
+     *  - `remoteSourceKeys` — `<owner>/<repo>` source keys declared via
+     *    `withRemoteSkills(...)`.
+     *
+     * These overlap is legal (a vendor name + a remote source can share
+     * the same `<owner>/<repo>` key as long as their skill names don't
+     * collide). `WhereCommand` consumes both lists to render unambiguous
+     * labels — a key in both is "vendor+remote", not just one or the other.
+     *
      * Caller-injected vendor skills (the wrapper-package pattern) are
      * NOT included — those are runtime-only inputs to `sync()` and the
      * wrapper owns its own inspection surface.
      *
-     * @return list<Skill>
+     * @return array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
      */
     public function resolveSkillsForInspection(string $projectRoot): array
     {
@@ -359,7 +373,24 @@ final readonly class SyncEngine
         $config = $this->configLoader->load($projectRoot);
         $allowedVendors = $this->discoverAllowedVendors($config);
 
-        return $this->resolveSkills($config, $allowedVendors, false, [], true)['skills'];
+        $remoteSourceKeys = array_map(
+            static fn (RemoteSkillSource $source): string => $source->source,
+            $config->remoteSkills,
+        );
+
+        // Scanned vendor keys = packages on the allowlist that the
+        // vendor scanner can actually see publishing — the precise set
+        // whose sourceVendor will be labeled `vendor` in `boost where`.
+        $scannedVendorKeys = array_map(
+            static fn (DiscoveredVendor $vendor): string => $vendor->name,
+            $allowedVendors,
+        );
+
+        return [
+            'skills' => $this->resolveSkills($config, $allowedVendors, false, [], true)['skills'],
+            'remoteSourceKeys' => array_values($remoteSourceKeys),
+            'scannedVendorKeys' => array_values($scannedVendorKeys),
+        ];
     }
 
     /**

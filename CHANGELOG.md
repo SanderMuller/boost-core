@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`boost doctor --check-versions`** — opt-in Packagist comparison for boost-* family packages installed from a Composer `path` repo. Detects the "path repo silently shadows a newer published version" foot-gun — when a `repositories[]` entry outlives a dogfood window, Composer locks the family package to the path-repo SHA, and a constraint upgrade can fatal at runtime if the path-repo SHA predates a public API addition. The check is gated behind the explicit flag so the routine `boost doctor` invocation stays fully offline (CI-safe); one HTTP call per family path-repo when opted in. Output names installed vs Packagist-latest-stable per shadowed package + a one-line nudge to remove the stale `repositories[]` entry. Sourced from real-world adoption feedback during the 0.7.0-rc → stable migration.
 
+### Changed
+
+- **`boost where` distinguishes scanned vendors from remote sources in the section labels.** Previously a `<vendor>/<package>` group was tagged `vendor or remote` because both pipelines write the same `sourceVendor` field; the operator had to grep `boost.php` to know which pipeline contributed each group. Now each group renders as `vendor` (Composer-scanned), `remote` (declared via `withRemoteSkills(...)`), or `vendor+remote` (the legal overlap where one `<owner>/<repo>` key participates in both). `SyncEngine::resolveSkillsForInspection()` return shape changed from `list<Skill>` to `array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}` — internal-facing inspection API, no public-API breakage.
+
 ## [0.7.1](https://github.com/sandermuller/boost-core/compare/0.7.0...0.7.1) - 2026-05-25
 
 ### TL;DR

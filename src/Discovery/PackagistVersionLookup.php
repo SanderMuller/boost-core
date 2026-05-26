@@ -30,7 +30,12 @@ final readonly class PackagistVersionLookup
      */
     public function latestStable(string $packageName): ?string
     {
-        $url = sprintf('https://repo.packagist.org/p2/%s.json', $packageName);
+        // URL-encode each `<vendor>/<package>` segment defensively — even
+        // though the caller passes a Composer-validated name, a stray
+        // space / encoded traversal in the package name must not be able
+        // to alter the URL path. The slash separator stays literal.
+        $encoded = implode('/', array_map(rawurlencode(...), explode('/', $packageName)));
+        $url = sprintf('https://repo.packagist.org/p2/%s.json', $encoded);
 
         try {
             $response = $this->transport->get($url, ['Accept: application/json']);
@@ -78,9 +83,14 @@ final readonly class PackagistVersionLookup
                 continue;
             }
 
+            // Strip a leading `v` so a `version` field of `v0.7.1` (common
+            // git-tag convention) matches the regex when `version_normalized`
+            // is missing. `version_normalized` is always digits.
+            $candidate = ltrim($version, 'v');
+
             // Match `X.Y.Z` (optionally `X.Y.Z.W` from version_normalized,
             // which appends a `.0` patch — strip to the routine triple).
-            if (preg_match('/^\d+\.\d+\.\d+(?:\.0)?$/', $version) !== 1) {
+            if (preg_match('/^\d+\.\d+\.\d+(?:\.0)?$/', $candidate) !== 1) {
                 continue;
             }
 

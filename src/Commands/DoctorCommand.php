@@ -27,6 +27,11 @@ final class DoctorCommand extends BoostBaseCommand
     public function __construct(
         private readonly TagReporter $reporter = new TagReporter(),
         private readonly PackagistVersionLookup $packagist = new PackagistVersionLookup(),
+        // Injection seam for `--check-versions` tests — null means "read
+        // the real Composer runtime via InstalledPackages::fromComposer()".
+        // Other reporter methods read Composer directly; keeping scope
+        // narrow here avoids broader DI churn.
+        private readonly ?InstalledPackages $injectedPackages = null,
     ) {
         parent::__construct();
     }
@@ -84,8 +89,8 @@ final class DoctorCommand extends BoostBaseCommand
      */
     private function reportPathRepoShadows(SymfonyStyle $io, string $projectRoot): void
     {
-        $detector = new PathRepoDetector(InstalledPackages::fromComposer());
-        $shadows = $detector->findShadowingPackages($projectRoot);
+        $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
+        $shadows = (new PathRepoDetector($packages))->findShadowingPackages($projectRoot);
 
         $io->section('Path-repo version check');
 
@@ -95,16 +100,18 @@ final class DoctorCommand extends BoostBaseCommand
             return;
         }
 
-        $packages = InstalledPackages::fromComposer();
         $rows = [];
         foreach ($shadows as $name) {
-            $installed = $packages->version($name) ?? '?';
+            $installedVersion = $packages->version($name);
+            $installedDisplay = $installedVersion ?? '<comment>unknown</comment>';
             $latest = $this->packagist->latestStable($name);
             $latestDisplay = $latest ?? '<comment>lookup failed</comment>';
-            $flag = ($latest !== null && $latest !== $installed && $installed !== '?')
+            // Compare against the raw nullable — '?' display sentinel
+            // must not couple into the comparison logic.
+            $flag = ($latest !== null && $installedVersion !== null && $latest !== $installedVersion)
                 ? '<comment>⚠ Packagist newer</comment>'
                 : '';
-            $rows[] = [$name, $installed, $latestDisplay, $flag];
+            $rows[] = [$name, $installedDisplay, $latestDisplay, $flag];
         }
 
         $io->table(['Package', 'Installed (path repo)', 'Packagist latest stable', ''], $rows);

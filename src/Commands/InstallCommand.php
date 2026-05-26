@@ -170,23 +170,28 @@ final class InstallCommand extends BoostBaseCommand
      */
     private function pickTags(BoostConfig $config, array $vendors, InstalledPackages $packages): ?array
     {
-        $available = (new AvailableTagsDiscovery($packages))->discover($vendors);
+        $available = (new AvailableTagsDiscovery($packages))->discover($vendors, $config->skillRenderers);
         if ($available === []) {
             return null;
         }
 
         $declared = $config->tags;
+        $availableKeys = array_keys($available);
+
+        // Preserve tags the user declared in boost.php that no installed
+        // vendor publishes — common for hand-curated tags ahead of a
+        // vendor adding them, or org-internal tags only the host uses.
+        // The picker controls VISIBLE tags only; non-discovered declared
+        // tags get merged back into the final selection silently so a
+        // re-run of `boost install` doesn't strip them.
+        $preserved = array_values(array_diff($declared, $availableKeys));
 
         $options = [];
         foreach ($available as $tag => $unlockCount) {
             $options[$tag] = sprintf('%s  (unlocks %d skill/guideline)', $tag, $unlockCount);
         }
 
-        // Pre-check currently-declared tags that actually exist in the
-        // available set. Declared-but-unavailable tags are dropped from
-        // the default — they'd be re-introduced as raw strings the
-        // picker can't display, surprising the operator.
-        $defaults = array_values(array_intersect($declared, array_keys($available)));
+        $defaults = array_values(array_intersect($declared, $availableKeys));
 
         /** @var list<string> $picked */
         $picked = multiselect(
@@ -196,7 +201,22 @@ final class InstallCommand extends BoostBaseCommand
             hint: 'Each tagged vendor skill ships only when every tag it declares is checked here. Untagged skills always ship.',
         );
 
-        return array_values($picked);
+        return self::mergePickedWithPreserved($picked, $preserved);
+    }
+
+    /**
+     * Merge the picker's selection with declared-but-not-discovered
+     * tags so a re-install never strips hand-curated entries no vendor
+     * publishes. Static + side-effect-free so a focused unit test
+     * locks the rule without needing an interactive multiselect.
+     *
+     * @param  list<string>  $picked      visible tags the operator checked
+     * @param  list<string>  $preserved   declared tags absent from discovery
+     * @return list<string>               de-duplicated union, picker order first
+     */
+    public static function mergePickedWithPreserved(array $picked, array $preserved): array
+    {
+        return array_values(array_unique([...$picked, ...$preserved]));
     }
 
     /**

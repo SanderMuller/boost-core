@@ -96,6 +96,8 @@ Setting up or reviewing `withAllowedVendors()` / `withTags()` / `withExcludedSki
 
 Present every suggestion with its reasoning — the maintainer decides. Declaring a tag is opt-in (it only ever *adds* skills); an exclude only ever *removes* one.
 
+**Shortcut for interactive setups:** `vendor/bin/boost install` runs the agent + vendor + tag pickers in sequence and persists the choices into `boost.php` via AST. The tag picker shows each discovered tag with an "unlocks N skill/guideline" hint and pre-checks already-declared tags. Use it when the operator's at a terminal and willing to step through the choices; use the "discover, then suggest" flow above when you're proposing changes for review.
+
 ## What NOT to put here
 
 - **Environment branching.** `if (env('CI')) { ... }` works, but

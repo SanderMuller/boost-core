@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Discovery;
 
+use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\GuidelineLoader;
 use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
@@ -32,10 +33,18 @@ final readonly class AvailableTagsDiscovery
      * the tag (any item declaring the tag — items with multiple tags
      * are counted once per tag they declare).
      *
+     * `$renderers` defaults to passthrough-only (`.md` discovery only).
+     * A caller that's already loaded `BoostConfig` should pass
+     * `$config->skillRenderers` so renderer-backed assets (Blade etc.)
+     * are walked the same way `boost sync` would walk them — otherwise
+     * tags declared in `.blade.php` skills stay invisible to the picker
+     * even though they'd ship live.
+     *
      * @param  list<string>  $allowedVendors  Composer package names
+     * @param  list<SkillRenderer>  $renderers  caller-known renderers (host's `withSkillRenderers([...])`)
      * @return array<string, int>             tag → unlock count
      */
-    public function discover(array $allowedVendors): array
+    public function discover(array $allowedVendors, array $renderers = []): array
     {
         if ($allowedVendors === []) {
             return [];
@@ -45,11 +54,10 @@ final readonly class AvailableTagsDiscovery
         $skillLoader = new SkillLoader(new FrontmatterParser());
         $guidelineLoader = new GuidelineLoader(new FrontmatterParser());
         $scanner = new VendorScanner($this->packages);
-        // Dispatcher with the implicit Passthrough so default `.md`
-        // skills/guidelines are discovered. The install picker can't
-        // know which custom renderers the consumer will register in
-        // their boost.php — those don't exist until install completes.
-        $dispatcher = new SkillRendererDispatcher([new PassthroughRenderer()]);
+
+        // Always append the implicit Passthrough so plain `.md` files
+        // discover even when the caller forgets to include it.
+        $dispatcher = new SkillRendererDispatcher([...$renderers, new PassthroughRenderer()]);
 
         $counts = [];
         foreach ($scanner->discover() as $vendor) {

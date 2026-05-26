@@ -27,7 +27,7 @@ composer require --dev sandermuller/boost-core
 ## Usage
 
 ```bash
-vendor/bin/boost install   # generate boost.php (if missing) + interactive picker for agents + vendor allowlist
+vendor/bin/boost install   # generate boost.php (if missing) + interactive picker for agents, vendor allowlist, and tags
 vendor/bin/boost sync      # fan out to selected agents
 ```
 
@@ -233,6 +233,8 @@ A vendor skill is synced only when **every** tag in its `boost-tags` is among th
 Vendor **guidelines** filter by the same subset rule, from either of two tag sources: a guideline's own `metadata.boost-tags` frontmatter, or a sidecar `resources/boost/guidelines/.boost-tags.yaml` manifest — a map of guideline filename to a space-delimited tag string. The sidecar exists because a guideline carrying frontmatter is fine for boost-core but not for `laravel/boost`, which renders a `---` block literally; a guideline that must stay frontmatter-free is tagged via the manifest instead, which laravel/boost's `*.md`-only Finder never sees. Frontmatter wins when a guideline has both. An untagged guideline always ships; `withExcludedGuidelines(['vendor/package:guideline-name'])` drops a specific one regardless of tags. Skills always tag inline — `metadata.boost-tags` works in every engine — so the inline-vs-sidecar split is guidelines-only.
 
 The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open, any string is a valid tag; the enum just gives autocomplete for common ones. `vendor/bin/boost tags` lists every tag installed skills and guidelines declare, which of them your `withTags()` currently filters out, and the tags to add to receive them — `boost doctor` carries the same report as one of its sections. When sync drops tagged vendor skills because your `withTags()` is empty, it prints a one-line note pointing at `vendor/bin/boost tags` so the gap surfaces at install time instead of going silent.
+
+`vendor/bin/boost install` includes an interactive tag picker — after the agent + vendor selections, it presents the tags declared by the just-selected vendors (with an "unlocks N skill/guideline" hint per tag) and persists your choice into `withTags(...)`. Tags you've already declared in `boost.php` that no installed vendor publishes are preserved silently across re-installs — the picker controls visible tags only.
 
 `vendor/bin/boost where` complements `tags` — it lists every resolved skill, guideline, and command grouped by origin (`.ai/` host, scanned vendor packages, remote skill sources) under three top-level sections, and annotates host overrides that shadow an allowlisted-vendor copy inline. Answers "where does X come from?", "did my host override the vendor's copy?", and "what will sync write?" in one place. Caller-injected items (the wrapper pattern, e.g. `project-boost-laravel`) are runtime-only inputs to `SyncEngine::sync()` and not visible to `boost where` — wrapper packages own their own inspection surface.
 

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.4...HEAD)
 
+### Added
+
+- **`boost install` tag picker** — the interactive installer now runs a third multiselect after the agent + vendor pickers. It discovers every tag declared by the just-selected vendors' skills + guidelines (using the host's configured `withSkillRenderers([...])` so `.blade.php`-tagged assets surface), labels each option with an `unlocks N skill/guideline` hint, and pre-checks already-declared tags. The choice is persisted into `boost.php` via the AST writer as `->withTags(Tag::CaseName, 'raw-string', …)` — Tag enum cases when they match, raw strings otherwise. Tags declared in `boost.php` that no installed vendor publishes are preserved silently across re-installs.
+- **`AvailableTagsDiscovery`** — new helper that walks selected vendors via `VendorScanner` and returns `tag → unlock-count` (sorted, deterministic). Backs the picker; also available for any downstream caller wanting the same data.
+
+### Changed
+
+- **`BoostConfigWriter::update()` gained an optional `?array $tags` parameter.** `null` = leave existing `withTags()` untouched (the picker's no-op signal when there's nothing to pick from), `[]` = remove `withTags(...)` from the chain entirely, non-empty = insert/replace with variadic args. Values are normalized (trim + lowercase + drop empty + dedupe) before AST emit so write/read drift through `BoostConfigBuilder` is impossible.
+
 ## [0.7.4](https://github.com/sandermuller/boost-core/compare/0.7.3...0.7.4) - 2026-05-26
 
 ### TL;DR

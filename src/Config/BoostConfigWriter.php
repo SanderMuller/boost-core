@@ -394,9 +394,26 @@ final readonly class BoostConfigWriter
      */
     private function tagsToArgs(array $tags, ?string $tagAlias): array
     {
+        // Defensive normalization — mirror `Tag::normalize()` (trim +
+        // lowercase) and drop empties + dupes so the written file
+        // round-trips through BoostConfigBuilder cleanly. Without this,
+        // ` PHP ` would write to disk verbatim and reload as `php`
+        // (the builder normalizes on the read side), causing
+        // write/read drift on a subsequent boost install.
+        $seen = [];
         $args = [];
         foreach ($tags as $tag) {
-            $args[] = new Arg($this->tagToExpr($tag, $tagAlias));
+            $normalized = strtolower(trim($tag));
+            if ($normalized === '') {
+                continue;
+            }
+
+            if (isset($seen[$normalized])) {
+                continue;
+            }
+
+            $seen[$normalized] = true;
+            $args[] = new Arg($this->tagToExpr($normalized, $tagAlias));
         }
 
         return $args;

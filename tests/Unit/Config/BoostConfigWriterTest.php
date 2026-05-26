@@ -327,3 +327,34 @@ PHP);
         @unlink($path);
     }
 });
+
+it('normalizes tag input — trim, lowercase, drop empty, dedupe — before writing', function (): void {
+    // Defense-in-depth: even when the caller forgets to normalize,
+    // the written file must round-trip cleanly through BoostConfig::Builder
+    // which normalizes tags on the read side.
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Tag;
+return BoostConfig::configure()
+    ->withAgents([])
+    ->withAllowedVendors([]);
+PHP);
+
+    try {
+        // Mix of trims, mixed case, empties, dupes.
+        (new BoostConfigWriter())->update($path, [], [], [], ['  PHP  ', '', 'jira', 'JIRA', 'org-internal']);
+        $written = (string) file_get_contents($path);
+        // `php` → Tag::Php, `jira` → Tag::Jira (both enum cases),
+        // `org-internal` stays a raw string. Uppercase JIRA must not
+        // appear (dedupe + normalize) and Jira must appear exactly once.
+        expect($written)->toContain("->withTags(Tag::Php, Tag::Jira, 'org-internal')")
+            ->and(substr_count($written, 'JIRA'))->toBe(0);
+
+        $config = (new BoostConfigLoader())->load(dirname($path), $path);
+        expect($config->tags)->toEqual(['php', 'jira', 'org-internal']);
+    } finally {
+        @unlink($path);
+    }
+});

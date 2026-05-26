@@ -5,15 +5,87 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.1...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.2...HEAD)
+
+## [0.7.2](https://github.com/sandermuller/boost-core/compare/0.7.1...0.7.2) - 2026-05-26
+
+Patch release. One new diagnostic (`boost doctor --check-versions`) and a precision fix in `boost where`'s origin labels. All additive — projects on 0.7.1 can upgrade without config changes; the new flag is opt-in and the label rendering only sharpens existing output.
+
+### TL;DR
+
+- **`boost doctor --check-versions`** — opt-in Packagist lookup that flags boost-* family packages installed from a Composer `path` repo when the `repositories[]` entry has outlived its purpose and shadows a newer published version. Closes a sharp foot-gun reported during the 0.7.0 stable migration where a stale path repo locked a consumer to a pre-stable SHA that lacked a public API the new caller invoked, fataling mid-sync. Routine `boost doctor` stays fully offline (CI-safe) — the lookup only runs behind the explicit flag, and a failed lookup degrades to "could not verify" rather than aborting.
+- **`boost where` origin labels are now precise.** Previously a `<vendor>/<package>` group was tagged ambiguously as `vendor or remote` because both pipelines populate the same `sourceVendor` field. Each group now renders as `vendor` (Composer-scanned), `remote` (declared via `withRemoteSkills(...)`), or `vendor+remote` (the legal overlap where one `<owner>/<repo>` key participates in both). The operator stops grepping `boost.php` to disambiguate.
+- **No upgrade work required from 0.7.1.** Both changes are additive; existing projects without `withRemoteSkills(...)` or a path-repo'd family package see no behavioral change in routine `boost doctor` / `boost where` invocations.
 
 ### Added
 
-- **`boost doctor --check-versions`** — opt-in Packagist comparison for boost-* family packages installed from a Composer `path` repo. Detects the "path repo silently shadows a newer published version" foot-gun — when a `repositories[]` entry outlives a dogfood window, Composer locks the family package to the path-repo SHA, and a constraint upgrade can fatal at runtime if the path-repo SHA predates a public API addition. The check is gated behind the explicit flag so the routine `boost doctor` invocation stays fully offline (CI-safe); one HTTP call per family path-repo when opted in. Output names installed vs Packagist-latest-stable per shadowed package + a one-line nudge to remove the stale `repositories[]` entry. Sourced from real-world adoption feedback during the 0.7.0-rc → stable migration.
+#### `boost doctor --check-versions`
+
+```bash
+vendor/bin/boost doctor --check-versions
+```
+
+When the flag is set, doctor enumerates installed boost-* family packages, identifies the ones whose install path is OUTSIDE the project's `vendor/` (the Composer `path` repo signature, including the `symlink: true` default), and compares each against the latest stable version Packagist publishes.
+
+```
+Path-repo version check
+-----------------------
+
+ ------------------------- ----------------------- ------------------------- -------------------
+  Package                   Installed (path repo)   Packagist latest stable
+ ------------------------- ----------------------- ------------------------- -------------------
+  sandermuller/boost-core   dev-main                0.7.2                     ⚠ Packagist newer
+ ------------------------- ----------------------- ------------------------- -------------------
+
+Path repos silently override Packagist resolution for matching constraints.
+Remove unused `repositories[]` entries from composer.json + re-run `composer update` to pull from Packagist.
+```
+
+One HTTP call per shadowed package against `repo.packagist.org`. Failed lookups (timeout, 404, malformed response) surface as `lookup failed` per row and never fatal. The check is fully read-only and gated behind the flag, so `boost doctor` without the flag remains network-free.
+
+The package-name URL segment is rawurl-encoded before the request, and the version parser accepts both `version_normalized` (Composer's canonical form, e.g. `0.7.1.0`) and the human-readable `version` field (including `v`-prefixed tags). Prerelease versions (`-rc`, `-beta`, `-alpha`, `-dev`) are skipped — only stable triples count as "latest."
+
+#### `Sync\InstalledPackages` exposed for downstream introspection
+
+The injection seam on `DoctorCommand::__construct(injectedPackages: ...)` lets wrappers and tests drive the `--check-versions` flow with a synthetic install set instead of the live Composer runtime. The other diagnostic methods continue reading from `InstalledPackages::fromComposer()` directly — narrow scope by design.
 
 ### Changed
 
-- **`boost where` distinguishes scanned vendors from remote sources in the section labels.** Previously a `<vendor>/<package>` group was tagged `vendor or remote` because both pipelines write the same `sourceVendor` field; the operator had to grep `boost.php` to know which pipeline contributed each group. Now each group renders as `vendor` (Composer-scanned), `remote` (declared via `withRemoteSkills(...)`), or `vendor+remote` (the legal overlap where one `<owner>/<repo>` key participates in both). `SyncEngine::resolveSkillsForInspection()` return shape changed from `list<Skill>` to `array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}` — internal-facing inspection API, no public-API breakage.
+#### `boost where` origin labels — `vendor` / `remote` / `vendor+remote`
+
+A `<vendor>/<package>` key can legally participate in both pipelines (a scanned Composer vendor publishing skills under `resources/boost/skills/` AND a `withRemoteSkills(...)` entry pointing at the same GitHub repo), as long as their skill names don't collide. Previously the single-flag classification mislabeled the merged group as `remote`. Now:
+
+- **`host`** — `.ai/skills/` host-authored.
+- **`vendor`** — scanned Composer vendor on `withAllowedVendors([...])`.
+- **`remote`** — `withRemoteSkills([RemoteSkillSource::...])` declaration.
+- **`vendor+remote`** — `<owner>/<repo>` key in both sets; rare but legal.
+
+The shape of the inspection helper changed accordingly:
+
+```php
+// Was (0.7.1):
+$skills = $engine->resolveSkillsForInspection($projectRoot); // list<Skill>
+
+// Is (0.7.2):
+$inspection = $engine->resolveSkillsForInspection($projectRoot);
+// $inspection['skills']             — list<Skill>
+// $inspection['remoteSourceKeys']   — list<string>
+// $inspection['scannedVendorKeys']  — list<string>
+```
+
+Internal-facing inspection API — no documented public consumers besides `WhereCommand` itself. External callers wrapping the method directly would need to dereference `['skills']`. Surfaced in the changelog under Changed (not Fixed) for that reason.
+
+### Upgrade
+
+```bash
+composer update sandermuller/boost-core
+```
+
+No `boost.php` change required.
+
+If you're a wrapper author who calls `SyncEngine::resolveSkillsForInspection()` directly: pull `['skills']` from the returned array. Everyone else: no action.
+
+> **Note (CHANGELOG meta):** the `update-changelog` GitHub Actions workflow did not fire on the 0.7.2 release event — a transient Actions misfire, not a configuration issue. This section was manually prepended to keep CHANGELOG.md in sync with the published release.
 
 ## [0.7.1](https://github.com/sandermuller/boost-core/compare/0.7.0...0.7.1) - 2026-05-25
 

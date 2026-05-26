@@ -55,6 +55,21 @@ function runDoctor(string $dir, ?string $cacheRoot = null): array
     return ['exit' => $exit, 'display' => $tester->getDisplay()];
 }
 
+/**
+ * @return array{exit: int, display: string}
+ */
+function runDoctorWithOption(string $dir, string $option): array
+{
+    $command = new DoctorCommand();
+    $app = new ComposerApplication();
+    $app->addCommand($command);
+
+    $tester = new CommandTester($command);
+    $exit = $tester->execute(['--working-dir' => $dir, $option => true]);
+
+    return ['exit' => $exit, 'display' => $tester->getDisplay()];
+}
+
 /** Seed the cache with one resolved-ref slot containing a skill, so the doctor reports it as `cached`. */
 function doctorSeedCachedSkill(string $cacheRoot, string $source, string $resolvedRef, string $skillName): void
 {
@@ -254,6 +269,27 @@ it('doctor: surfaces the limitations note when a nested command (.ai/commands/su
         expect($result['exit'])->toBe(0)
             ->and($result['display'])->toContain('Command-emit limitations')
             ->and($result['display'])->toContain('~/.codex/prompts/');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor --check-versions: omits section by default (offline-only) and adds it when the flag is passed', function (): void {
+    // Routine `boost doctor` stays fully offline — the path-repo section
+    // only renders behind the explicit opt-in. With no path-repo'd
+    // family package installed in this temp project (the typical case),
+    // the section's "nothing to compare" line appears under --check-versions
+    // and is absent otherwise.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $offline = runDoctor($dir);
+        expect($offline['exit'])->toBe(0)
+            ->and($offline['display'])->not->toContain('Path-repo version check');
+
+        $opted = runDoctorWithOption($dir, '--check-versions');
+        expect($opted['exit'])->toBe(0)
+            ->and($opted['display'])->toContain('Path-repo version check')
+            ->and($opted['display'])->toContain('No family packages installed from a path repo.');
     } finally {
         doctorCleanup($dir);
     }

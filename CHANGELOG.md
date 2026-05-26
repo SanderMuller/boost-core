@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/0.7.1...HEAD)
 
+### Added
+
+- **`boost doctor --check-versions`** — opt-in Packagist comparison for boost-* family packages installed from a Composer `path` repo. Detects the "path repo silently shadows a newer published version" foot-gun — when a `repositories[]` entry outlives a dogfood window, Composer locks the family package to the path-repo SHA, and a constraint upgrade can fatal at runtime if the path-repo SHA predates a public API addition. The check is gated behind the explicit flag so the routine `boost doctor` invocation stays fully offline (CI-safe); one HTTP call per family path-repo when opted in. Output names installed vs Packagist-latest-stable per shadowed package + a one-line nudge to remove the stale `repositories[]` entry. Sourced from real-world adoption feedback during the 0.7.0-rc → stable migration.
+
 ## [0.7.1](https://github.com/sandermuller/boost-core/compare/0.7.0...0.7.1) - 2026-05-25
 
 ### TL;DR

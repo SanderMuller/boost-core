@@ -4,6 +4,8 @@ namespace SanderMuller\BoostCore\Commands;
 
 use JsonException;
 use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
+use SanderMuller\BoostCore\Discovery\PathRepoDetector;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
@@ -11,6 +13,7 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Finder\Finder;
@@ -23,6 +26,7 @@ final class DoctorCommand extends BoostBaseCommand
 {
     public function __construct(
         private readonly TagReporter $reporter = new TagReporter(),
+        private readonly PackagistVersionLookup $packagist = new PackagistVersionLookup(),
     ) {
         parent::__construct();
     }
@@ -33,6 +37,12 @@ final class DoctorCommand extends BoostBaseCommand
             ->setName('boost:doctor')
             ->setDescription('Diagnose a boost-core install. Reports config, allowlist, drift, etc.');
         $this->addWorkingDirOption();
+        $this->addOption(
+            'check-versions',
+            null,
+            InputOption::VALUE_NONE,
+            'Compare boost-* family path-repo installs against Packagist. Opt-in — adds one HTTP call per shadowed family package.',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -58,8 +68,47 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportRemoteSkills($io, $config);
         $this->reportTags($io, $config);
         $this->reportDrift($io, $projectRoot);
+        if ($input->getOption('check-versions') === true) {
+            $this->reportPathRepoShadows($io, $projectRoot);
+        }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Opt-in (via `--check-versions`) Packagist comparison for family
+     * packages installed from a Composer `path` repo. Surfaces the
+     * "path repo silently shadows newer published version" foot-gun.
+     * Adds one HTTP call per shadowed package — gated explicitly so the
+     * routine offline `doctor` invocation stays network-free (CI-safe).
+     */
+    private function reportPathRepoShadows(SymfonyStyle $io, string $projectRoot): void
+    {
+        $detector = new PathRepoDetector(InstalledPackages::fromComposer());
+        $shadows = $detector->findShadowingPackages($projectRoot);
+
+        $io->section('Path-repo version check');
+
+        if ($shadows === []) {
+            $io->writeln('<info>No family packages installed from a path repo. Nothing to compare.</info>');
+
+            return;
+        }
+
+        $packages = InstalledPackages::fromComposer();
+        $rows = [];
+        foreach ($shadows as $name) {
+            $installed = $packages->version($name) ?? '?';
+            $latest = $this->packagist->latestStable($name);
+            $latestDisplay = $latest ?? '<comment>lookup failed</comment>';
+            $flag = ($latest !== null && $latest !== $installed && $installed !== '?')
+                ? '<comment>⚠ Packagist newer</comment>'
+                : '';
+            $rows[] = [$name, $installed, $latestDisplay, $flag];
+        }
+
+        $io->table(['Package', 'Installed (path repo)', 'Packagist latest stable', ''], $rows);
+        $io->writeln('<comment>Path repos silently override Packagist resolution for matching constraints. Remove unused `repositories[]` entries from composer.json + re-run `composer update` to pull from Packagist.</comment>');
     }
 
     private function reportAgents(SymfonyStyle $io, BoostConfig $config): void

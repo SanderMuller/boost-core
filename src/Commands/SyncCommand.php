@@ -238,8 +238,29 @@ final class SyncCommand extends BoostBaseCommand
 
         $io->success(sprintf('Sync done. wrote=%d, unchanged=%d, deleted=%d.%s%s', $wrote, $unchanged, $deleted, $symlinkSummary, $emitterSummary));
         $this->noteTagFilterGap($io, $result);
+        $this->renderConventionsDiagnostics($io, $result);
 
         return self::SUCCESS;
+    }
+
+    private function renderConventionsDiagnostics(SymfonyStyle $io, SyncResult $result): void
+    {
+        if ($result->diagnostics === []) {
+            return;
+        }
+
+        $io->section('Project Conventions');
+        foreach ($result->diagnostics as $diagnostic) {
+            $glyph = match ($diagnostic->level) {
+                'error' => '<fg=red>✗</>',
+                'warning' => '<fg=yellow>⚠</>',
+                'info' => '<fg=cyan>ℹ</>',
+                default => ' ',
+            };
+            $slot = $diagnostic->slot === null ? '' : "{$diagnostic->slot}: ";
+            $vendor = $diagnostic->vendor === null ? '' : " ({$diagnostic->vendor})";
+            $io->writeln("{$glyph} {$slot}{$diagnostic->message}{$vendor}");
+        }
     }
 
     /**

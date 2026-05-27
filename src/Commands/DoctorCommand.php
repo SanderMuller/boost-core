@@ -4,6 +4,11 @@ namespace SanderMuller\BoostCore\Commands;
 
 use JsonException;
 use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
+use SanderMuller\BoostCore\Conventions\ConventionsSchema;
+use SanderMuller\BoostCore\Conventions\Diagnostic;
+use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
+use SanderMuller\BoostCore\Conventions\VendorSchemaSource;
 use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
 use SanderMuller\BoostCore\Discovery\PathRepoDetector;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
@@ -48,6 +53,12 @@ final class DoctorCommand extends BoostBaseCommand
             InputOption::VALUE_NONE,
             'Compare boost-* family path-repo installs against Packagist. Opt-in — adds one HTTP call per shadowed family package.',
         );
+        $this->addOption(
+            'check-conventions',
+            null,
+            InputOption::VALUE_NONE,
+            'Report Project Conventions slot status (missing required, unknown slots, schema-version mismatches, path-typed file existence).',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -75,6 +86,10 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportDrift($io, $projectRoot);
         if ($input->getOption('check-versions') === true) {
             $this->reportPathRepoShadows($io, $projectRoot);
+        }
+
+        if ($input->getOption('check-conventions') === true) {
+            $this->reportConventions($io, $projectRoot, $config);
         }
 
         return self::SUCCESS;
@@ -401,5 +416,169 @@ final class DoctorCommand extends BoostBaseCommand
         }
 
         $io->success('No drift detected. Generated files match sources.');
+    }
+
+    private function reportConventions(SymfonyStyle $io, string $projectRoot, BoostConfig $config): void
+    {
+        $io->section('Project Conventions');
+
+        $discovery = new SchemaDiscovery(
+            $this->injectedPackages ?? InstalledPackages::fromComposer(),
+        );
+        ['sources' => $sources, 'diagnostics' => $discoveryDiagnostics] = $discovery->discover($config->allowedVendors);
+
+        if ($sources === []) {
+            if ($discoveryDiagnostics === []) {
+                $io->writeln('No conventions schemas declared by allowlisted vendors.');
+
+                return;
+            }
+
+            $io->writeln('No usable conventions schemas — all declarations malformed:');
+            foreach ($discoveryDiagnostics as $diagnostic) {
+                $vendor = $diagnostic->vendor === null ? '' : "[{$diagnostic->vendor}] ";
+                $io->writeln("⚠ {$vendor}{$diagnostic->message}");
+            }
+
+            return;
+        }
+
+        $claudeMdPath = $projectRoot . '/CLAUDE.md';
+        $claudeMd = is_file($claudeMdPath) ? @file_get_contents($claudeMdPath) : null;
+        $claudeMd = $claudeMd === false ? null : $claudeMd;
+
+        $emitter = new ConventionsBlockEmitter();
+        $extracted = $emitter->extract($claudeMd);
+        if ($extracted === null) {
+            $io->warning('No Project Conventions block in CLAUDE.md. Run `vendor/bin/boost sync` to scaffold one.');
+
+            return;
+        }
+
+        ['values' => $values, 'diagnostics' => $parseDiagnostics] = $emitter->parse($claudeMd);
+        $diagnostics = [...$discoveryDiagnostics, ...$parseDiagnostics];
+
+        if ($values !== null) {
+            $schema = new ConventionsSchema($sources);
+            $diagnostics = [...$diagnostics, ...$schema->validate($values)];
+            $diagnostics = [...$diagnostics, ...$this->checkPathSlots($projectRoot, $sources, $values)];
+        }
+
+        if ($diagnostics === []) {
+            $io->success('Project Conventions valid against all allowlisted vendor schemas.');
+
+            return;
+        }
+
+        foreach ($diagnostics as $diagnostic) {
+            $glyph = match ($diagnostic->level) {
+                'error' => '✗',
+                'warning' => '⚠',
+                'info' => 'ℹ',
+                default => ' ',
+            };
+            $slot = $diagnostic->slot === null ? '' : "{$diagnostic->slot}: ";
+            $vendor = $diagnostic->vendor === null ? '' : " ({$diagnostic->vendor})";
+            $io->writeln("{$glyph} {$slot}{$diagnostic->message}{$vendor}");
+        }
+    }
+
+    /**
+     * @param  list<VendorSchemaSource>  $sources
+     * @param  array<mixed, mixed>  $values
+     * @return list<Diagnostic>
+     */
+    private function checkPathSlots(string $projectRoot, array $sources, array $values): array
+    {
+        /** @var list<Diagnostic> $out */
+        $out = [];
+        $rootCanonical = realpath($projectRoot);
+        if ($rootCanonical === false) {
+            return $out;
+        }
+
+        foreach ($sources as $source) {
+            $properties = is_array($source->schema['properties'] ?? null) ? $source->schema['properties'] : [];
+            foreach ($properties as $name => $schema) {
+                if (! is_string($name)) {
+                    continue;
+                }
+
+                if (! is_array($schema)) {
+                    continue;
+                }
+
+                foreach ($this->diagnosticsForSlot($projectRoot, $rootCanonical, $source->vendorName, $name, $schema, $values[$name] ?? null) as $diag) {
+                    $out[] = $diag;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<mixed, mixed>  $schema
+     * @return list<Diagnostic>
+     */
+    private function diagnosticsForSlot(string $projectRoot, string $rootCanonical, string $vendor, string $name, array $schema, mixed $value): array
+    {
+        $type = $schema['type'] ?? null;
+
+        if ($type === 'string' && ($schema['format'] ?? null) === 'path' && is_string($value)) {
+            $diagnostic = $this->checkSinglePath($projectRoot, $rootCanonical, $name, $value, $vendor);
+
+            return $diagnostic instanceof Diagnostic ? [$diagnostic] : [];
+        }
+
+        if ($type !== 'array' || ! is_array($value)) {
+            return [];
+        }
+
+        if (! is_array($schema['items'] ?? null) || ($schema['items']['format'] ?? null) !== 'path') {
+            return [];
+        }
+
+        /** @var list<Diagnostic> $out */
+        $out = [];
+        foreach ($value as $index => $item) {
+            if (! is_string($item)) {
+                continue;
+            }
+
+            $diagnostic = $this->checkSinglePath($projectRoot, $rootCanonical, "{$name}[{$index}]", $item, $vendor);
+            if ($diagnostic instanceof Diagnostic) {
+                $out[] = $diagnostic;
+            }
+        }
+
+        return $out;
+    }
+
+    private function checkSinglePath(string $projectRoot, string $rootCanonical, string $slot, string $value, string $vendor): ?Diagnostic
+    {
+        if ($value === '') {
+            return Diagnostic::warning($slot, 'path slot has an empty value', $vendor);
+        }
+
+        $resolved = str_starts_with($value, '/') ? $value : $projectRoot . '/' . $value;
+        $canonical = realpath($resolved);
+        if ($canonical === false) {
+            return Diagnostic::warning(
+                $slot,
+                "file '{$value}' not found",
+                $vendor,
+            );
+        }
+
+        if (! str_starts_with($canonical, $rootCanonical . '/') && $canonical !== $rootCanonical) {
+            return Diagnostic::warning(
+                $slot,
+                "'{$value}' resolves outside project root ({$canonical})",
+                $vendor,
+            );
+        }
+
+        return null;
     }
 }

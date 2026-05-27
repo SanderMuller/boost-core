@@ -62,6 +62,7 @@ final readonly class ArgumentParser
                     $tokens[] = ArgumentToken::literal($literalBuffer);
                     $literalBuffer = '';
                 }
+
                 $tokens[] = ArgumentToken::arguments();
                 $i += strlen($matches[0]);
 
@@ -73,6 +74,7 @@ final readonly class ArgumentParser
                     $tokens[] = ArgumentToken::literal($literalBuffer);
                     $literalBuffer = '';
                 }
+
                 $tokens[] = ArgumentToken::positional((int) $matches[1]);
                 $i += strlen($matches[0]);
 
@@ -84,6 +86,7 @@ final readonly class ArgumentParser
                     $tokens[] = ArgumentToken::literal($literalBuffer);
                     $literalBuffer = '';
                 }
+
                 $tokens[] = ArgumentToken::named($matches[1]);
                 $i += strlen($matches[0]);
 

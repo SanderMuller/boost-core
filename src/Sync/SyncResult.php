@@ -2,6 +2,8 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
+use SanderMuller\BoostCore\Conventions\Diagnostic;
+
 final readonly class SyncResult
 {
     /**
@@ -18,6 +20,12 @@ final readonly class SyncResult
      *         so `SyncCommand` can log "shadowed: <name> (vendor: <pkg>)" lines —
      *         consumers using `withAllowedVendors` + host overrides can audit which
      *         version actually shipped.
+     * @param  list<Diagnostic>  $diagnostics
+     *         NEW in 0.8.0 — lenient diagnostics from the conventions-schema
+     *         layer (schema parse failures, validation diagnostics, scaffold
+     *         warnings). Never triggers sync/where exit FAILURE; the legacy
+     *         `errors` channel is preserved for fatal-failure semantics. See
+     *         spec §14.
      */
     public function __construct(
         public array $writes,
@@ -26,6 +34,7 @@ final readonly class SyncResult
         public bool $check,
         public int $tagFilteredSkillsCount = 0,
         public array $hostShadows = [],
+        public array $diagnostics = [],
     ) {}
 
     public function hasDrift(): bool

@@ -84,9 +84,11 @@ final readonly class CommandLoader
             if (! is_string($entry)) {
                 continue;
             }
+
             if ($entry === '') {
                 continue;
             }
+
             $out[] = $entry;
         }
 

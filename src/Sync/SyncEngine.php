@@ -16,6 +16,10 @@ use SanderMuller\BoostCore\Agents\OpenCodeTarget;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Contracts\SkillRenderer;
+use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
+use SanderMuller\BoostCore\Conventions\ConventionsSchema;
+use SanderMuller\BoostCore\Conventions\Diagnostic;
+use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
@@ -504,6 +508,11 @@ final readonly class SyncEngine
             $writes[] = $gitignoreWrite;
         }
 
+        $conventionsResult = $this->syncConventions($projectRoot, $config, $checkOnly);
+        if ($conventionsResult['write'] instanceof WrittenFile) {
+            $writes[] = $conventionsResult['write'];
+        }
+
         return new SyncResult(
             writes: $writes,
             emitters: $emitterResults,
@@ -511,7 +520,81 @@ final readonly class SyncEngine
             check: $checkOnly,
             tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
             hostShadows: $skillResolution['hostShadows'],
+            diagnostics: $conventionsResult['diagnostics'],
         );
+    }
+
+    /**
+     * Runs schema discovery for allowlisted vendors, optionally scaffolds the
+     * Project Conventions block in CLAUDE.md, and returns a write + diagnostics
+     * to thread into the SyncResult.
+     *
+     * Diagnostics always route through SyncResult::diagnostics (NEW in 0.8.0).
+     * Never affects sync exit code — error-level diagnostics are still visible
+     * via SyncCommand's render but do not trigger FAILURE. See spec §14.
+     *
+     * @return array{write: ?WrittenFile, diagnostics: list<Diagnostic>}
+     */
+    private function syncConventions(string $projectRoot, BoostConfig $config, bool $checkOnly): array
+    {
+        $discovery = new SchemaDiscovery($this->installedPackages);
+        ['sources' => $sources, 'diagnostics' => $diagnostics] = $discovery->discover($config->allowedVendors);
+
+        if ($sources === []) {
+            return ['write' => null, 'diagnostics' => $diagnostics];
+        }
+
+        $claudeMdPath = $projectRoot . '/CLAUDE.md';
+        $claudeMd = is_file($claudeMdPath) ? @file_get_contents($claudeMdPath) : null;
+        $claudeMd = $claudeMd === false ? null : $claudeMd;
+
+        $emitter = new ConventionsBlockEmitter();
+        ['contents' => $newContents, 'diagnostics' => $emitterDiagnostics] = $emitter->syncBlock($claudeMd, $sources);
+        $diagnostics = [...$diagnostics, ...$emitterDiagnostics];
+
+        // Validation diagnostics for whichever contents will land — freshly
+        // scaffolded by syncBlock OR a pre-existing marker-bounded block.
+        $contentsForValidation = null;
+        if ($newContents !== null) {
+            $contentsForValidation = $newContents;
+        } elseif ($claudeMd !== null && str_contains($claudeMd, ConventionsBlockEmitter::START_MARKER)) {
+            $contentsForValidation = $claudeMd;
+        }
+
+        if ($contentsForValidation !== null) {
+            ['values' => $values, 'diagnostics' => $parseDiagnostics] = $emitter->parse($contentsForValidation);
+            $diagnostics = [...$diagnostics, ...$parseDiagnostics];
+            if ($values !== null) {
+                $schema = new ConventionsSchema($sources);
+                $diagnostics = [...$diagnostics, ...$schema->validate($values)];
+            }
+        }
+
+        if ($newContents === null) {
+            return ['write' => null, 'diagnostics' => $diagnostics];
+        }
+
+        if ($checkOnly) {
+            return [
+                'write' => new WrittenFile(
+                    relativePath: 'CLAUDE.md',
+                    absolutePath: $claudeMdPath,
+                    action: WriteAction::WOULD_WRITE,
+                ),
+                'diagnostics' => $diagnostics,
+            ];
+        }
+
+        @file_put_contents($claudeMdPath, $newContents);
+
+        return [
+            'write' => new WrittenFile(
+                relativePath: 'CLAUDE.md',
+                absolutePath: $claudeMdPath,
+                action: WriteAction::WROTE,
+            ),
+            'diagnostics' => $diagnostics,
+        ];
     }
 
     private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly): ?WrittenFile

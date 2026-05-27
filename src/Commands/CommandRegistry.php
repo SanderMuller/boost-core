@@ -26,6 +26,9 @@ final class CommandRegistry
             new TagsCommand(),
             new WhereCommand(),
             new NewCommand(),
+            new ValidateCommand(),
+            new SlotsCommand(),
+            new PathsCommand(),
         ];
     }
 }

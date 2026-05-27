@@ -8,6 +8,7 @@ use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
+use SanderMuller\BoostCore\Sync\SyncResult;
 use SebastianBergmann\Diff\Differ;
 use SebastianBergmann\Diff\Output\UnifiedDiffOutputBuilder;
 use Symfony\Component\Console\Input\InputInterface;
@@ -120,7 +121,29 @@ final class WhereCommand extends BoostBaseCommand
             ));
         }
 
+        $this->renderConventionsDiagnostics($io, $result);
+
         return self::SUCCESS;
+    }
+
+    private function renderConventionsDiagnostics(SymfonyStyle $io, SyncResult $result): void
+    {
+        if ($result->diagnostics === []) {
+            return;
+        }
+
+        $io->section('Project Conventions');
+        foreach ($result->diagnostics as $diagnostic) {
+            $glyph = match ($diagnostic->level) {
+                'error' => '<fg=red>✗</>',
+                'warning' => '<fg=yellow>⚠</>',
+                'info' => '<fg=cyan>ℹ</>',
+                default => ' ',
+            };
+            $slot = $diagnostic->slot === null ? '' : "{$diagnostic->slot}: ";
+            $vendor = $diagnostic->vendor === null ? '' : " ({$diagnostic->vendor})";
+            $io->writeln("{$glyph} {$slot}{$diagnostic->message}{$vendor}");
+        }
     }
 
     /**

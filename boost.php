@@ -7,17 +7,11 @@ use SanderMuller\BoostCore\Enums\Tag;
 return BoostConfig::configure()
     ->withAgents([
         Agent::CLAUDE_CODE,
-        Agent::CURSOR,
         Agent::COPILOT,
         Agent::CODEX,
-        Agent::GEMINI,
-        Agent::JUNIE,
-        Agent::KIRO,
-        Agent::OPENCODE,
-        Agent::AMP,
     ])
     ->withAllowedVendors(['sandermuller/boost-skills'])
-    ->withTags(Tag::Php, Tag::Github)
+    ->withTags(Tag::Php, Tag::Github, 'release-automation')
     ->withExcludedGuidelines([
         // boost-core is a framework-free Composer plugin — no database, no
         // migrations. These ship from boost-skills untagged, so the deny-list

@@ -5,9 +5,22 @@ use SanderMuller\BoostCore\Commands\CommandRegistry;
 use Symfony\Component\Console\Application;
 
 (function (): void {
+    // Order matters. In a Composer dist install (`vendor/sandermuller/boost-core/bin/boost`),
+    // the project's top-level autoload at `../../../autoload.php` is what we want — it has
+    // the consuming project's installed.php and dep graph.
+    //
+    // In a dev install (running boost-core's own tests from its root), there is no
+    // `../../../autoload.php` and `__DIR__ . '/../vendor/autoload.php'` IS the project
+    // autoload — fall-through works.
+    //
+    // The order was previously inverted, which broke path-repo dev installs: boost-core's
+    // nested `vendor/sandermuller/boost-core/vendor/autoload.php` won over the project
+    // top-level autoload, so InstalledVersions returned paths into the nested vendor dir
+    // (where `resources/boost/conventions-schema.json` and similar resources don't exist)
+    // and SchemaDiscovery silently skipped every vendor.
     $autoloadCandidates = [
-        __DIR__ . '/../vendor/autoload.php',
         __DIR__ . '/../../../autoload.php',
+        __DIR__ . '/../vendor/autoload.php',
     ];
 
     foreach ($autoloadCandidates as $candidate) {

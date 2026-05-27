@@ -1,28 +1,46 @@
 # boost-core
 
-> AI agent configuration sync for PHP projects. Write skills, guidelines, and commands once in `.ai/`; boost-core publishes them to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). No framework dependency, and vendor skills sync only from an allowlist you control.
-
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/sandermuller/boost-core.svg?style=flat-square)](https://packagist.org/packages/sandermuller/boost-core)
 [![Tests](https://img.shields.io/github/actions/workflow/status/sandermuller/boost-core/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/sandermuller/boost-core/actions/workflows/run-tests.yml)
 [![Total Downloads](https://img.shields.io/packagist/dt/sandermuller/boost-core.svg?style=flat-square)](https://packagist.org/packages/sandermuller/boost-core)
 [![License](https://img.shields.io/packagist/l/sandermuller/boost-core.svg?style=flat-square)](LICENSE)
 [![Laravel Boost](https://badge.laravel.cloud/boost-badge.svg?style=flat-square)](https://github.com/laravel/boost)
 
+> AI agent configuration sync for any PHP project. Write skills, guidelines, and commands once in `.ai/`; boost-core publishes them to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). No framework dependency.
+
+Tag filtering, remote skill sources, vendor allowlist, `boost doctor`, `boost where` origin tracing, and `.ai/commands/` argument-transpiling fanout. Coexists with [`laravel/boost`](https://github.com/laravel/boost) in Laravel projects via [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel).
+
 ## Install
 
 `boost-core` is the engine. You rarely install it directly — you install the family package that matches what you're building, and it pulls `boost-core` in.
 
-| You're building                          | Install                                                                                       | Ships                                                                                      |
-|------------------------------------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
-| A PHP application (not a package)        | [`sandermuller/project-boost`](https://github.com/sandermuller/project-boost)                 | App-dev skills — DDD layering, repository pattern, DI, domain modeling, legacy coexistence |
-| A Laravel application                    | [`laravel/boost`](https://github.com/laravel/boost)                                           | The original — this family doesn't replace it                                              |
-| A framework-agnostic Composer package    | [`sandermuller/package-boost-php`](https://github.com/sandermuller/package-boost-php)         | Package-author skills + `lean` / `gitattributes` commands                                  |
-| A Laravel package                        | [`sandermuller/package-boost-laravel`](https://github.com/sandermuller/package-boost-laravel) | Laravel-package skills + `McpJsonEmitter`                                                  |
-| Your own skill bundle, or custom tooling | `sandermuller/boost-core` directly                                                            | Just the sync engine — you supply the skills                                               |
+| You're building                              | Install                                                                                       | Ships                                                                                      |
+|----------------------------------------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
+| A PHP application (not a package)            | [`sandermuller/project-boost`](https://github.com/sandermuller/project-boost)                 | App-dev skills — DDD layering, repository pattern, DI, domain modeling, legacy coexistence |
+| A Laravel application                        | [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) | `laravel/boost` MCP coexistence + nine-agent fanout + tag filter + remote skills           |
+| A framework-agnostic Composer package        | [`sandermuller/package-boost-php`](https://github.com/sandermuller/package-boost-php)         | Package-author skills + `lean` / `gitattributes` commands                                  |
+| A Laravel package                            | [`sandermuller/package-boost-laravel`](https://github.com/sandermuller/package-boost-laravel) | Laravel-package skills + `McpJsonEmitter`                                                  |
+| **Your own skill bundle, or custom tooling** | **`sandermuller/boost-core` directly**                                                        | **Just the sync engine — you supply the skills  ← you are here**                           |
 
 ```bash
 composer require --dev sandermuller/boost-core
 ```
+
+## What you get
+
+|                          | `laravel/boost`                         | `boost-core`                                                                                                         |
+|--------------------------|-----------------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| Agents                   | 4 (Claude Code, Cursor, Codex, Copilot) | **9** (+ Gemini, Junie, Kiro, OpenCode, Amp)                                                                         |
+| Framework scope          | Laravel only                            | **Any PHP** (Laravel, Symfony, plain-PHP, packages)                                                                  |
+| Skill sources            | bundled + `.ai/skills/`                 | `.ai/skills/` + Composer packages (`resources/boost/skills/`) + `withRemoteSkills()` + `withAllowedVendors()` filter |
+| Tag filtering            | none                                    | `withTags()` subset rule                                                                                             |
+| Remote skill sources     | none                                    | `withRemoteSkills()` — GitHub bundles + path imports                                                                 |
+| User-scope sync          | none                                    | `boost sync --scope=user` for globally-installed CLI tools                                                           |
+| Origin tracing           | none                                    | `boost where` + `boost where --diff` (host / vendor / remote / shadow)                                               |
+| Doctor / path-repo audit | none                                    | `boost doctor`, `boost doctor --check-versions`                                                                      |
+| `.ai/commands/` fan-out  | none                                    | per-agent argument transpilation across 7 emit targets                                                               |
+
+MCP server + Laravel docs API are `laravel/boost`'s domain — boost-core defers to them in Laravel projects (see [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) for coexistence).
 
 ## Usage
 
@@ -41,7 +59,9 @@ vendor/bin/boost sync --scope=user   # ~/.{agent}/skills/<vendor>__<package>/<sk
 
 After `composer global require`-ing one or more skill-bearing packages, run `vendor/bin/boost sync --scope=user --all` once — it user-scope-syncs every globally-installed package that ships `resources/boost/skills/`. User scope publishes a package's skills **wholesale**: there is no `boost.php` in play, so tag filters (`withTags()`) and the vendor allowlist — both project-scope controls — do not apply. Each package's paths are namespaced by its full `vendor/package` slug, with `/` replaced by `__`. That sequence can't occur inside a Composer package name, so two packages never produce the same slug — `vendor-a/foo` and `vendor-b/foo` land in separate directories.
 
-### Auto-sync on `composer install`
+## Automating the sync
+
+### In a consumer project (composer install hook)
 
 `SanderMuller\BoostCore\Scripts\BoostAutoSync::run` is a cross-platform Composer script callback that consumer packages can wire into their own `post-install-cmd` / `post-update-cmd` hooks:
 
@@ -68,7 +88,7 @@ For user-invoked scripts (`composer sync-ai`, etc.) where silence on success rea
 }
 ```
 
-### Self-sync for globally-installed CLI tools
+### In a CLI tool you publish (self-sync from bin script)
 
 A tool installed with `composer global require` can keep its own bundled skills current by self-syncing from its bin script — no Composer plugin, no manual `boost sync --scope=user`:
 
@@ -92,15 +112,15 @@ require __DIR__ . '/../vendor/autoload.php';
 
 `.ai/commands/*.md` holds reusable prompt templates — the slash-command files agents surface in their command palette. `boost sync` fans each one out to the seven agents with a command surface:
 
-| Agent       | Command target                                  |
-| ----------- | ----------------------------------------------- |
-| Claude Code | `.claude/commands/`                             |
-| Cursor      | `.cursor/commands/`                             |
-| Copilot     | `.github/prompts/` (as `<name>.prompt.md`)      |
-| Junie       | `.junie/commands/`                              |
-| OpenCode    | `.opencode/commands/`                           |
-| Amp         | `.agents/commands/`                             |
-| Kiro        | `.kiro/skills/<name>/SKILL.md` (slash-command)  |
+| Agent       | Command target                                 |
+|-------------|------------------------------------------------|
+| Claude Code | `.claude/commands/`                            |
+| Cursor      | `.cursor/commands/`                            |
+| Copilot     | `.github/prompts/` (as `<name>.prompt.md`)     |
+| Junie       | `.junie/commands/`                             |
+| OpenCode    | `.opencode/commands/`                          |
+| Amp         | `.agents/commands/`                            |
+| Kiro        | `.kiro/skills/<name>/SKILL.md` (slash-command) |
 
 Kiro has no dedicated command directory — its committed `.kiro/skills/` is the slash-command surface, so a `.ai/commands/<name>.md` lands as `.kiro/skills/<name>/SKILL.md`.
 
@@ -137,7 +157,7 @@ return BoostConfig::configure()
 
 On the next `boost:sync`, that package's skills fan out to every selected agent alongside the project's own. This is how a team distributes one curated skill set across many repos — author once in a package, allowlist everywhere.
 
-[`sandermuller/boost-skills`](https://github.com/sandermuller/boost-skills) is built this way: a package of skills and nothing else, several of them tagged for conditional sync (see below).
+[`sandermuller/boost-skills`](https://github.com/sandermuller/boost-skills) is one example of the pattern — a package of skills and nothing else, several tagged for conditional sync (see below). It's a personal catalog shared as an illustration; anyone can publish their own private or public skill bundle the same way.
 
 ## Skill rendering
 
@@ -176,9 +196,6 @@ return BoostConfig::configure()
 
         // Path mode — fetches the repo tarball at the given ref and extracts
         // the named subdirs. `.` covers a whole-repo-is-one-skill layout.
-        RemoteSkillSource::githubPath('blader/humanizer', 'v0.3.0', [
-            'humanizer' => '.',
-        ]),
         RemoteSkillSource::githubPath('mattpocock/skills', 'main', [
             'grill-with-docs' => 'skills/engineering/grill-with-docs',
         ]),
@@ -197,11 +214,7 @@ Each fetched skill fans out alongside host and vendor skills — same `.{agent}/
 
 ### Publishing a skill source for remote consumption
 
-If you publish a repo intended for `withRemoteSkills(...)` consumption:
-
-- Treat the `SKILL.md` frontmatter `name` as a **durable public API surface**. Renaming it breaks every moving-ref consumer the moment they re-sync.
-- **Keep skill source dirs symlink-free**, including project-metadata symlinks like a `LICENSE` symlink at the repo root. Extraction rejects the whole source on any symlinked entry — the file-inclusion filter would drop benign symlinks anyway, but the reject-on-symlink rule fires first.
-- **Align tag vocabulary with established conventions** in `metadata.boost-tags` (`frontend` for JS/TS toolchain, `database` for projects with a database, `php`, etc.) — common tags collide semantically across sources and a consumer's single `withTags()` set applies uniformly.
+Publishing a repo for `withRemoteSkills(...)` consumption: treat the `SKILL.md` frontmatter `name` as a durable public API (renaming breaks moving-ref consumers), keep skill source dirs symlink-free (extraction rejects the whole source on any symlinked entry, including a `LICENSE` symlink at the repo root), and align `metadata.boost-tags` with the family's tag vocabulary (`frontend`, `database`, `php`, etc.) so consumer `withTags()` sets apply uniformly.
 
 ## Conditional skill filtering
 
@@ -244,6 +257,53 @@ The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open
 
 > [!WARNING]
 > Adding a tag to an **already-shipped** skill is consumer-breaking: every project that has not declared that tag loses the skill. Vendors should treat it as a breaking change (or a loud release-note callout), not a minor tweak.
+
+## CLI reference
+
+| Command                              | Purpose                                                                          | Section                                                     |
+|--------------------------------------|----------------------------------------------------------------------------------|-------------------------------------------------------------|
+| `boost install`                      | Generate `boost.php` (if missing) + interactive picker for agents, vendors, tags | [Usage](#usage)                                             |
+| `boost sync`                         | Fan out skills/guidelines/commands to selected agents                            | [Usage](#usage)                                             |
+| `boost sync --check`                 | Dry run — report drift, no writes                                                | [Usage](#usage)                                             |
+| `boost sync --scope=user`            | User-scope sync for globally-installed CLI tools                                 | [Usage](#usage)                                             |
+| `boost where`                        | Origin-traced listing of every skill / guideline / command that would ship       | [Commands](#commands)                                       |
+| `boost where --diff=<skill>`         | Shadow diff between vendor source and the version that actually ships            | [Commands](#commands)                                       |
+| `boost doctor`                       | Offline health check — config, remote sources, cache state, emitter status       | [Remote skill sources](#remote-skill-sources)               |
+| `boost doctor --check-versions`      | Opt-in Packagist comparison for path-repo shadows                                | [Remote skill sources](#remote-skill-sources)               |
+| `boost tags`                         | List available tags + their unlock counts across allowlisted vendors             | [Conditional skill filtering](#conditional-skill-filtering) |
+| `boost validate`                     | Validate CLAUDE.md Project Conventions against allowlisted vendors' schemas      | [Project Conventions](#project-conventions)                 |
+| `boost validate --strict`            | Exit non-zero (1) on any error-level diagnostic (CI mode)                        | [Project Conventions](#project-conventions)                 |
+| `boost slots`                        | List Project Conventions slots across allowlisted vendors                        | [Project Conventions](#project-conventions)                 |
+| `boost slots --missing` / `--filled` | Filter slots by fill state — audit "what have I set"                             | [Project Conventions](#project-conventions)                 |
+| `boost paths`                        | List path globs boost-core manages (vendor-skill-reachable via `--managed`)      | [Project Conventions](#project-conventions)                 |
+| `boost doctor --check-conventions`   | Report Project Conventions slot status (missing, unknown, file-existence)        | [Project Conventions](#project-conventions)                 |
+
+## Project Conventions
+
+Vendor skills frequently hard-code project context — Jira project keys, branch naming patterns, test framework names. Without a way to inject that context, consumers shadow the skill to override one line, and the maintenance debt explodes.
+
+`boost-core` 0.8.0 adds a JSONSchema-based slot fill-in: vendors declare a `resources/boost/conventions-schema.json` describing the slots they need; consumers fill values in a marker-bounded YAML block inside `CLAUDE.md`; `boost sync` validates and scaffolds, `boost validate` / `boost slots` / `boost doctor --check-conventions` give the operator-facing surface.
+
+Block shape (auto-scaffolded by `boost sync` on first run when any allowlisted vendor ships a schema):
+
+```markdown
+## Project Conventions
+
+<!-- Managed by boost-core. Edit the YAML between the markers; do not remove or move the markers. -->
+<!-- boost-core:conventions:start -->
+\`\`\`yaml
+schema-version: 1
+jira:
+  project_key: HPB
+github:
+  default_base_branch: develop
+\`\`\`
+<!-- boost-core:conventions:end -->
+```
+
+Operator owns the H2 + explainer + YAML body; boost-core never overwrites operator-edited values, only reports diagnostics. Diagnostics route through `SyncResult::diagnostics` (lenient channel — never fails sync) and are rendered visibly after `boost sync` / `boost where` primary output.
+
+For schema authors, see the spec in `internal/specs/conventions-schema.md` (gitignored, branch-local).
 
 ## Testing
 

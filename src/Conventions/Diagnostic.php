@@ -1,0 +1,72 @@
+<?php declare(strict_types=1);
+
+namespace SanderMuller\BoostCore\Conventions;
+
+use InvalidArgumentException;
+
+/**
+ * Structured diagnostic produced by conventions schema discovery / composition
+ * / validation. Severity-bearing — carries `error` / `warning` / `info`.
+ *
+ * Routes through SyncResult::diagnostics (NEW in 0.8.0), never through the
+ * legacy SyncResult::errors fatal channel. Default rendering is per command
+ * (✓/✗/⚠/ℹ). JSON envelope carries `level` explicitly.
+ */
+final readonly class Diagnostic
+{
+    public const LEVEL_ERROR = 'error';
+
+    public const LEVEL_WARNING = 'warning';
+
+    public const LEVEL_INFO = 'info';
+
+    private const LEVELS = [self::LEVEL_ERROR, self::LEVEL_WARNING, self::LEVEL_INFO];
+
+    public function __construct(
+        public string $level,
+        public ?string $slot,
+        public string $message,
+        public ?string $vendor = null,
+    ) {
+        if (! in_array($level, self::LEVELS, true)) {
+            throw new InvalidArgumentException(sprintf(
+                'Diagnostic level must be one of %s; got "%s".',
+                implode('/', self::LEVELS),
+                $level,
+            ));
+        }
+    }
+
+    public static function error(?string $slot, string $message, ?string $vendor = null): self
+    {
+        return new self(self::LEVEL_ERROR, $slot, $message, $vendor);
+    }
+
+    public static function warning(?string $slot, string $message, ?string $vendor = null): self
+    {
+        return new self(self::LEVEL_WARNING, $slot, $message, $vendor);
+    }
+
+    public static function info(?string $slot, string $message, ?string $vendor = null): self
+    {
+        return new self(self::LEVEL_INFO, $slot, $message, $vendor);
+    }
+
+    public function isError(): bool
+    {
+        return $this->level === self::LEVEL_ERROR;
+    }
+
+    /**
+     * @return array{level: string, slot: string|null, message: string, vendor: string|null}
+     */
+    public function toArray(): array
+    {
+        return [
+            'level' => $this->level,
+            'slot' => $this->slot,
+            'message' => $this->message,
+            'vendor' => $this->vendor,
+        ];
+    }
+}

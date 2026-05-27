@@ -113,9 +113,17 @@ it('runs the sync and writes the sentinel on the first syncUserScopeOnce call', 
             // keys the sentinel. boost-core itself is always installed here.
             $ran = BoostAutoSync::syncUserScopeOnce($pkg, 'sandermuller/boost-core');
 
+            // BoostAutoSync::sentinelPath sanitizes the slug — any character
+            // outside `[A-Za-z0-9._@-]` becomes `-`. Branch-derived pretty
+            // versions like `dev-feat/conventions-schema` contain `/`; mirror
+            // the sanitization here so the test passes regardless of which
+            // ref CI happens to install boost-core from.
+            $prettyVersion = InstalledVersions::getPrettyVersion('sandermuller/boost-core');
+            $expectedSlug = 'sandermuller-boost-core@' . preg_replace('/[^A-Za-z0-9._@-]+/', '-', (string) $prettyVersion);
+
             expect($ran)->toBeTrue()
                 ->and(is_dir($xdg . '/boost/synced'))->toBeTrue()
-                ->and(scandir($xdg . '/boost/synced'))->toContain('sandermuller-boost-core@' . InstalledVersions::getPrettyVersion('sandermuller/boost-core'));
+                ->and(scandir($xdg . '/boost/synced'))->toContain($expectedSlug);
         });
     } finally {
         cleanupTestDir($pkg);

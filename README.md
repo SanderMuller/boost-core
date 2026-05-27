@@ -28,17 +28,17 @@ composer require --dev sandermuller/boost-core
 
 ## What you get
 
-|                          | `laravel/boost`                         | `boost-core`                                                                                                         |
-|--------------------------|-----------------------------------------|----------------------------------------------------------------------------------------------------------------------|
-| Agents                   | 4 (Claude Code, Cursor, Codex, Copilot) | **9** (+ Gemini, Junie, Kiro, OpenCode, Amp)                                                                         |
-| Framework scope          | Laravel only                            | **Any PHP** (Laravel, Symfony, plain-PHP, packages)                                                                  |
-| Skill sources            | bundled + `.ai/skills/`                 | `.ai/skills/` + Composer packages (`resources/boost/skills/`) + `withRemoteSkills()` + `withAllowedVendors()` filter |
-| Tag filtering            | none                                    | `withTags()` subset rule                                                                                             |
-| Remote skill sources     | none                                    | `withRemoteSkills()` — GitHub bundles + path imports                                                                 |
-| User-scope sync          | none                                    | `boost sync --scope=user` for globally-installed CLI tools                                                           |
-| Origin tracing           | none                                    | `boost where` + `boost where --diff` (host / vendor / remote / shadow)                                               |
-| Doctor / path-repo audit | none                                    | `boost doctor`, `boost doctor --check-versions`                                                                      |
-| `.ai/commands/` fan-out  | none                                    | per-agent argument transpilation across 7 emit targets                                                               |
+|                          | `laravel/boost`          | `boost-core`                                                                                                         |
+|--------------------------|--------------------------|----------------------------------------------------------------------------------------------------------------------|
+| Framework scope          | Laravel only             | **Any PHP** (Laravel, Symfony, plain-PHP, packages)                                                                  |
+| Skill sources            | bundled + `.ai/skills/`  | `.ai/skills/` + Composer packages (`resources/boost/skills/`) + `withRemoteSkills()` + `withAllowedVendors()` filter |
+| Tag filtering            | none                     | `withTags()` subset rule                                                                                             |
+| Remote skill sources     | none                     | `withRemoteSkills()` — GitHub bundles + path imports                                                                 |
+| User-scope sync          | none                     | `boost sync --scope=user` for globally-installed CLI tools                                                           |
+| Origin tracing           | none                     | `boost where` + `boost where --diff` (host / vendor / remote / shadow)                                               |
+| Doctor / path-repo audit | none                     | `boost doctor`, `boost doctor --check-versions`                                                                      |
+| `.ai/commands/` fan-out  | none                     | per-agent argument transpilation across 7 emit targets                                                               |
+| Project Conventions      | none                     | JSONSchema-validated slot fill-in via `boost validate` / `boost slots` (0.8.0)                                       |
 
 MCP server + Laravel docs API are `laravel/boost`'s domain — boost-core defers to them in Laravel projects (see [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) for coexistence).
 

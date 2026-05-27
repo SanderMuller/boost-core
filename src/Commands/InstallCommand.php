@@ -261,7 +261,7 @@ final class InstallCommand extends BoostBaseCommand
                 ->withAllowedVendors([])
 
                 // Optionally disable specific FileEmitter implementations by FQCN.
-                ->withDisabledEmitters([])
+                // ->withDisabledEmitters([SomeFqcn::class])
 
                 // Skill tags: a vendor skill ships only when every tag in its
                 // `metadata.boost-tags` is declared here. Unset = receive every

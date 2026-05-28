@@ -568,7 +568,7 @@ final readonly class SyncEngine
             $renderFailDiagnostics[] = Diagnostic::warning(
                 null,
                 sprintf(
-                    'Guideline render failed; managed-region content preserved at prior state. Run `vendor/bin/boost sync` again after resolving the render failure. Source: %s',
+                    'Guideline render failed; content between `<!-- boost-core:guidelines:start -->` and `<!-- boost-core:guidelines:end -->` preserved at prior state. Run `vendor/bin/boost sync` again after resolving the render failure. Source: %s',
                     $errorMessage,
                 ),
             );

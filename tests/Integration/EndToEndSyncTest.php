@@ -1966,13 +1966,19 @@ it('0.9.3 render-fail safety: when ANY guideline renderer throws, the prior CLAU
         // know which renderer to investigate.
         $warningMessages = array_filter(
             array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics),
-            static fn (string $m): bool => str_contains($m, 'Guideline render failed; managed-region content preserved at prior state'),
+            static fn (string $m): bool => str_contains($m, 'Guideline render failed; content between `<!-- boost-core:guidelines:start -->` and `<!-- boost-core:guidelines:end -->` preserved at prior state'),
         );
         expect($warningMessages)->not->toBeEmpty();
 
-        // The failed source should be named (b020i4st's polish #2)
+        // Locked-out the abstract pre-0.9.5 wording. The wording-revert-as-
+        // regression-test pattern: assert NEW wording present AND OLD wording
+        // absent so a future PR rewording slips can't degrade the diagnostic
+        // back to "managed-region content preserved" (abstract, ungreppable).
+        $allMessages = array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics);
         $combined = implode("\n", $warningMessages);
-        expect($combined)->toContain('conventions.md');
+        $allCombined = implode("\n", $allMessages);
+        expect($combined)->toContain('conventions.md')
+            ->and($allCombined)->not->toContain('managed-region content preserved at prior state. Run');
     } finally {
         rmTreeE2E($root);
     }

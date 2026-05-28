@@ -39,6 +39,23 @@ Before opening a PR, run `composer qa` locally. CI runs the matrix on push.
 - Reference the related issue if any.
 - Mention behaviour changes in CHANGELOG.md under `## [Unreleased]` (CI auto-prepends the release body on tag publish, so don't manually convert `Unreleased` to a version header).
 
+## Patterns
+
+### Wording-revert-as-regression-test
+
+When a wording revert is decided in a thread (e.g., a diagnostic message changes from "X" to "Y", or a next-steps copy is rewritten), ship the revert with a test that asserts the **new** wording AND fails on the **old** wording. The pattern catches a class of stale-string bug where the source-level decision reads correct but downstream-visible text (CLI output, diagnostics, release notes prose) didn't sync to the new copy.
+
+Three documented uses so far: `DiagnosticCopyLockTest.php` (locked diagnostic copy), `ConvertConventionsCommandTest.php` (locked-out the reverted `git rm --cached` next-step instruction), the Copilot guideline-file strip diagnostic (locked the "strip don't delete" wording). The shape: in the test, `expect($output)->toContain($new)->and($output)->not->toContain($old)`. Cheap to write, deterministic against the bug class.
+
+#### Meta-rule: when to codify a pattern
+
+This pattern was codified after **three observed uses** across three release cycles, not after the first. The general meta-rule: **wait for 2-3 occurrences across distinct contexts before promoting a pattern to documented convention**. The wait prevents two failure modes:
+
+- **Premature codification**: a one-off becomes a load-bearing rule the next contributor follows ritualistically, even when the original context no longer applies.
+- **Under-codification**: a pattern reused N times across cycles never gets written down, so each new contributor reinvents it (often slightly differently, eroding the consistency the pattern would have enforced).
+
+Apply when you notice a pattern emerging in PR comments or commit messages. Count the distinct uses across cycles; codify here once the count reaches three.
+
 ## Releases
 
 Maintainers only. See `RELEASING.md` for the pre-release gauntlet (Rector → Pint → tests → PHPStan → docs audit → CI gate → tag).

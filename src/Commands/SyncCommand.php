@@ -174,6 +174,14 @@ final class SyncCommand extends BoostBaseCommand
 
     private function report(SymfonyStyle $io, SyncResult $result, bool $checkOnly): int
     {
+        // Render diagnostics BEFORE the error short-circuit. Render-fail
+        // warnings (0.9.3) and other safety-gate diagnostics carry
+        // operator-facing reassurance ("prior content preserved") that
+        // must reach the operator even when SyncResult also carries
+        // top-level errors. The 0.8.x render-only-on-success path hid
+        // these signals at exactly the moment they were most needed.
+        $this->renderConventionsDiagnostics($io, $result);
+
         if ($result->hasErrors()) {
             foreach ($result->errors as $error) {
                 $io->error($error);
@@ -238,18 +246,26 @@ final class SyncCommand extends BoostBaseCommand
 
         $io->success(sprintf('Sync done. wrote=%d, unchanged=%d, deleted=%d.%s%s', $wrote, $unchanged, $deleted, $symlinkSummary, $emitterSummary));
         $this->noteTagFilterGap($io, $result);
-        $this->renderConventionsDiagnostics($io, $result);
 
         return self::SUCCESS;
     }
 
+    /**
+     * Renders the SyncResult::diagnostics list. The section was named "Project
+     * Conventions" in 0.8.x when conventions-schema was the only diagnostic
+     * source. As of 0.9.1+, the list carries multiple kinds — conventions
+     * warn/error, clean-slate stale-removal info, copilot-instructions strip
+     * info, render-fail safety warnings (0.9.3). Renamed to "Diagnostics" to
+     * cover all of those without misleading operators who'd otherwise scroll
+     * past expecting only conventions content.
+     */
     private function renderConventionsDiagnostics(SymfonyStyle $io, SyncResult $result): void
     {
         if ($result->diagnostics === []) {
             return;
         }
 
-        $io->section('Project Conventions');
+        $io->section('Diagnostics');
         foreach ($result->diagnostics as $diagnostic) {
             $glyph = match ($diagnostic->level) {
                 'error' => '<fg=red>✗</>',

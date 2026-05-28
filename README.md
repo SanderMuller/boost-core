@@ -303,6 +303,8 @@ github:
 
 Operator owns the H2 + explainer + YAML body; boost-core never overwrites operator-edited values, only reports diagnostics. Diagnostics route through `SyncResult::diagnostics` (lenient channel — never fails sync) and are rendered visibly after `boost sync` / `boost where` primary output.
 
+**Marker-bounded round-trip safety (0.8.2+).** The agent guideline file (CLAUDE.md, AGENTS.md, GEMINI.md) is also marker-bounded — boost-core's guideline content lives between `<!-- boost-core:guidelines:start -->` / `<!-- boost-core:guidelines:end -->` markers, and everything outside (operator H1, prose, the Project Conventions block above) is preserved across syncs. Earlier 0.8.x cuts wholesale-overwrote the guideline file, which destroyed the Project Conventions block on every sync; 0.8.2 ships the fix. Upgrading from earlier 0.8.x: you may see duplicate guideline content above the Project Conventions block on the first 0.8.2 sync — it's pre-fix legacy and safe to delete manually.
+
 For schema authors, see the spec in `internal/specs/conventions-schema.md` (gitignored, branch-local).
 
 ## Testing

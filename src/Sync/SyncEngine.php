@@ -548,6 +548,25 @@ final readonly class SyncEngine
         $claudeMd = is_file($claudeMdPath) ? @file_get_contents($claudeMdPath) : null;
         $claudeMd = $claudeMd === false ? null : $claudeMd;
 
+        // 0.8.2 migration signal — fires once per CLAUDE.md that has
+        // conventions markers but no guidelines markers. Two-population
+        // case: (a) upgrade from pre-0.8.2 where wholesale guideline write
+        // wiped operator-filled YAML inside the conventions block, (b)
+        // upgrade from 0.7.x with operator-added conventions block.
+        // Either way, this sync is the first one that preserves
+        // operator-filled YAML — but legacy guideline content above the
+        // conventions block may be duplicated by the new markered region.
+        // Warning is the cheapest way to surface the cleanup action.
+        if ($claudeMd !== null
+            && str_contains($claudeMd, ConventionsBlockEmitter::START_MARKER)
+            && ! str_contains($claudeMd, '<!-- boost-core:guidelines:start -->')
+        ) {
+            $diagnostics[] = Diagnostic::warning(
+                null,
+                'Migration to 0.8.2 guideline managed-region: existing CLAUDE.md guidelines content is now wrapped in <!-- boost-core:guidelines:start --> markers. If you see duplicate guideline content above your Project Conventions section after this sync, it is pre-fix legacy and safe to delete manually. If your Project Conventions YAML was previously wiped by sync, re-fill it now — subsequent syncs will preserve operator-edited values.',
+            );
+        }
+
         $emitter = new ConventionsBlockEmitter();
         ['contents' => $newContents, 'diagnostics' => $emitterDiagnostics] = $emitter->syncBlock($claudeMd, $sources);
         $diagnostics = [...$diagnostics, ...$emitterDiagnostics];

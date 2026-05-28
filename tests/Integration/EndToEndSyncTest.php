@@ -1670,3 +1670,52 @@ it('check-only mode skips remote fetch when cache is cold and surfaces a would-f
         }
     }
 });
+
+it('CLAUDE.md guidelines write is round-trip-safe — operator content outside markers survives sync', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, 'return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE]);');
+        file_put_contents($root . '/.ai/guidelines/conventions.md', '---
+name: conventions
+---
+# Conventions
+
+Use strict types.');
+
+        // First sync — CLAUDE.md scaffolds with markered guidelines block.
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect(file_exists($root . '/CLAUDE.md'))->toBeTrue();
+
+        // Operator appends a Project Conventions block AFTER the markered
+        // guidelines region. This is the canonical 0.8.x conventions-schema
+        // shape — boost-core's own ConventionsBlockEmitter would scaffold
+        // it the same way if a vendor schema were present.
+        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        $operatorSection = "
+
+## Project Conventions
+
+<!-- boost-core:conventions:start -->
+\`\`\`yaml
+schema-version: 1
+jira:
+  project_key: HPB-OPERATOR-FILLED
+\`\`\`
+<!-- boost-core:conventions:end -->
+";
+        file_put_contents($root . '/CLAUDE.md', $claudeMd . $operatorSection);
+
+        // Second sync — operator-filled content MUST survive.
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        // Operator-filled YAML body MUST survive — was the round-trip foot-gun.
+        expect($after)->toContain('HPB-OPERATOR-FILLED')
+            ->and($after)->toContain('# Conventions')
+            ->and($after)->toContain('<!-- boost-core:guidelines:start -->')
+            ->and($after)->toContain('<!-- boost-core:conventions:start -->');
+    } finally {
+        rmTreeE2E($root);
+    }
+});

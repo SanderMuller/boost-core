@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Sync;
 
 use RuntimeException;
+use SanderMuller\BoostCore\Conventions\ManagedRegion;
 
 /**
  * Atomic file writer with path-traversal guard.
@@ -35,7 +36,9 @@ final class FileWriter
             );
         }
 
-        if ($this->existingContentMatches($absolute, $pending->content)) {
+        $finalContent = $this->resolveFinalContent($absolute, $pending);
+
+        if ($finalContent === null) {
             return new WrittenFile(
                 relativePath: $pending->relativePath,
                 absolutePath: $absolute,
@@ -52,13 +55,38 @@ final class FileWriter
         }
 
         $this->ensureParentDirectoryExists($absolute);
-        $this->atomicWrite($absolute, $pending->content);
+        $this->atomicWrite($absolute, $finalContent);
 
         return new WrittenFile(
             relativePath: $pending->relativePath,
             absolutePath: $absolute,
             action: WriteAction::WROTE,
         );
+    }
+
+    /**
+     * Returns the final bytes to land on disk, or null when the resolved
+     * content is byte-identical to what's already there.
+     *
+     * When `$pending->managedRegion` is non-null, the existing file content
+     * (if any) is preserved OUTSIDE the markers — `ManagedRegion::render()`
+     * replaces only the body between start/end markers. Otherwise the write
+     * is wholesale (`$pending->content` IS the file's final content).
+     */
+    private function resolveFinalContent(string $absolute, PendingWrite $pending): ?string
+    {
+        $existing = is_file($absolute) ? @file_get_contents($absolute) : null;
+        $existing = $existing === false ? null : $existing;
+
+        if (! $pending->managedRegion instanceof ManagedRegion) {
+            if ($existing === $pending->content) {
+                return null;
+            }
+
+            return $pending->content;
+        }
+
+        return $pending->managedRegion->render($existing, $pending->content);
     }
 
     /**
@@ -114,17 +142,6 @@ final class FileWriter
         }
 
         return $projectRoot . '/' . ltrim($relative, '/');
-    }
-
-    private function existingContentMatches(string $absolutePath, string $expected): bool
-    {
-        if (! is_file($absolutePath)) {
-            return false;
-        }
-
-        $existing = @file_get_contents($absolutePath);
-
-        return $existing === $expected;
     }
 
     private function ensureParentDirectoryExists(string $absolutePath): void

@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
+use SanderMuller\BoostCore\Conventions\ManagedRegion;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;
@@ -107,10 +108,30 @@ abstract class AgentTarget
             $writes[] = new PendingWrite(
                 relativePath: $guidelinesFile,
                 content: $this->formatGuidelinesContent($guidelines),
+                managedRegion: $this->guidelinesManagedRegion(),
             );
         }
 
         return $writes;
+    }
+
+    /**
+     * Marker pair bounding boost-core's guideline content within the agent's
+     * shared guideline file (CLAUDE.md, AGENTS.md, GEMINI.md). Content
+     * OUTSIDE the markers is operator-owned and preserved across syncs —
+     * Project Conventions blocks, operator prose, etc.
+     *
+     * Introduced in 0.8.2 to fix the round-trip foot-gun where 0.8.x's
+     * wholesale guideline file write destroyed the Project Conventions
+     * block on every sync.
+     */
+    public function guidelinesManagedRegion(): ManagedRegion
+    {
+        return new ManagedRegion(
+            start: '<!-- boost-core:guidelines:start -->',
+            end: '<!-- boost-core:guidelines:end -->',
+            note: '<!-- Managed by boost-core. Do not remove or move these markers. Content outside is operator-owned. -->',
+        );
     }
 
     /**

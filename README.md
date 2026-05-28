@@ -271,10 +271,11 @@ The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open
 | `boost doctor`                       | Offline health check — config, remote sources, cache state, emitter status       | [Remote skill sources](#remote-skill-sources)               |
 | `boost doctor --check-versions`      | Opt-in Packagist comparison for path-repo shadows                                | [Remote skill sources](#remote-skill-sources)               |
 | `boost tags`                         | List available tags + their unlock counts across allowlisted vendors             | [Conditional skill filtering](#conditional-skill-filtering) |
-| `boost validate`                     | Validate CLAUDE.md Project Conventions against allowlisted vendors' schemas      | [Project Conventions](#project-conventions)                 |
+| `boost validate`                     | Validate boost.php's `->withConventions([...])` against allowlisted vendors' schemas | [Project Conventions](#project-conventions)             |
 | `boost validate --strict`            | Exit non-zero (1) on any error-level diagnostic (CI mode)                        | [Project Conventions](#project-conventions)                 |
 | `boost slots`                        | List Project Conventions slots across allowlisted vendors                        | [Project Conventions](#project-conventions)                 |
 | `boost slots --missing` / `--filled` | Filter slots by fill state — audit "what have I set"                             | [Project Conventions](#project-conventions)                 |
+| `boost convert-conventions`          | One-shot migration: extract CLAUDE.md marker YAML into `boost.php` (0.9.0)       | [Project Conventions](#project-conventions)                 |
 | `boost paths`                        | List path globs boost-core manages (vendor-skill-reachable via `--managed`)      | [Project Conventions](#project-conventions)                 |
 | `boost doctor --check-conventions`   | Report Project Conventions slot status (missing, unknown, file-existence)        | [Project Conventions](#project-conventions)                 |
 
@@ -282,30 +283,27 @@ The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open
 
 Vendor skills frequently hard-code project context — Jira project keys, branch naming patterns, test framework names. Without a way to inject that context, consumers shadow the skill to override one line, and the maintenance debt explodes.
 
-`boost-core` 0.8.0 adds a JSONSchema-based slot fill-in: vendors declare a `resources/boost/conventions-schema.json` describing the slots they need; consumers fill values in a marker-bounded YAML block inside `CLAUDE.md`; `boost sync` validates and scaffolds, `boost validate` / `boost slots` / `boost doctor --check-conventions` give the operator-facing surface.
+`boost-core` 0.8.0 adds a JSONSchema-based slot fill-in: vendors declare a `resources/boost/conventions-schema.json` describing the slots they need; consumers declare values in `boost.php` via `->withConventions([...])` (0.9.0+); `boost sync` validates, renders into `CLAUDE.md`'s marker-bounded region, and surfaces missing slots — `boost validate` / `boost slots` / `boost doctor --check-conventions` give the operator-facing audit surface.
 
-Block shape (auto-scaffolded by `boost sync` on first run when any allowlisted vendor ships a schema):
+Authoring shape (0.9.0+):
 
-```markdown
-## Project Conventions
-
-<!-- Managed by boost-core. Edit the YAML between the markers; do not remove or move the markers. -->
-<!-- boost-core:conventions:start -->
-\`\`\`yaml
-schema-version: 1
-jira:
-  project_key: HPB
-github:
-  default_base_branch: develop
-\`\`\`
-<!-- boost-core:conventions:end -->
+```php
+// boost.php
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE])
+    ->withConventions([
+        'jira' => ['project_key' => 'HPB'],
+        'github' => ['default_base_branch' => 'develop'],
+    ]);
 ```
 
-Operator owns the H2 + explainer + YAML body; boost-core never overwrites operator-edited values, only reports diagnostics. Diagnostics route through `SyncResult::diagnostics` (lenient channel — never fails sync) and are rendered visibly after `boost sync` / `boost where` primary output.
+`boost sync` renders the values into `CLAUDE.md`'s marker-bounded region as audit trail; the file is rebuilt from boost.php on every sync. Diagnostics route through `SyncResult::diagnostics` (lenient channel — never fails sync) and are rendered visibly after `boost sync` / `boost where` primary output.
 
-**Marker-bounded round-trip safety (0.8.2+).** The agent guideline file (CLAUDE.md, AGENTS.md, GEMINI.md) is also marker-bounded — boost-core's guideline content lives between `<!-- boost-core:guidelines:start -->` / `<!-- boost-core:guidelines:end -->` markers, and everything outside (operator H1, prose, the Project Conventions block above) is preserved across syncs. Earlier 0.8.x cuts wholesale-overwrote the guideline file, which destroyed the Project Conventions block on every sync; 0.8.2 ships the fix. Upgrading from earlier 0.8.x: you may see duplicate guideline content above the Project Conventions block on the first 0.8.2 sync — it's pre-fix legacy and safe to delete manually.
+**Migration from 0.8.x.** Existing projects already fill values in `CLAUDE.md`'s marker-bounded YAML region. Run `vendor/bin/boost convert-conventions` once: it extracts the YAML into `boost.php`'s `->withConventions([...])` chain and clears the marker body so the next `sync` re-renders cleanly. Use `--dry-run` to preview the rewrite. After migration, edit `boost.php`, not the YAML block — sync fail-closes on conflicting values across both surfaces.
 
-**Commit the guideline file (0.8.3+).** Because the file now carries operator-edited Project Conventions content alongside boost-core's generated guideline content, it must be tracked in version control — otherwise filled slot values vanish on a fresh clone or a different machine. Boost-core's managed `.gitignore` block dropped CLAUDE.md / AGENTS.md / GEMINI.md as of 0.8.3; the first sync after upgrading regenerates the block without those lines, and operators should `git add` the file. Skill + command directories stay gitignored — those are 100% generated from `.ai/` content. The diff-noise concern (generated guideline content shows up in PRs alongside operator-edited content) is mitigated by `git diff -- ':!CLAUDE.md'` aliases for reviewer ergonomics, or by landing skill changes in a separate commit from operator-edits. A cleaner separation (operator content in a tracked `.ai/project-conventions.yaml`; rendered output in untracked CLAUDE.md) is on the 0.9.0 roadmap.
+**Marker-bounded round-trip safety (0.8.2+).** The agent guideline file (CLAUDE.md, AGENTS.md, GEMINI.md) is marker-bounded — boost-core's guideline content lives between `<!-- boost-core:guidelines:start -->` / `<!-- boost-core:guidelines:end -->` markers, and everything outside (operator H1, prose, the Project Conventions block) is preserved across syncs.
+
+**Tracked guideline files (0.8.3+).** CLAUDE.md / AGENTS.md / GEMINI.md must be tracked in version control — operator-authored content outside the marker regions (custom H1, intro prose) is preserved by sync but only survives across clones if the file itself is committed. Boost-core's managed `.gitignore` block keeps these files out of the ignore list. Skill + command directories stay gitignored — those are 100% generated from `.ai/` content.
 
 For schema authors, see the spec in `internal/specs/conventions-schema.md` (gitignored, branch-local).
 

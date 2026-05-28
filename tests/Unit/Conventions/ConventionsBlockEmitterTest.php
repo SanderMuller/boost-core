@@ -165,3 +165,27 @@ it('scaffold seed handles transitional OR ranges', function (): void {
     $sources = [source('vendor/a', '^1||^2'), source('vendor/b', '^2')];
     expect((new ConventionsBlockEmitter())->scaffoldSeed($sources))->toBe(2);
 });
+
+it('renderFromValues bootstraps CLAUDE.md with H2 + rendered region when file does not exist and conventions are declared', function (): void {
+    $emitter = new ConventionsBlockEmitter();
+    $result = $emitter->renderFromValues(
+        null,
+        [source('vendor/a')],
+        ['jira' => ['project_key' => 'HPB']],
+    );
+
+    expect($result['contents'])->not->toBeNull()
+        ->and($result['contents'])->toStartWith('## Project Conventions')
+        ->and($result['contents'])->toContain('<!-- boost-core:conventions:start -->')
+        ->and($result['contents'])->toContain('<!-- boost-core:conventions:end -->')
+        ->and($result['contents'])->toContain('project_key: HPB')
+        ->and($result['diagnostics'])->toBeEmpty();
+});
+
+it('renderFromValues returns null when file does not exist AND no conventions declared (no schema-only scaffold from nothing)', function (): void {
+    $emitter = new ConventionsBlockEmitter();
+    $result = $emitter->renderFromValues(null, [source('vendor/a')], []);
+
+    expect($result['contents'])->toBeNull()
+        ->and($result['diagnostics'])->toBeEmpty();
+});

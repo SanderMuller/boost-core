@@ -5,13 +5,17 @@ namespace SanderMuller\BoostCore\Config;
 use PhpParser\Error;
 use PhpParser\Node\Arg;
 use PhpParser\Node\ArrayItem;
+use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ClassConstFetch;
+use PhpParser\Node\Expr\ConstFetch;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
+use PhpParser\Node\Scalar\Float_;
+use PhpParser\Node\Scalar\Int_;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Return_;
@@ -165,6 +169,165 @@ final readonly class BoostConfigWriter
         if (file_put_contents($configPath, $newSource) === false) {
             throw new BoostConfigWriteException($configPath, 'failed to write updated file.');
         }
+    }
+
+    /**
+     * Insert or replace `->withConventions([...])` in `boost.php`'s chain. The
+     * conventions array is rendered as nested PHP-Parser AST via
+     * {@see nestedArrayToAst()} — arbitrary depth, assoc keys, scalars, lists.
+     *
+     * Returns the would-write source. If `$dryRun` is false, also writes to
+     * disk; if true, returns the source string without touching disk. The
+     * `boost convert-conventions` command uses dry-run to preview the diff
+     * before applying.
+     *
+     * Refusal:
+     * - `BoostConfigWriteException` when `boost.php`'s shape doesn't match the
+     *   canonical `return BoostConfig::configure()->...;` chain — the operator
+     *   gets a precise error naming the shape and pointing them at manual
+     *   migration. Same fail-closed pattern as {@see update()}.
+     *
+     * @param  array<string, mixed>  $conventions
+     */
+    public function writeConventions(string $configPath, array $conventions, bool $dryRun = false): string
+    {
+        if (! is_file($configPath)) {
+            throw new BoostConfigWriteException($configPath, 'file does not exist.');
+        }
+
+        $source = (string) file_get_contents($configPath);
+
+        $parser = (new ParserFactory())->createForNewestSupportedVersion();
+        try {
+            $oldStmts = $parser->parse($source);
+        } catch (Error $error) {
+            throw new BoostConfigWriteException($configPath, 'parse error: ' . $error->getMessage());
+        }
+
+        if ($oldStmts === null) {
+            throw new BoostConfigWriteException($configPath, 'parser returned no statements.');
+        }
+
+        $oldTokens = $parser->getTokens();
+        $newStmts = (new NodeTraverser(new CloningVisitor()))->traverse($oldStmts);
+
+        $return = (new NodeFinder())->findFirstInstanceOf($newStmts, Return_::class);
+        if (! $return instanceof Return_) {
+            throw new BoostConfigWriteException($configPath, 'no `return` statement found.');
+        }
+
+        // Bare `return BoostConfig::configure();` — wrap with a synthetic
+        // ->withConventions([...]) call so the chain-modification path below
+        // has a MethodCall to work with. Same shape `update()` uses for the
+        // bare-call case.
+        if ($return->expr instanceof StaticCall && $this->isBoostConfigConfigure($return->expr)) {
+            $return->expr = new MethodCall(
+                var: $return->expr,
+                name: new Identifier('withConventions'),
+                args: [new Arg($this->nestedArrayToAst($conventions))],
+            );
+        } elseif (! $return->expr instanceof MethodCall || ! $this->chainRootsAtBoostConfigConfigure($return->expr)) {
+            throw new BoostConfigWriteException(
+                $configPath,
+                'unsupported boost.php shape: expected `return BoostConfig::configure()->...;` chain (single statement, no helper-function wrapping, no conditional branches). Hand-edit boost.php to add ->withConventions([...]) manually.',
+            );
+        } else {
+            $this->setOrInsert($return, 'withConventions', $this->nestedArrayToAst($conventions));
+        }
+
+        $newSource = $this->printer->printFormatPreserving($newStmts, $oldStmts, $oldTokens);
+
+        if (! $dryRun && file_put_contents($configPath, $newSource) === false) {
+            throw new BoostConfigWriteException($configPath, 'failed to write updated file.');
+        }
+
+        return $newSource;
+    }
+
+    /**
+     * Recursively convert a PHP nested array into a PhpParser AST `Array_`
+     * expression. Handles:
+     * - Lists (numeric keys 0..N-1): emitted as `[v1, v2, v3]` with no keys.
+     * - Assoc arrays: emitted as `['k' => v, ...]` with string keys.
+     * - Scalar leaves: int / float / string / bool / null.
+     * - Nested arrays: recursive call.
+     *
+     * Used by {@see writeConventions()} to render `withConventions([...])`
+     * arrays into boost.php AST. Other PHP value types (objects, resources,
+     * closures) are unsupported and throw — operators don't put those in
+     * Project Conventions arrays.
+     *
+     * @param  array<mixed, mixed>  $values
+     */
+    private function nestedArrayToAst(array $values): Array_
+    {
+        $isList = array_is_list($values);
+        $items = [];
+
+        foreach ($values as $key => $value) {
+            $valueExpr = $this->scalarOrArrayToAst($value);
+            $items[] = $isList
+                ? new ArrayItem($valueExpr)
+                : new ArrayItem($valueExpr, $this->scalarKeyToAst($key));
+        }
+
+        return new Array_($items, ['kind' => Array_::KIND_SHORT]);
+    }
+
+    /**
+     * Convert a single PHP value (scalar or nested array) to a PhpParser
+     * expression. Recursion bridge for {@see nestedArrayToAst()}.
+     */
+    private function scalarOrArrayToAst(mixed $value): Expr
+    {
+        if (is_array($value)) {
+            return $this->nestedArrayToAst($value);
+        }
+
+        if (is_bool($value)) {
+            return new ConstFetch(new Name($value ? 'true' : 'false'));
+        }
+
+        if ($value === null) {
+            return new ConstFetch(new Name('null'));
+        }
+
+        if (is_int($value)) {
+            return new Int_($value);
+        }
+
+        if (is_float($value)) {
+            return new Float_($value);
+        }
+
+        if (is_string($value)) {
+            return new String_($value);
+        }
+
+        throw new BoostConfigWriteException(
+            '',
+            sprintf('unsupported value type in withConventions array: %s. Supported leaves are string, int, float, bool, null, and nested arrays.', get_debug_type($value)),
+        );
+    }
+
+    /**
+     * Array-key AST. Conventions arrays use string assoc keys only — int keys
+     * are list indices (handled separately by the array_is_list branch).
+     */
+    private function scalarKeyToAst(mixed $key): Expr
+    {
+        if (is_string($key)) {
+            return new String_($key);
+        }
+
+        if (is_int($key)) {
+            return new Int_($key);
+        }
+
+        throw new BoostConfigWriteException(
+            '',
+            sprintf('unsupported array key type in withConventions: %s. Keys must be string or int.', get_debug_type($key)),
+        );
     }
 
     private function isBoostConfigConfigure(StaticCall $call): bool

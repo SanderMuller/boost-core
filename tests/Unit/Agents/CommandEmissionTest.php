@@ -88,12 +88,15 @@ it('omits a command directory from gitignore patterns for an agent without one',
     expect((new GeminiTarget())->gitignorePatterns())->not->toContain('.gemini/commands/');
 });
 
-// 0.8.3 — operator-edited Project Conventions content lives inside the
-// guideline file's marker-bounded region. The file MUST be tracked so
-// operator content survives across clones; gitignoring it would defeat
-// the conventions-schema persistence story. Skill + command directories
-// remain 100% generated and stay in the managed gitignore block.
-it('does NOT gitignore the guideline file (operator content persistence)', function (): void {
+// 0.8.3+0.9.0 — operator-edited Project Conventions content lives inside the
+// guideline file's marker-bounded region (until 0.9.0 flips the edit surface
+// to boost.php). Even after the 0.9.0 flip, operators may keep custom
+// non-conventions prose OUTSIDE the markers (custom H1, intro text, etc.)
+// — guideline writes use ManagedRegion and preserve that outside-marker
+// content. Auto-gitignoring the file + telling operators to `git rm --cached`
+// would destroy that operator-authored prose. The file MUST stay tracked.
+// Skill + command directories remain 100% generated and stay gitignored.
+it('does NOT gitignore the guideline file (mixed-ownership surface — operator content survives outside markers)', function (): void {
     expect((new ClaudeCodeTarget())->gitignorePatterns())->not->toContain('CLAUDE.md');
 });
 

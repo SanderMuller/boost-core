@@ -1,12 +1,17 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Class cognitive complexity is 122, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 134, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Sync/SyncEngine.php
 		-
-			rawMessage: 'Class cognitive complexity is 94, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 90, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Commands/DoctorCommand.php
+		-
+			rawMessage: 'Class cognitive complexity is 90, keep it under 80'
+			identifier: complexity.classLike
+			count: 1
+			path: src/Config/BoostConfigWriter.php

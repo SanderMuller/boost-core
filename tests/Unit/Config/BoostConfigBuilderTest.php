@@ -378,3 +378,78 @@ it('extraSkillRenderers inserts between user renderers and the implicit passthro
         ->and($merged->skillRenderers[1])->toBe($extrasMd)
         ->and($merged->skillRenderers[2])->toBeInstanceOf(PassthroughRenderer::class);
 });
+
+it('mergeExtraRenderers preserves $config->conventions (wrappers injecting renderers must not lose Project Conventions)', function (): void {
+    $conventions = [
+        'jira' => ['project_key' => 'HPB', 'refuse_other_projects' => true],
+        'github' => ['owner' => 'hihaho', 'repo' => 'hihaho', 'default_base_branch' => 'develop'],
+    ];
+    $extra = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return $raw;
+        }
+    };
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withConventions($conventions)
+        ->build('/x');
+
+    $merger = new InjectedVendorMerger(new SkillTagFilter(), new GuidelineTagFilter());
+    $merged = $merger->mergeExtraRenderers($config, [$extra]);
+
+    expect($merged->conventions)->toBe($conventions);
+});
+
+it('withConventions stores the nested array and exposes it on the resolved BoostConfig (0.9.0)', function (): void {
+    $conventions = [
+        'jira' => [
+            'project_key' => 'HPB',
+            'refuse_other_projects' => true,
+        ],
+        'github' => [
+            'owner' => 'hihaho',
+            'repo' => 'hihaho',
+            'default_base_branch' => 'develop',
+        ],
+        'branches' => [
+            'patterns' => [
+                ['pattern' => 'feature/HPB-XXXX', 'base' => 'develop'],
+                ['pattern' => 'hotfix/HPB-XXXX-{slug}', 'base' => 'master'],
+            ],
+        ],
+    ];
+
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withConventions($conventions)
+        ->build('/x');
+
+    expect($config->conventions)->toBe($conventions);
+});
+
+it('defaults conventions to an empty array when withConventions is never called (back-compat)', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->build('/x');
+
+    expect($config->conventions)
+        ->toBeEmpty();
+});
+
+it('withConventions overwrites prior calls — last-call-wins, no merge', function (): void {
+    $config = (new BoostConfigBuilder())
+        ->withAgents([Agent::CLAUDE_CODE])
+        ->withConventions(['jira' => ['project_key' => 'OLD']])
+        ->withConventions(['jira' => ['project_key' => 'NEW']])
+        ->build('/x');
+
+    expect($config->conventions)->toBe(['jira' => ['project_key' => 'NEW']]);
+});

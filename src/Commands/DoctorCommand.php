@@ -4,7 +4,6 @@ namespace SanderMuller\BoostCore\Commands;
 
 use JsonException;
 use SanderMuller\BoostCore\Config\BoostConfig;
-use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
@@ -443,26 +442,14 @@ final class DoctorCommand extends BoostBaseCommand
             return;
         }
 
-        $claudeMdPath = $projectRoot . '/CLAUDE.md';
-        $claudeMd = is_file($claudeMdPath) ? @file_get_contents($claudeMdPath) : null;
-        $claudeMd = $claudeMd === false ? null : $claudeMd;
-
-        $emitter = new ConventionsBlockEmitter();
-        $extracted = $emitter->extract($claudeMd);
-        if ($extracted === null) {
-            $io->warning('No Project Conventions block in CLAUDE.md. Run `vendor/bin/boost sync` to scaffold one.');
-
-            return;
-        }
-
-        ['values' => $values, 'diagnostics' => $parseDiagnostics] = $emitter->parse($claudeMd);
-        $diagnostics = [...$discoveryDiagnostics, ...$parseDiagnostics];
-
-        if ($values !== null) {
-            $schema = new ConventionsSchema($sources);
-            $diagnostics = [...$diagnostics, ...$schema->validate($values)];
-            $diagnostics = [...$diagnostics, ...$this->checkPathSlots($projectRoot, $sources, $values)];
-        }
+        // 0.9.0: source of truth is BoostConfig::$conventions, not CLAUDE.md.
+        $values = $config->conventions;
+        $schema = new ConventionsSchema($sources);
+        $diagnostics = [
+            ...$discoveryDiagnostics,
+            ...$schema->validate($values),
+            ...$this->checkPathSlots($projectRoot, $sources, $values),
+        ];
 
         if ($diagnostics === []) {
             $io->success('Project Conventions valid against all allowlisted vendor schemas.');

@@ -32,6 +32,7 @@ final readonly class BoostConfig
      * @param  list<string>  $excludedGuidelines  `vendor/package:guideline-name` entries excluded regardless of tags
      * @param  list<RemoteSkillSource>  $remoteSkills  Non-Composer skill sources (GitHub `.skill` bundles or repo subdirs)
      * @param  list<SkillRenderer>  $skillRenderers  Registered renderers; always carries the implicit PassthroughRenderer last unless a user-registered renderer claims `md`
+     * @param  array<string, mixed>  $conventions  Operator-declared Project Conventions slot values (NEW in 0.9.0). Renders into CLAUDE.md's marker-bounded region at sync time. Defaults to `[]` (no conventions declared) — back-compat with consumers who construct BoostConfig positionally.
      */
     public function __construct(
         public array $agents,
@@ -46,6 +47,7 @@ final readonly class BoostConfig
         public array $excludedGuidelines = [],
         public array $remoteSkills = [],
         public array $skillRenderers = [],
+        public array $conventions = [],
     ) {}
 
     public static function configure(): BoostConfigBuilder

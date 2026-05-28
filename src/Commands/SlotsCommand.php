@@ -3,7 +3,6 @@
 namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfig;
-use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Conventions\VendorSchemaSource;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
@@ -14,8 +13,6 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 final class SlotsCommand extends BoostBaseCommand
 {
-    private const CLAUDE_MD = 'CLAUDE.md';
-
     private const USAGE_EXIT = 2;
 
     protected function configure(): void
@@ -76,19 +73,8 @@ final class SlotsCommand extends BoostBaseCommand
             return self::SUCCESS;
         }
 
-        $claudeMdPath = $projectRoot . '/' . self::CLAUDE_MD;
-        $claudeMd = is_file($claudeMdPath) ? file_get_contents($claudeMdPath) : null;
-        if ($claudeMd === false) {
-            $claudeMd = null;
-        }
-
-        $hostValues = [];
-        ['values' => $parsed] = (new ConventionsBlockEmitter())->parse($claudeMd);
-        if (is_array($parsed)) {
-            $hostValues = $parsed;
-        }
-
-        $slots = $this->collectSlots($sources, $vendorFilter, $hostValues, $missing, $filled);
+        // 0.9.0: source of truth is BoostConfig::$conventions, not CLAUDE.md.
+        $slots = $this->collectSlots($sources, $vendorFilter, $config->conventions, $missing, $filled);
 
         if ($json) {
             $output->writeln(json_encode(['slots' => $slots], JSON_THROW_ON_ERROR));

@@ -245,11 +245,179 @@ final readonly class ConventionsBlockEmitter
     }
 
     /**
+     * Render operator-supplied conventions values (from `$config->conventions`)
+     * as a marker-bounded YAML region. Returns the full CLAUDE.md content with
+     * the rendered region merged into place via ManagedRegion (preserving
+     * everything outside the markers).
+     *
+     * Used by `SyncEngine::syncConventions()` in 0.9.0 — the source of truth
+     * is `BoostConfig::$conventions`, not the marker body in CLAUDE.md.
+     *
+     * @param  list<VendorSchemaSource>  $sources
+     * @param  array<string, mixed>  $conventions
+     * @return array{contents: string|null, diagnostics: list<Diagnostic>}  null contents = no change relative to existing
+     */
+    public function renderFromValues(?string $claudeMd, array $sources, array $conventions): array
+    {
+        if ($sources === []) {
+            return ['contents' => null, 'diagnostics' => []];
+        }
+
+        $seed = $this->scaffoldSeed($sources);
+        $renderedRegion = $this->buildRenderedRegion($conventions, $seed);
+
+        if ($claudeMd === null) {
+            if ($conventions === []) {
+                // No CLAUDE.md, no operator-declared conventions — nothing
+                // to bootstrap. Schema scaffold alone is not worth creating
+                // the file for; the user-facing surface stays empty until
+                // they declare values OR a guideline write creates the file.
+                return ['contents' => null, 'diagnostics' => []];
+            }
+
+            // No CLAUDE.md but operator declared values in boost.php via
+            // `->withConventions([...])`. Bootstrap CLAUDE.md with H2 +
+            // rendered region so the declared values are actually visible
+            // to agents — without this branch, fresh repos with
+            // conventions-only-no-guidelines would have validated
+            // conventions in boost.php that never reach the file agents
+            // read.
+            return [
+                'contents' => self::H2_HEADING . "\n\n" . $renderedRegion,
+                'diagnostics' => [],
+            ];
+        }
+
+        if (! str_contains($claudeMd, self::START_MARKER)) {
+            // No marker region yet. Need to scaffold the H2 + explainer +
+            // rendered region. Reuse the syncBlock scaffold path with one
+            // tweak: substitute the rendered body for the scaffold body.
+            $h2Position = $this->findH2Position($claudeMd);
+
+            if ($h2Position === null) {
+                $appended = self::H2_HEADING . "\n\n" . $renderedRegion;
+                $separator = str_ends_with($claudeMd, "\n") ? "\n" : "\n\n";
+
+                return [
+                    'contents' => $claudeMd . $separator . $appended,
+                    'diagnostics' => [],
+                ];
+            }
+
+            $h2BodyRange = $this->h2BodyRange($claudeMd, $h2Position);
+            $body = substr($claudeMd, $h2BodyRange[0], $h2BodyRange[1] - $h2BodyRange[0]);
+
+            if ($this->isWhitespaceOrCommentsOnly($body)) {
+                $before = substr($claudeMd, 0, $h2BodyRange[0]);
+                $after = substr($claudeMd, $h2BodyRange[1]);
+                $separator = '';
+                if (! str_ends_with($before, "\n")) {
+                    $separator = "\n\n";
+                } elseif (! str_ends_with($before, "\n\n") && $body === '') {
+                    $separator = "\n";
+                }
+
+                return [
+                    'contents' => $before . $separator . $renderedRegion . $after,
+                    'diagnostics' => [],
+                ];
+            }
+
+            // H2 exists, body has non-whitespace content, no markers. Same
+            // safety contract as syncBlock — warn, don't auto-scaffold.
+            return [
+                'contents' => null,
+                'diagnostics' => [
+                    Diagnostic::warning(
+                        null,
+                        'Project Conventions section exists in CLAUDE.md but contains pre-existing content and no boost-core markers. Either move the content into a marker-bounded YAML block manually, or rename the section.',
+                    ),
+                ],
+            ];
+        }
+
+        // Marker region present. Replace its body via ManagedRegion semantics.
+        $body = self::EXPLAINER . "\n" . self::START_MARKER . "\n" . $this->buildRenderedBody($conventions, $seed) . "\n" . self::END_MARKER;
+        $contents = $this->replaceRegionBlock($claudeMd, $body);
+
+        return [
+            'contents' => $contents === $claudeMd ? null : $contents,
+            'diagnostics' => [],
+        ];
+    }
+
+    /**
      * @param  list<VendorSchemaSource>  $sources
      */
     private function buildAppendedSection(array $sources): string
     {
         return self::H2_HEADING . "\n\n" . $this->buildScaffoldRegion($sources);
+    }
+
+    /**
+     * @param  array<string, mixed>  $conventions
+     */
+    private function buildRenderedRegion(array $conventions, int $seed): string
+    {
+        $lines = [
+            self::EXPLAINER,
+            self::START_MARKER,
+            $this->buildRenderedBody($conventions, $seed),
+            self::END_MARKER,
+        ];
+
+        return implode("\n", $lines) . "\n";
+    }
+
+    /**
+     * Render the operator-supplied conventions values as a YAML body. Wraps
+     * in `\`\`\`yaml ... \`\`\`` markdown fences so the region reads as
+     * properly-rendered markdown in editors. `extract()` strips the fence
+     * automatically when reading back.
+     *
+     * @param  array<string, mixed>  $conventions
+     */
+    private function buildRenderedBody(array $conventions, int $seed): string
+    {
+        $payload = ['schema-version' => $seed, ...$conventions];
+        $yaml = Yaml::dump($payload, inline: 99, indent: 2);
+
+        return "```yaml\n" . rtrim($yaml, "\n") . "\n```";
+    }
+
+    /**
+     * Replace the body between markers in CLAUDE.md with a freshly-rendered
+     * region. The markers themselves get rewritten alongside the body — this
+     * keeps the explainer comment + start/end markers in lock-step with
+     * the rest of the spec's wording.
+     */
+    private function replaceRegionBlock(string $claudeMd, string $newBlock): string
+    {
+        $startPos = strpos($claudeMd, self::START_MARKER);
+        if ($startPos === false) {
+            return $claudeMd;
+        }
+
+        // Walk back to include the explainer comment line ABOVE the start
+        // marker (if present) so re-renders don't accumulate stale explainers.
+        $explainerStart = $startPos;
+        $beforeMarker = substr($claudeMd, 0, $startPos);
+        if (preg_match('/(?:^|\n)' . preg_quote(self::EXPLAINER, '/') . '\n?$/', $beforeMarker, $m, PREG_OFFSET_CAPTURE) === 1) {
+            $explainerStart = $m[0][1] + (str_starts_with($m[0][0], "\n") ? 1 : 0);
+        }
+
+        $endPos = strpos($claudeMd, self::END_MARKER, $startPos);
+        if ($endPos === false) {
+            return $claudeMd;
+        }
+
+        $endLineEnd = strpos($claudeMd, "\n", $endPos);
+        $blockEnd = $endLineEnd === false ? strlen($claudeMd) : $endLineEnd + 1;
+
+        $before = substr($claudeMd, 0, $explainerStart);
+        $after = substr($claudeMd, $blockEnd);
+
+        return $before . $newBlock . "\n" . $after;
     }
 
     /**

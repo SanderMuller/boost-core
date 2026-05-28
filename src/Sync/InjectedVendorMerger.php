@@ -80,6 +80,7 @@ final readonly class InjectedVendorMerger
             excludedGuidelines: $config->excludedGuidelines,
             remoteSkills: $config->remoteSkills,
             skillRenderers: array_merge($userRenderers, $extras, $trailing),
+            conventions: $config->conventions,
         );
     }
 

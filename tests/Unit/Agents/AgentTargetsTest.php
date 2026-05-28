@@ -11,17 +11,21 @@ use SanderMuller\BoostCore\Agents\JunieTarget;
 use SanderMuller\BoostCore\Agents\KiroTarget;
 use SanderMuller\BoostCore\Agents\OpenCodeTarget;
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
 
 /**
- * @return list<array{AgentTarget, Agent, string, string}> [target, agent, skillsDir, guidelinesFile]
+ * @return list<array{AgentTarget, Agent, string, ?string}> [target, agent, skillsDir, guidelinesFile]
  */
 function allTargets(): array
 {
     return [
         [new ClaudeCodeTarget(), Agent::CLAUDE_CODE, '.claude/skills', 'CLAUDE.md'],
         [new CursorTarget(), Agent::CURSOR, '.cursor/skills', 'AGENTS.md'],
-        [new CopilotTarget(), Agent::COPILOT, '.github/skills', '.github/copilot-instructions.md'],
+        // Copilot reads AGENTS.md per GitHub Changelog 2025-08-28 (expanded
+        // through 2026). Joins the 5-target AGENTS.md pool — no separate
+        // `.github/copilot-instructions.md` emission, no duplicated content.
+        [new CopilotTarget(), Agent::COPILOT, '.github/skills', 'AGENTS.md'],
         [new CodexTarget(), Agent::CODEX, '.agents/skills', 'AGENTS.md'],
         [new GeminiTarget(), Agent::GEMINI, '.gemini/skills', 'GEMINI.md'],
         [new JunieTarget(), Agent::JUNIE, '.junie/skills', 'AGENTS.md'],
@@ -46,6 +50,22 @@ it('each target reports the correct agent + paths', function (): void {
             ->and($target->guidelinesFileRelative())
             ->toBe($guidelinesFile);
     }
+});
+
+it('CopilotTarget emits guidelines into root AGENTS.md (joins the shared AGENTS.md pool, no `.github/copilot-instructions.md`)', function (): void {
+    $guideline = new Guideline(
+        name: 'sample',
+        description: null,
+        frontmatter: ['name' => 'sample'],
+        body: 'body',
+        sourcePath: '/fake',
+        sourceVendor: null,
+    );
+    $writes = (new CopilotTarget())->plan([], [$guideline]);
+
+    expect($writes)->toHaveCount(1)
+        ->and($writes[0]->relativePath)->toBe('AGENTS.md')
+        ->and($writes[0]->relativePath)->not->toBe('.github/copilot-instructions.md');
 });
 
 it('every target plans at least one skill file when given one skill', function (): void {

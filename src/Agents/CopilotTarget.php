@@ -20,9 +20,25 @@ final class CopilotTarget extends AgentTarget
         return '.github/skills';
     }
 
+    /**
+     * Copilot reads root-level `AGENTS.md` for repository-wide instructions
+     * (GitHub Changelog 2025-08-28; expanded across cloud-agent, CLI, and
+     * JetBrains surfaces through 2026). Same shared `AGENTS.md` target used
+     * by {@see CodexTarget}, {@see CursorTarget}, {@see JunieTarget},
+     * {@see KiroTarget}, {@see OpenCodeTarget}, {@see AmpTarget} — multiple
+     * agents reading the same file is the established pattern and
+     * `FileWriter`'s ManagedRegion merge handles concurrent writes safely.
+     *
+     * Replaces 0.8.x's `.github/copilot-instructions.md` emission, which
+     * duplicated content also present in `AGENTS.md` when both Copilot and
+     * Codex were active. Single source for Copilot too, no duplication.
+     *
+     * Skill + command surfaces (`.github/skills/`, `.github/prompts/`)
+     * stay Copilot-specific; those have no equivalent on other targets.
+     */
     public function guidelinesFileRelative(): string
     {
-        return '.github/copilot-instructions.md';
+        return 'AGENTS.md';
     }
 
     public function commandsDirectoryRelative(): string

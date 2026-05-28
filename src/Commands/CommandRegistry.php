@@ -29,6 +29,7 @@ final class CommandRegistry
             new ValidateCommand(),
             new SlotsCommand(),
             new PathsCommand(),
+            new ConvertConventionsCommand(),
         ];
     }
 }

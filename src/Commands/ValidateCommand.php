@@ -3,7 +3,6 @@
 namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfig;
-use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
@@ -15,13 +14,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 final class ValidateCommand extends BoostBaseCommand
 {
-    private const CLAUDE_MD = 'CLAUDE.md';
-
     protected function configure(): void
     {
         $this
             ->setName('boost:validate')
-            ->setDescription("Validate CLAUDE.md Project Conventions against allowlisted vendors' schemas.")
+            ->setDescription("Validate boost.php's withConventions([...]) against allowlisted vendors' schemas.")
             ->addWorkingDirOption()
             ->addOption('strict', null, InputOption::VALUE_NONE, 'Exit non-zero (1) on any error-level diagnostic.')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Emit machine-readable diagnostics for CI tooling.');
@@ -64,31 +61,9 @@ final class ValidateCommand extends BoostBaseCommand
         /** @var list<Diagnostic> $diagnostics */
         $diagnostics = $discoveryDiagnostics;
 
-        $claudeMdPath = $projectRoot . '/' . self::CLAUDE_MD;
-        $claudeMd = is_file($claudeMdPath) ? file_get_contents($claudeMdPath) : null;
-        if ($claudeMd === false) {
-            $claudeMd = null;
-        }
-
-        $emitter = new ConventionsBlockEmitter();
-        $extracted = $emitter->extract($claudeMd);
-        if ($extracted === null) {
-            $diagnostics[] = Diagnostic::warning(
-                null,
-                'no Project Conventions block found in CLAUDE.md — run `boost sync` to scaffold one',
-            );
-
-            return $this->render($io, $output, $diagnostics, $json, $strict, $verboseInfo);
-        }
-
-        ['values' => $values, 'diagnostics' => $parseDiagnostics] = $emitter->parse($claudeMd);
-        $diagnostics = [...$diagnostics, ...$parseDiagnostics];
-        if ($values === null) {
-            return $this->render($io, $output, $diagnostics, $json, $strict, $verboseInfo);
-        }
-
+        // 0.9.0: source of truth is BoostConfig::$conventions, not CLAUDE.md.
         $schema = new ConventionsSchema($sources);
-        $diagnostics = [...$diagnostics, ...$schema->validate($values)];
+        $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
 
         return $this->render($io, $output, $diagnostics, $json, $strict, $verboseInfo);
     }

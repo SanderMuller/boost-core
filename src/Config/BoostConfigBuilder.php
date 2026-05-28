@@ -53,6 +53,9 @@ final class BoostConfigBuilder
     /** @var list<string> */
     private array $disabledRenderers = [];
 
+    /** @var array<string, mixed> */
+    private array $conventions = [];
+
     /**
      * @param  list<Agent>  $agents
      */
@@ -226,6 +229,36 @@ final class BoostConfigBuilder
         return $this;
     }
 
+    /**
+     * Declare Project Conventions slot values — operator-edited values that
+     * vendor skills reference via JSONPaths (`$.jira.project_key`) at
+     * agent-read time. boost-core renders the array as YAML into CLAUDE.md's
+     * `<!-- boost-core:conventions:start --> ... :end -->` marker region on
+     * sync; agents read CLAUDE.md and substitute slot values inline.
+     *
+     * The array shape mirrors the vendor's `resources/boost/conventions-schema.json`:
+     * nested associative arrays per group, scalar values per leaf, list-of-objects
+     * for typed-policy slots like `branches.patterns`. boost-core validates the
+     * shape against the composed schema at sync time via `opis/json-schema`.
+     *
+     * Calling `withConventions([])` (or not calling it at all) is the no-op
+     * shape — equivalent to not declaring the chain. If an allowlisted vendor
+     * ships a schema with required slots, validation surfaces missing-required
+     * diagnostics on next sync.
+     *
+     * Replaces the 0.8.x marker-bounded YAML inside CLAUDE.md as the operator
+     * edit surface. Migration from 0.8.x: run `vendor/bin/boost
+     * convert-conventions` to extract YAML into this chain automatically.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    public function withConventions(array $values): self
+    {
+        $this->conventions = $values;
+
+        return $this;
+    }
+
     public function build(string $projectRoot): BoostConfig
     {
         $projectRoot = rtrim($projectRoot, '/');
@@ -243,6 +276,7 @@ final class BoostConfigBuilder
             excludedGuidelines: $this->excludedGuidelines,
             remoteSkills: $this->remoteSkills,
             skillRenderers: $this->buildSkillRenderers(),
+            conventions: $this->conventions,
         );
     }
 

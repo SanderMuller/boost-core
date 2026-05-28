@@ -20,6 +20,7 @@ use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
+use SanderMuller\BoostCore\Conventions\VendorSchemaSource;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
@@ -45,6 +46,8 @@ use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
+use Symfony\Component\Yaml\Exception\ParseException;
+use Symfony\Component\Yaml\Yaml;
 use Throwable;
 
 /**
@@ -324,7 +327,7 @@ final readonly class SyncEngine
      *   `.claude/skills/foo/SKILL.md`          → `.claude/skills/acme-repo-init/foo/SKILL.md`
      *   `.claude/skills/repo-init/SKILL.md`    → `.claude/skills/acme-repo-init/SKILL.md`   (deduped: skill basename matches package basename)
      *   `CLAUDE.md`                            → null
-     *   `.github/copilot-instructions.md`      → null
+     *   `AGENTS.md`                            → null
      */
     private function rewriteForUserScope(string $relativePath, string $packageName): ?string
     {
@@ -548,46 +551,65 @@ final readonly class SyncEngine
         $claudeMd = is_file($claudeMdPath) ? @file_get_contents($claudeMdPath) : null;
         $claudeMd = $claudeMd === false ? null : $claudeMd;
 
-        // 0.8.2 migration signal — fires once per CLAUDE.md that has
-        // conventions markers but no guidelines markers. Two-population
-        // case: (a) upgrade from pre-0.8.2 where wholesale guideline write
-        // wiped operator-filled YAML inside the conventions block, (b)
-        // upgrade from 0.7.x with operator-added conventions block.
-        // Either way, this sync is the first one that preserves
-        // operator-filled YAML — but legacy guideline content above the
-        // conventions block may be duplicated by the new markered region.
-        // Warning is the cheapest way to surface the cleanup action.
-        if ($claudeMd !== null
-            && str_contains($claudeMd, ConventionsBlockEmitter::START_MARKER)
-            && ! str_contains($claudeMd, '<!-- boost-core:guidelines:start -->')
-        ) {
+        $emitter = new ConventionsBlockEmitter();
+        $hasMarkerRegion = $claudeMd !== null && str_contains($claudeMd, ConventionsBlockEmitter::START_MARKER);
+        $existingBody = $hasMarkerRegion ? $emitter->extract($claudeMd) : null;
+        $existingBodyHasFilledContent = $this->existingBodyIsOperatorContent($existingBody);
+
+        // 0.9.0 fail-closed contract — surfaces when CLAUDE.md has filled
+        // marker YAML but boost.php has no `->withConventions(...)` call. This
+        // is the migration case (operator hasn't yet run convert-conventions).
+        // Sync MUST NOT overwrite the YAML to avoid silent destruction.
+        if ($existingBodyHasFilledContent && $config->conventions === []) {
             $diagnostics[] = Diagnostic::warning(
                 null,
-                'Migration to 0.8.2 guideline managed-region: existing CLAUDE.md guidelines content is now wrapped in <!-- boost-core:guidelines:start --> markers. If you see duplicate guideline content above your Project Conventions section after this sync, it is pre-fix legacy and safe to delete manually. If your Project Conventions YAML was previously wiped by sync, re-fill it now — subsequent syncs will preserve operator-edited values.',
+                'Project Conventions YAML in CLAUDE.md but boost.php has no ->withConventions([...]) call. Run `vendor/bin/boost convert-conventions` to migrate the YAML into boost.php. Sync is leaving the existing CLAUDE.md region intact for now — no values lost.',
             );
+
+            // Still validate the existing YAML so the operator sees its current state.
+            $diagnostics = [...$diagnostics, ...$this->validateExisting($emitter, $claudeMd, $sources)];
+
+            return ['write' => null, 'diagnostics' => $diagnostics];
         }
 
-        $emitter = new ConventionsBlockEmitter();
-        ['contents' => $newContents, 'diagnostics' => $emitterDiagnostics] = $emitter->syncBlock($claudeMd, $sources);
-        $diagnostics = [...$diagnostics, ...$emitterDiagnostics];
+        // Validate the source-of-truth values (BoostConfig::$conventions) regardless of render path.
+        $schema = new ConventionsSchema($sources);
+        $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
 
-        // Validation diagnostics for whichever contents will land — freshly
-        // scaffolded by syncBlock OR a pre-existing marker-bounded block.
-        $contentsForValidation = null;
-        if ($newContents !== null) {
-            $contentsForValidation = $newContents;
-        } elseif ($claudeMd !== null && str_contains($claudeMd, ConventionsBlockEmitter::START_MARKER)) {
-            $contentsForValidation = $claudeMd;
-        }
+        // 0.9.0 fail-closed — both sources non-empty AND the EXISTING marker
+        // body differs from what boost.php's values would render. Sync refuses
+        // to overwrite operator content in CLAUDE.md to avoid silent
+        // destruction. Compares the parsed marker-body values against the
+        // parsed source-of-truth values (after the synthetic schema-version
+        // injection) — comparing on parsed data is robust to whitespace,
+        // ordering, and yaml-style differences that would falsely trigger a
+        // raw-string compare.
+        if ($config->conventions !== [] && $existingBodyHasFilledContent) {
+            $existingParsed = $this->parseMarkerBodyForCompare($existingBody);
+            $rendered = ['schema-version' => $emitter->scaffoldSeed($sources), ...$config->conventions];
+            $renderedForCompare = $rendered;
+            unset($renderedForCompare['schema-version']);
+            $existingForCompare = $existingParsed ?? [];
+            unset($existingForCompare['schema-version']);
 
-        if ($contentsForValidation !== null) {
-            ['values' => $values, 'diagnostics' => $parseDiagnostics] = $emitter->parse($contentsForValidation);
-            $diagnostics = [...$diagnostics, ...$parseDiagnostics];
-            if ($values !== null) {
-                $schema = new ConventionsSchema($sources);
-                $diagnostics = [...$diagnostics, ...$schema->validate($values)];
+            // Conflict fires when either:
+            //  - parsed bodies differ on real (schema-version-excluded) keys, OR
+            //  - existing body is unparseable (parseMarkerBodyForCompare returned null).
+            // The unparseable case is critical — without it, an operator's
+            // hand-edited-but-broken YAML would get silently overwritten by
+            // boost.php's rendered output, defeating the fail-closed contract.
+            if ($existingParsed === null || $existingForCompare !== $renderedForCompare) {
+                $diagnostics[] = Diagnostic::error(
+                    null,
+                    'Project Conventions conflict — boost.php\'s ->withConventions([...]) and CLAUDE.md\'s marker body declare different values (or CLAUDE.md\'s body could not be parsed). Sync refuses to overwrite to avoid silent destruction of operator content. Reconcile manually: either re-run `vendor/bin/boost convert-conventions` to make CLAUDE.md authoritative, OR open CLAUDE.md, find the section between <!-- boost-core:conventions:start --> and <!-- boost-core:conventions:end --> markers, and replace the content there with just `schema-version: 1` (leave the markers themselves in place) to make boost.php authoritative. After reconciling, re-run `vendor/bin/boost sync`.',
+                );
+
+                return ['write' => null, 'diagnostics' => $diagnostics];
             }
         }
+
+        ['contents' => $newContents, 'diagnostics' => $emitterDiagnostics] = $emitter->renderFromValues($claudeMd, $sources, $config->conventions);
+        $diagnostics = [...$diagnostics, ...$emitterDiagnostics];
 
         if ($newContents === null) {
             return ['write' => null, 'diagnostics' => $diagnostics];
@@ -614,6 +636,91 @@ final readonly class SyncEngine
             ),
             'diagnostics' => $diagnostics,
         ];
+    }
+
+    /**
+     * Is the marker body operator-filled (real values) vs scaffold-only?
+     * Heuristic: non-empty body that contains a key other than `schema-version`.
+     * Matches the spec's "filled vs scaffold-only" distinction in §3.2.
+     */
+    private function existingBodyIsOperatorContent(?string $body): bool
+    {
+        if ($body === null) {
+            return false;
+        }
+
+        $trimmed = trim($body);
+        if ($trimmed === '') {
+            return false;
+        }
+
+        try {
+            $parsed = Yaml::parse($trimmed);
+        } catch (ParseException) {
+            // Unparseable body — treat as "has content" to be safe (operator
+            // wrote SOMETHING; sync should not overwrite it).
+            return true;
+        }
+
+        if (! is_array($parsed)) {
+            return true;
+        }
+
+        foreach (array_keys($parsed) as $key) {
+            if ($key !== 'schema-version') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Parse the existing marker body YAML for comparison against the
+     * source-of-truth values. Returns null on parse failure (treat as
+     * "incomparable" rather than as "different" — silent destruction risk
+     * stays the operator's call via the migration-warning path above).
+     *
+     * @return array<mixed, mixed>|null
+     */
+    private function parseMarkerBodyForCompare(?string $body): ?array
+    {
+        if ($body === null) {
+            return null;
+        }
+
+        $trimmed = trim($body);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        try {
+            $parsed = Yaml::parse($trimmed);
+        } catch (ParseException) {
+            return null;
+        }
+
+        return is_array($parsed) ? $parsed : null;
+    }
+
+    /**
+     * @param list<VendorSchemaSource> $sources
+     * @return list<Diagnostic>
+     */
+    private function validateExisting(ConventionsBlockEmitter $emitter, ?string $claudeMd, array $sources): array
+    {
+        if ($claudeMd === null) {
+            return [];
+        }
+
+        ['values' => $values, 'diagnostics' => $parseDiagnostics] = $emitter->parse($claudeMd);
+        if ($values === null) {
+            return $parseDiagnostics;
+        }
+
+        $schema = new ConventionsSchema($sources);
+
+        return [...$parseDiagnostics, ...$schema->validate($values)];
     }
 
     private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly): ?WrittenFile

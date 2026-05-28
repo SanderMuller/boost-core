@@ -67,13 +67,15 @@ abstract class AgentTarget
      * Paths this target owns, suitable for a managed `.gitignore` block.
      * Returns directory entries with a trailing `/` and file entries verbatim.
      *
-     * Skill + command directories ARE listed — they're 100% generated from
-     * `.ai/` content and should not be tracked. The guideline file
-     * (CLAUDE.md, AGENTS.md, GEMINI.md) is NOT listed: as of 0.8.3 the
-     * guideline file's marker-bounded region carries operator-edited
-     * Project Conventions content alongside boost-core's generated
-     * guidelines, so the file MUST be tracked in version control for
-     * operator content to survive across clones / machines.
+     * Skill + command directories ARE listed — 100% generated from `.ai/`.
+     * The guideline file (CLAUDE.md, AGENTS.md, GEMINI.md) is NOT listed:
+     * guideline writes use marker-bounded regions and preserve
+     * operator-authored content
+     * outside the markers (custom H1, prose, etc.). Auto-gitignoring +
+     * `git rm --cached` would destroy that operator content on first sync.
+     * 0.8.3's tracking decision is preserved through 0.9.0; the
+     * conventions-source-flip (operator-edit surface moves to boost.php's
+     * `->withConventions([...])`) is orthogonal to the gitignore policy.
      *
      * @return list<string>
      */

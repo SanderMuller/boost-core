@@ -148,7 +148,7 @@ final readonly class ConventionsSchema
      * undeclared keys as accepted via `additionalProperties: true`; this
      * separate diff surfaces them as warnings per spec §14.
      *
-     * @param  array{properties: array<string, array<mixed, mixed>>}  $composed
+     * @param  array{'$schema': string, type: string, properties: array<string, array<mixed, mixed>>, required: list<string>, additionalProperties: bool}  $composed
      * @param  array<mixed, mixed>  $hostValues
      * @return list<Diagnostic>
      */

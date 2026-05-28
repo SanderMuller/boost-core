@@ -1920,3 +1920,60 @@ it('0.9.1 cleanup preserves operator content OUTSIDE the boost-managed region in
         rmTreeE2E($root);
     }
 });
+
+it('0.9.3 render-fail safety: when ANY guideline renderer throws, the prior CLAUDE.md managed-region body is preserved byte-for-byte (no data loss)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\n# Conventions\n\nUse strict types.\n");
+
+        // Sync 1: normal flow, CLAUDE.md gets the rendered guideline body.
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        $afterFirst = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($afterFirst)->toContain('Use strict types.')
+            ->and($afterFirst)->toContain('<!-- boost-core:guidelines:start -->');
+
+        // Sync 2: inject a renderer that throws on .md. The default
+        // PassthroughRenderer handles .md, so adding a custom one that
+        // throws (and claims the same extension) forces the dispatcher to
+        // hit it first.
+        $failing = new class implements SkillRenderer {
+            /** @return list<string> */
+            public function extensions(): array
+            {
+                return ['md'];
+            }
+
+            public function render(string $raw, RenderContext $ctx): string
+            {
+                throw new RuntimeException('simulated renderer failure');
+            }
+        };
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync(
+            $root,
+            extraSkillRenderers: [$failing],
+        );
+
+        $afterSecond = (string) file_get_contents($root . '/CLAUDE.md');
+
+        // CRITICAL: prior body MUST survive byte-for-byte. The naive bug
+        // was the failed-render output (empty body) replacing prior content.
+        expect($afterSecond)->toBe($afterFirst);
+
+        // Diagnostic surfaces with the failed source named, so operators
+        // know which renderer to investigate.
+        $warningMessages = array_filter(
+            array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics),
+            static fn (string $m): bool => str_contains($m, 'Guideline render failed; managed-region content preserved at prior state'),
+        );
+        expect($warningMessages)->not->toBeEmpty();
+
+        // The failed source should be named (b020i4st's polish #2)
+        $combined = implode("\n", $warningMessages);
+        expect($combined)->toContain('conventions.md');
+    } finally {
+        rmTreeE2E($root);
+    }
+});

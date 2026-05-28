@@ -497,6 +497,7 @@ final readonly class SyncEngine
             $resolvedCommands,
             $droppedSkillNames,
             $checkOnly,
+            $guidelineRenderErrors,
         );
 
         $remoteOrphanWrites = $this->remoteCoordinator->applyOrphanPruning(
@@ -558,6 +559,21 @@ final readonly class SyncEngine
             $writes = $this->cleanupStaleManagedFiles($projectRoot, $priorManagedFiles, $writes, $checkOnly);
         }
 
+        // Diagnostic surface for the render-fail-then-write safety gate
+        // (0.9.3): operator-visible signal that guideline writes were
+        // skipped, naming each failed source so they know which renderer
+        // / file to investigate.
+        $renderFailDiagnostics = [];
+        foreach ($guidelineRenderErrors as $errorMessage) {
+            $renderFailDiagnostics[] = Diagnostic::warning(
+                null,
+                sprintf(
+                    'Guideline render failed; managed-region content preserved at prior state. Run `vendor/bin/boost sync` again after resolving the render failure. Source: %s',
+                    $errorMessage,
+                ),
+            );
+        }
+
         return new SyncResult(
             writes: $writes,
             emitters: $emitterResults,
@@ -565,7 +581,7 @@ final readonly class SyncEngine
             check: $checkOnly,
             tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
             hostShadows: $skillResolution['hostShadows'],
-            diagnostics: [...$conventionsResult['diagnostics'], ...$cleanupResult['diagnostics']],
+            diagnostics: [...$conventionsResult['diagnostics'], ...$cleanupResult['diagnostics'], ...$renderFailDiagnostics],
         );
     }
 
@@ -1541,6 +1557,21 @@ final readonly class SyncEngine
      * @param  list<string>  $droppedSkillNames  Names dropped by SkillTagFilter — candidates for pruning.
      * @return array{0: list<WrittenFile>, 1: list<string>}
      */
+    /**
+     * @param  list<Skill>  $skills
+     * @param  list<Guideline>  $guidelines
+     * @param  list<Command>  $commands
+     * @param  list<string>  $droppedSkillNames
+     * @param  list<string>  $guidelineRenderErrors  Render failures captured
+     *         by `resolveGuidelines()`. When non-empty, the per-target
+     *         guideline-file PendingWrite is skipped — preserves the prior
+     *         managed-region body. Without this gate, a single failed
+     *         renderer (Blade, custom, etc.) silently emits an incomplete
+     *         concatenation that overwrites operator-visible content
+     *         (CLAUDE.md guideline body). Matches the safety contract the
+     *         clean-slate pass already gets via `$hasAnyError`.
+     * @return array{0: list<WrittenFile>, 1: list<string>}
+     */
     private function fanOut(
         string $projectRoot,
         BoostConfig $config,
@@ -1549,6 +1580,7 @@ final readonly class SyncEngine
         array $commands,
         array $droppedSkillNames,
         bool $checkOnly,
+        array $guidelineRenderErrors = [],
     ): array {
         /** @var list<WrittenFile> $writes */
         $writes = [];
@@ -1556,6 +1588,7 @@ final readonly class SyncEngine
         $errors = [];
 
         $toPrune = $this->filteredSkillPruner->candidates($skills, $droppedSkillNames);
+        $skipGuidelineWrites = $guidelineRenderErrors !== [];
 
         foreach ($this->agentTargets as $target) {
             if (! $config->hasAgent($target->agent())) {
@@ -1573,7 +1606,20 @@ final readonly class SyncEngine
                 }
             }
 
+            $targetGuidelineFile = $target->guidelinesFileRelative();
             foreach ($target->plan($skills, $guidelines) as $pending) {
+                // Per-source render-error gate: when ANY guideline failed to
+                // render, skip the concatenated guideline-file write to
+                // preserve the prior managed-region body byte-for-byte.
+                // Skills are emitted as individual files so a per-skill
+                // render failure only affects that skill's emission — the
+                // clean-slate pass's existing error gate covers their
+                // preservation. Guidelines concat into one file, so a single
+                // failure poisons the whole output without this gate.
+                if ($skipGuidelineWrites && $targetGuidelineFile !== null && $pending->relativePath === $targetGuidelineFile) {
+                    continue;
+                }
+
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
 

@@ -15,9 +15,6 @@ internal/
 .agents/skills/
 .claude/commands/
 .claude/skills/
-.github/copilot-instructions.md
 .github/prompts/
 .github/skills/
-AGENTS.md
-CLAUDE.md
 # <<< boost (managed) <<<

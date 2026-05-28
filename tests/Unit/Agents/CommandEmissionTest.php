@@ -88,6 +88,15 @@ it('omits a command directory from gitignore patterns for an agent without one',
     expect((new GeminiTarget())->gitignorePatterns())->not->toContain('.gemini/commands/');
 });
 
+// 0.8.3 — operator-edited Project Conventions content lives inside the
+// guideline file's marker-bounded region. The file MUST be tracked so
+// operator content survives across clones; gitignoring it would defeat
+// the conventions-schema persistence story. Skill + command directories
+// remain 100% generated and stay in the managed gitignore block.
+it('does NOT gitignore the guideline file (operator content persistence)', function (): void {
+    expect((new ClaudeCodeTarget())->gitignorePatterns())->not->toContain('CLAUDE.md');
+});
+
 it('Kiro command emit content is identical to the equivalent skill-shaped emit (same renderer hooks)', function (): void {
     // Belt-and-suspenders: Kiro emits a command into its skills surface,
     // so the rendered content must equal what an equivalent Skill would

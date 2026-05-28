@@ -6,6 +6,7 @@ use Opis\JsonSchema\Errors\ErrorFormatter;
 use Opis\JsonSchema\Errors\ValidationError;
 use Opis\JsonSchema\Helper;
 use Opis\JsonSchema\Validator;
+use stdClass;
 
 /**
  * Loads + composes per-vendor JSONSchemas. Validates host YAML against the
@@ -123,7 +124,15 @@ final readonly class ConventionsSchema
         $validator->setMaxErrors(50);
 
         $schemaJson = json_encode($composed, JSON_THROW_ON_ERROR);
-        $data = Helper::toJSON($hostValues);
+
+        // Empty PHP array (the default for `$config->conventions` when no
+        // `withConventions([...])` was declared) serializes to a JSON array
+        // `[]`, but the conventions schema declares `type: object`. opis/json-
+        // schema then rejects with "The data (array) must match the type:
+        // object". Cast to stdClass so the empty case serializes to `{}` and
+        // validates cleanly. Non-empty associative arrays already serialize
+        // to objects via Helper::toJSON, so this only affects the empty case.
+        $data = $hostValues === [] ? new stdClass() : Helper::toJSON($hostValues);
 
         $result = $validator->validate($data, $schemaJson);
 

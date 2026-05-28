@@ -231,3 +231,20 @@ it('validate surfaces type-mismatch in compose as a single error-level diagnosti
         ->and($diagnostics[0]->slot)
         ->toBe('foo');
 });
+
+it('0.9.2 regression: empty conventions array validates clean against schema with no required keys (was: rejected as "array must match type: object")', function (): void {
+    // PHP empty array `[]` serializes to JSON `[]`, but the schema type is
+    // `object`. Without the empty-case cast to stdClass, opis rejects with
+    // "The data (array) must match the type: object". Default-empty
+    // `$config->conventions` (consumers without a `withConventions([...])`
+    // chain) MUST validate cleanly when no required slots remain.
+    $a = vendorSource('vendor/a', [
+        'type' => 'object',
+        'properties' => ['foo' => ['type' => 'string']],
+        // No 'required' field — no required slots remaining
+    ]);
+
+    $diagnostics = (new ConventionsSchema([$a]))->validate([]);
+
+    expect($diagnostics)->toBeEmpty();
+});

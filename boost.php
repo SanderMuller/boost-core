@@ -10,8 +10,15 @@ return BoostConfig::configure()
         Agent::COPILOT,
         Agent::CODEX,
     ])
-    ->withAllowedVendors(['sandermuller/boost-skills'])
-    ->withTags(Tag::Php, Tag::Github, 'release-automation')
+    ->withAllowedVendors([
+        'sandermuller/boost-skills',
+    ])
+    ->withTags(
+        Tag::Php,
+        Tag::Github,
+        Tag::Pest,
+        'release-automation',
+    )
     ->withExcludedGuidelines([
         // boost-core is a framework-free Composer plugin — no database, no
         // migrations. These ship from boost-skills untagged, so the deny-list

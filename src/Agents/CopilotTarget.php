@@ -15,9 +15,23 @@ final class CopilotTarget extends AgentTarget
         return Agent::COPILOT;
     }
 
+    /**
+     * Copilot reads project skills from `.github/skills`, `.claude/skills`,
+     * OR `.agents/skills` interchangeably (GitHub Docs: Adding agent skills,
+     * 2025-12-18 Changelog: "GitHub Copilot now supports Agent Skills").
+     * Boost-core routes Copilot to the shared `.agents/skills` pool — same
+     * directory CodexTarget emits to. Consolidates the surface so consumers
+     * with Copilot + Codex active don't duplicate skill files across two
+     * directories. Copilot-only configs still get skills via this pool —
+     * CopilotTarget's own emission keeps `.agents/skills` populated.
+     *
+     * Replaces 0.8.x's `.github/skills` emission. 0.9.1 sync cleanup
+     * removes any stale `.github/skills/` left over from prior versions
+     * (see SyncEngine::cleanupStalePaths()).
+     */
     public function skillsDirectoryRelative(): string
     {
-        return '.github/skills';
+        return '.agents/skills';
     }
 
     /**

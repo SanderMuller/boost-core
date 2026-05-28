@@ -22,10 +22,13 @@ function allTargets(): array
     return [
         [new ClaudeCodeTarget(), Agent::CLAUDE_CODE, '.claude/skills', 'CLAUDE.md'],
         [new CursorTarget(), Agent::CURSOR, '.cursor/skills', 'AGENTS.md'],
-        // Copilot reads AGENTS.md per GitHub Changelog 2025-08-28 (expanded
-        // through 2026). Joins the 5-target AGENTS.md pool — no separate
-        // `.github/copilot-instructions.md` emission, no duplicated content.
-        [new CopilotTarget(), Agent::COPILOT, '.github/skills', 'AGENTS.md'],
+        // Copilot reads AGENTS.md (Changelog 2025-08-28) + project skills
+        // from .github/skills | .claude/skills | .agents/skills interchangeably
+        // (Changelog 2025-12-18). 0.9.1 routes BOTH guidelines AND skills to
+        // the shared `.agents/` pool — no separate `.github/copilot-instructions.md`,
+        // no separate `.github/skills/` emission. Copilot still reads them
+        // via the shared pool.
+        [new CopilotTarget(), Agent::COPILOT, '.agents/skills', 'AGENTS.md'],
         [new CodexTarget(), Agent::CODEX, '.agents/skills', 'AGENTS.md'],
         [new GeminiTarget(), Agent::GEMINI, '.gemini/skills', 'GEMINI.md'],
         [new JunieTarget(), Agent::JUNIE, '.junie/skills', 'AGENTS.md'],
@@ -66,6 +69,22 @@ it('CopilotTarget emits guidelines into root AGENTS.md (joins the shared AGENTS.
     expect($writes)->toHaveCount(1)
         ->and($writes[0]->relativePath)->toBe('AGENTS.md')
         ->and($writes[0]->relativePath)->not->toBe('.github/copilot-instructions.md');
+});
+
+it('CopilotTarget emits skills into `.agents/skills/` (joins the shared skills pool, no `.github/skills/`)', function (): void {
+    $skill = new Skill(
+        name: 'foo',
+        description: null,
+        frontmatter: ['name' => 'foo'],
+        body: 'body',
+        sourcePath: '/fake',
+        sourceVendor: null,
+    );
+    $writes = (new CopilotTarget())->plan([$skill], []);
+
+    expect($writes)->toHaveCount(1)
+        ->and($writes[0]->relativePath)->toBe('.agents/skills/foo/SKILL.md')
+        ->and($writes[0]->relativePath)->not->toStartWith('.github/skills/');
 });
 
 it('every target plans at least one skill file when given one skill', function (): void {

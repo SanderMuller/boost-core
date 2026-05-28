@@ -2,7 +2,10 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
+use FilesystemIterator;
 use LogicException;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
@@ -25,6 +28,7 @@ use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
+use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Skills\CollidingSkillsException;
 use SanderMuller\BoostCore\Skills\Command;
@@ -46,6 +50,7 @@ use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
+use SplFileInfo;
 use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 use Throwable;
@@ -502,6 +507,12 @@ final readonly class SyncEngine
             $checkOnly,
         );
 
+        // Snapshot prior boost-managed gitignore patterns BEFORE updateGitignore
+        // overwrites them. cleanupStalePaths uses this manifest to distinguish
+        // boost-emitted dirs (safe to delete) from operator-authored content.
+        $priorManagedPatterns = $this->readPriorGitignorePatterns($projectRoot);
+        $priorManagedFiles = $this->enumerateManagedFiles($projectRoot, $priorManagedPatterns);
+
         $gitignoreWrite = ($config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false)
             ? $this->updateGitignore($projectRoot, $config, $checkOnly)
             : null;
@@ -516,6 +527,37 @@ final readonly class SyncEngine
             $writes[] = $conventionsResult['write'];
         }
 
+        $cleanupResult = $this->cleanupStalePaths($projectRoot, $config, $checkOnly, $priorManagedPatterns);
+        $writes = [...$writes, ...$cleanupResult['writes']];
+
+        // Generic stale-file cleanup — 0.9.1 clean-slate model. Any file that
+        // was inside a boost-managed gitignore pattern BEFORE this sync but
+        // wasn't rewritten by this sync is stale. Delete it. Catches any
+        // emission boost-core stopped making (vendor drops a skill, allowlist
+        // changes, target emission location moves, etc.) without per-case
+        // cleanup logic. Guideline files (CLAUDE.md/AGENTS.md/GEMINI.md) are
+        // NOT in the gitignore manifest — they use ManagedRegion + are
+        // operator-tracked, so this pass leaves them alone.
+        //
+        // Error-state safety: skip the clean-slate pass when any error
+        // surfaced (fanOut, remote, or emitter). Errors signal partial
+        // sync state — a still-declared remote skill that failed to fetch
+        // this run is in priorManagedFiles but NOT in $writes; deleting it
+        // would discard the previously-cached working copy, breaking the
+        // "transient fetch failure preserves prior content" contract.
+        $hasAnyError = $fanOutErrors !== [] || $remoteErrors !== [];
+        foreach ($emitterResults as $emitterResult) {
+            if ($emitterResult->action === EmitterAction::ERRORED) {
+                $hasAnyError = true;
+
+                break;
+            }
+        }
+
+        if (! $hasAnyError) {
+            $writes = $this->cleanupStaleManagedFiles($projectRoot, $priorManagedFiles, $writes, $checkOnly);
+        }
+
         return new SyncResult(
             writes: $writes,
             emitters: $emitterResults,
@@ -523,8 +565,378 @@ final readonly class SyncEngine
             check: $checkOnly,
             tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
             hostShadows: $skillResolution['hostShadows'],
-            diagnostics: $conventionsResult['diagnostics'],
+            diagnostics: [...$conventionsResult['diagnostics'], ...$cleanupResult['diagnostics']],
         );
+    }
+
+    /**
+     * Remove paths boost-core used to emit but no longer does. Targeted to
+     * the 0.9.x Copilot consolidation: drops stale `.github/skills/` and
+     * `.github/copilot-instructions.md` that 0.8.x emitted.
+     *
+     * Three-layer safety:
+     *  1. Copilot must be in active agents (proves operator opted in to
+     *     boost-core managing these paths).
+     *  2. `.github/copilot-instructions.md`: file MUST contain boost-core's
+     *     `<!-- boost-core:guidelines:start -->` marker — proves the file
+     *     was previously written by boost-core's guideline emitter, not
+     *     hand-authored by the operator.
+     *  3. `.github/skills/`: directory MUST appear in the prior managed
+     *     `.gitignore` block — proves boost-core previously emitted to it
+     *     (each emission target's `gitignorePatterns()` lists its
+     *     skills/commands dir). Hand-authored skills the operator never
+     *     handed to boost-core wouldn't be in the prior managed block,
+     *     so they survive.
+     *
+     * Reports drift via `WrittenFile` entries (DELETED / WOULD_DELETE) so
+     * `boost sync --check` and CI surface the upcoming cleanup as
+     * countWouldChange > 0 + hasDrift() = true.
+     *
+     * @param  list<string>  $priorManagedPatterns  Boost-managed gitignore
+     *         patterns captured BEFORE the same sync rewrote the block.
+     *         `updateGitignore()` runs upstream of this method, so reading
+     *         `.gitignore` here would only see the new (post-rewrite)
+     *         patterns and miss `.github/skills/` after the Copilot
+     *         consolidation. Must be snapshotted earlier in `sync()`.
+     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>}
+     */
+    private function cleanupStalePaths(string $projectRoot, BoostConfig $config, bool $checkOnly, array $priorManagedPatterns): array
+    {
+        if (! $config->hasAgent(Agent::COPILOT)) {
+            return ['writes' => [], 'diagnostics' => []];
+        }
+
+        $writes = [];
+        $diagnostics = [];
+
+        $copilotFile = $projectRoot . '/.github/copilot-instructions.md';
+        if (is_link($copilotFile)) {
+            $writes[] = $this->cleanupPath($copilotFile, '.github/copilot-instructions.md', $checkOnly);
+            $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage('.github/copilot-instructions.md', $checkOnly));
+        } elseif (is_file($copilotFile)) {
+            $content = (string) @file_get_contents($copilotFile);
+            if (str_contains($content, '<!-- boost-core:guidelines:start -->')) {
+                // 0.8.2+ used ManagedRegion when writing here, so operator
+                // bytes may live OUTSIDE the managed region (custom H1,
+                // intro prose, etc.). Strip ONLY the managed region; keep
+                // operator content. If nothing remains after the strip,
+                // delete the file. Matches the round-trip safety contract
+                // CLAUDE.md/AGENTS.md/GEMINI.md get from ManagedRegion.
+                $stripped = $this->stripManagedRegion($content);
+                $strippedTrim = trim($stripped);
+
+                if ($strippedTrim === '') {
+                    $writes[] = $this->cleanupPath($copilotFile, '.github/copilot-instructions.md', $checkOnly);
+                    $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage('.github/copilot-instructions.md', $checkOnly));
+                } else {
+                    if (! $checkOnly) {
+                        @file_put_contents($copilotFile, $stripped);
+                    }
+
+                    $writes[] = new WrittenFile(
+                        relativePath: '.github/copilot-instructions.md',
+                        absolutePath: $copilotFile,
+                        action: $checkOnly ? WriteAction::WOULD_WRITE : WriteAction::WROTE,
+                    );
+                    $diagnostics[] = Diagnostic::info(
+                        null,
+                        'Cleanup: stripped boost-core managed region from `.github/copilot-instructions.md`. Operator-authored content OUTSIDE the markers (custom H1, prose) preserved. Copilot reads root `AGENTS.md` for repository-wide instructions in 0.9.x (per GitHub Changelog 2025-08-28). The remaining operator content stays as-is, never refreshed by future syncs — move guideline content into your `.ai/guidelines/` source if you want it tracked by boost-core.',
+                    );
+                }
+            }
+        }
+
+        $skillsDir = $projectRoot . '/.github/skills';
+        if ((is_dir($skillsDir) || is_link($skillsDir)) && in_array('.github/skills/', $priorManagedPatterns, true)) {
+            $writes[] = $this->cleanupPath($skillsDir, '.github/skills', $checkOnly);
+            $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage('.github/skills', $checkOnly));
+        }
+
+        return ['writes' => $writes, 'diagnostics' => $diagnostics];
+    }
+
+    /**
+     * Strip the boost-core guideline managed region (between
+     * `<!-- boost-core:guidelines:start -->` and
+     * `<!-- boost-core:guidelines:end -->`) from a file's contents.
+     * Returns the content with the region (and the explainer comment
+     * immediately above the start marker, if present) removed. Bytes
+     * outside the region are preserved verbatim.
+     */
+    private function stripManagedRegion(string $content): string
+    {
+        $startMarker = '<!-- boost-core:guidelines:start -->';
+        $endMarker = '<!-- boost-core:guidelines:end -->';
+
+        $startPos = strpos($content, $startMarker);
+        if ($startPos === false) {
+            return $content;
+        }
+
+        $endPos = strpos($content, $endMarker, $startPos);
+        if ($endPos === false) {
+            return $content;
+        }
+
+        // Include trailing newline after end marker if present
+        $blockEnd = $endPos + strlen($endMarker);
+        if (isset($content[$blockEnd]) && $content[$blockEnd] === "\n") {
+            ++$blockEnd;
+        }
+
+        // Walk back to include the explainer comment line above start marker if present
+        $blockStart = $startPos;
+        $before = substr($content, 0, $startPos);
+        if (preg_match('/(?:^|\n)<!-- Managed by boost-core[^\n]*-->\n?$/', $before, $m, PREG_OFFSET_CAPTURE) === 1) {
+            $blockStart = $m[0][1] + (str_starts_with($m[0][0], "\n") ? 1 : 0);
+        }
+
+        return substr($content, 0, $blockStart) . substr($content, $blockEnd);
+    }
+
+    private function cleanupPath(string $absolute, string $relative, bool $checkOnly): WrittenFile
+    {
+        if (! $checkOnly) {
+            if (is_link($absolute)) {
+                @unlink($absolute);
+            } elseif (is_dir($absolute)) {
+                $this->deleteRecursive($absolute);
+            } else {
+                @unlink($absolute);
+            }
+        }
+
+        return new WrittenFile(
+            relativePath: $relative,
+            absolutePath: $absolute,
+            action: $checkOnly ? WriteAction::WOULD_DELETE : WriteAction::DELETED,
+        );
+    }
+
+    private function cleanupMessage(string $relativePath, bool $checkOnly): string
+    {
+        $verb = $checkOnly ? 'would remove' : 'removed';
+
+        return sprintf(
+            'Cleanup: %s stale boost-core-emitted path `%s`. 0.9.x routes Copilot to the shared `.agents/skills/` + `AGENTS.md` surfaces (per GitHub Changelog 2025-08-28 for instructions and 2025-12-18 for skills). Leftover content at this path would not be refreshed by future syncs; removing it prevents stale-takes-priority risk in Copilot ingestion.',
+            $verb,
+            $relativePath,
+        );
+    }
+
+    /**
+     * Enumerate every file currently on disk under any of the given
+     * boost-managed gitignore patterns. Used by the clean-slate post-sync
+     * pass: anything in this list NOT rewritten by the current sync is
+     * stale and gets deleted.
+     *
+     * Patterns ending with `/` are treated as directories — recursed.
+     * Other patterns are treated as single file paths. Wildcard / glob
+     * patterns are skipped (boost-managed gitignore only uses directory +
+     * file patterns).
+     *
+     * Symlinks at the pattern root are skipped — never followed, never
+     * deleted. Matches `FileWriter::anySegmentIsSymlink()` safety contract.
+     *
+     * @param  list<string>  $patterns
+     * @return list<string>  relative file paths inside any pattern
+     */
+    private function enumerateManagedFiles(string $projectRoot, array $patterns): array
+    {
+        $files = [];
+        foreach ($patterns as $pattern) {
+            if ($pattern === '') {
+                continue;
+            }
+
+            if (str_contains($pattern, '*')) {
+                continue;
+            }
+
+            if (str_contains($pattern, '?')) {
+                continue;
+            }
+
+            $relative = rtrim($pattern, '/');
+            $absolute = $projectRoot . '/' . $relative;
+
+            if (is_link($absolute)) {
+                continue;
+            }
+
+            if (is_file($absolute)) {
+                $files[] = $relative;
+
+                continue;
+            }
+
+            if (! is_dir($absolute)) {
+                continue;
+            }
+
+            $iter = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($absolute, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::LEAVES_ONLY,
+            );
+            /** @var SplFileInfo $file */
+            foreach ($iter as $file) {
+                if (! $file->isFile()) {
+                    continue;
+                }
+
+                if ($file->isLink()) {
+                    continue;
+                }
+
+                $files[] = $relative . '/' . str_replace('\\', '/', substr($file->getPathname(), strlen($absolute) + 1));
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * Delete files that were inside boost-managed patterns BEFORE this sync
+     * but weren't rewritten this run. The clean-slate model: anything
+     * boost-core no longer publishes is stale. Removes per-file then walks
+     * up to clean empty parent directories so a directory that lost every
+     * file disappears entirely.
+     *
+     * Skips files already deleted by other prune passes (FilteredSkillPruner,
+     * RemoteOrphanPruner) — `file_exists()` returns false on already-gone
+     * files, no double DELETED records.
+     *
+     * @param  list<string>  $priorManagedFiles
+     * @param  list<WrittenFile>  $writes
+     * @return list<WrittenFile>
+     */
+    private function cleanupStaleManagedFiles(string $projectRoot, array $priorManagedFiles, array $writes, bool $checkOnly): array
+    {
+        $writtenPaths = [];
+        foreach ($writes as $w) {
+            $writtenPaths[$w->relativePath] = true;
+        }
+
+        foreach ($priorManagedFiles as $relativePath) {
+            if (isset($writtenPaths[$relativePath])) {
+                continue;
+            }
+
+            $absolute = $projectRoot . '/' . $relativePath;
+            if (! file_exists($absolute) && ! is_link($absolute)) {
+                continue;
+            }
+
+            if (! $checkOnly) {
+                @unlink($absolute);
+                $this->removeEmptyParentDirs($projectRoot, $absolute);
+            }
+
+            $writes[] = new WrittenFile(
+                relativePath: $relativePath,
+                absolutePath: $absolute,
+                action: $checkOnly ? WriteAction::WOULD_DELETE : WriteAction::DELETED,
+            );
+        }
+
+        return $writes;
+    }
+
+    /**
+     * Walk up from `$absolute`'s parent toward `$projectRoot`, removing
+     * each directory that's now empty. Stops at the first non-empty parent
+     * or at the project root (never delete that).
+     */
+    private function removeEmptyParentDirs(string $projectRoot, string $absolute): void
+    {
+        $projectRoot = rtrim($projectRoot, '/');
+        $parent = dirname($absolute);
+        while ($parent !== $projectRoot && str_starts_with($parent, $projectRoot . '/')) {
+            $entries = @scandir($parent);
+            if ($entries === false) {
+                return;
+            }
+
+            $remaining = array_values(array_diff($entries, ['.', '..']));
+            if ($remaining !== []) {
+                return;
+            }
+
+            if (! @rmdir($parent)) {
+                return;
+            }
+
+            $parent = dirname($parent);
+        }
+    }
+
+    /**
+     * Extract the patterns boost-core previously gitignored, by reading
+     * the managed block in `.gitignore`. Used by `cleanupStalePaths()` to
+     * distinguish boost-emitted directories (safe to delete) from
+     * operator-authored content (must be preserved).
+     *
+     * @return list<string>
+     */
+    private function readPriorGitignorePatterns(string $projectRoot): array
+    {
+        $gitignorePath = $projectRoot . '/.gitignore';
+        if (! is_file($gitignorePath)) {
+            return [];
+        }
+
+        $content = (string) @file_get_contents($gitignorePath);
+        $start = strpos($content, GitignoreManager::START);
+        if ($start === false) {
+            return [];
+        }
+
+        $end = strpos($content, GitignoreManager::END, $start);
+        if ($end === false) {
+            return [];
+        }
+
+        $block = substr($content, $start, $end - $start);
+        $patterns = [];
+        $lines = preg_split('/\r?\n/', $block);
+        foreach ($lines === false ? [] : $lines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '') {
+                continue;
+            }
+
+            if (str_starts_with($trimmed, '#')) {
+                continue;
+            }
+
+            $patterns[] = $trimmed;
+        }
+
+        return $patterns;
+    }
+
+    private function deleteRecursive(string $path): void
+    {
+        if (! is_dir($path)) {
+            @unlink($path);
+
+            return;
+        }
+
+        $iter = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        /** @var SplFileInfo $file */
+        foreach ($iter as $file) {
+            if ($file->isDir()) {
+                @rmdir($file->getPathname());
+            } else {
+                @unlink($file->getPathname());
+            }
+        }
+
+        @rmdir($path);
     }
 
     /**
@@ -576,14 +988,18 @@ final readonly class SyncEngine
         $schema = new ConventionsSchema($sources);
         $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
 
-        // 0.9.0 fail-closed — both sources non-empty AND the EXISTING marker
-        // body differs from what boost.php's values would render. Sync refuses
-        // to overwrite operator content in CLAUDE.md to avoid silent
-        // destruction. Compares the parsed marker-body values against the
-        // parsed source-of-truth values (after the synthetic schema-version
-        // injection) — comparing on parsed data is robust to whitespace,
-        // ordering, and yaml-style differences that would falsely trigger a
-        // raw-string compare.
+        // 0.9.x reconcile semantics — boost.php is canonical source of truth.
+        // Three cases when both sources non-empty AND existing body has content:
+        //  - Parseable body, values equal: no-op (renderFromValues returns null)
+        //  - Parseable body, values differ (incl. key removal): warning +
+        //    proceed. boost.php wins, CLAUDE.md re-renders. The 0.9.0 fail-
+        //    closed-on-divergence behavior was too strict — caught legitimate
+        //    edits to boost.php (operator removes a slot key → sync stalls
+        //    silently with no write because the parsed bodies differ). Warning
+        //    preserves the visibility signal without blocking the canonical flow.
+        //  - Unparseable body: still fail-closed. Unparseable YAML means the
+        //    body was hand-edited into a broken state; silently overwriting
+        //    risks destroying recovery context. Operator reconciles manually.
         if ($config->conventions !== [] && $existingBodyHasFilledContent) {
             $existingParsed = $this->parseMarkerBodyForCompare($existingBody);
             $rendered = ['schema-version' => $emitter->scaffoldSeed($sources), ...$config->conventions];
@@ -592,19 +1008,20 @@ final readonly class SyncEngine
             $existingForCompare = $existingParsed ?? [];
             unset($existingForCompare['schema-version']);
 
-            // Conflict fires when either:
-            //  - parsed bodies differ on real (schema-version-excluded) keys, OR
-            //  - existing body is unparseable (parseMarkerBodyForCompare returned null).
-            // The unparseable case is critical — without it, an operator's
-            // hand-edited-but-broken YAML would get silently overwritten by
-            // boost.php's rendered output, defeating the fail-closed contract.
-            if ($existingParsed === null || $existingForCompare !== $renderedForCompare) {
+            if ($existingParsed === null) {
                 $diagnostics[] = Diagnostic::error(
                     null,
-                    'Project Conventions conflict — boost.php\'s ->withConventions([...]) and CLAUDE.md\'s marker body declare different values (or CLAUDE.md\'s body could not be parsed). Sync refuses to overwrite to avoid silent destruction of operator content. Reconcile manually: either re-run `vendor/bin/boost convert-conventions` to make CLAUDE.md authoritative, OR open CLAUDE.md, find the section between <!-- boost-core:conventions:start --> and <!-- boost-core:conventions:end --> markers, and replace the content there with just `schema-version: 1` (leave the markers themselves in place) to make boost.php authoritative. After reconciling, re-run `vendor/bin/boost sync`.',
+                    "Project Conventions: CLAUDE.md's marker body could not be parsed as YAML. Sync refuses to overwrite a malformed body to avoid destroying recovery context. Open CLAUDE.md, find the section between <!-- boost-core:conventions:start --> and <!-- boost-core:conventions:end --> markers, and replace the content there with just `schema-version: 1` (leave the markers themselves in place) to let boost.php take over on the next sync.",
                 );
 
                 return ['write' => null, 'diagnostics' => $diagnostics];
+            }
+
+            if ($existingForCompare !== $renderedForCompare) {
+                $diagnostics[] = Diagnostic::warning(
+                    null,
+                    'Project Conventions: CLAUDE.md\'s marker body differs from boost.php\'s ->withConventions([...]). boost.php is canonical; CLAUDE.md is being re-rendered to match. If you intentionally edited CLAUDE.md, that change is being overwritten — make the edit in boost.php\'s ->withConventions([...]) chain instead.',
+                );
             }
         }
 

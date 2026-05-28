@@ -133,3 +133,12 @@ Where the project has dedicated quality-check skills synced, delegate to them â€
 
 These phrases indicate missing verification. Run the command first, then report what actually happened.
 <!-- boost-core:guidelines:end -->
+
+## Project Conventions
+
+<!-- Managed by boost-core. Edit the YAML between the markers; do not remove or move the markers. -->
+<!-- boost-core:conventions:start -->
+```yaml
+schema-version: 1
+```
+<!-- boost-core:conventions:end -->

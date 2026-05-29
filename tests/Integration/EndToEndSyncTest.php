@@ -1721,15 +1721,19 @@ jira:
     }
 });
 
-it('0.9.1 cleanup: stale `.github/copilot-instructions.md` (with boost-core guideline markers) removed when Copilot active', function (): void {
+it('0.9.6 path-ownership: retired `.github/copilot-instructions.md` removed unconditionally when Copilot active (boost-core owns category-3 paths)', function (): void {
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::COPILOT]);");
         file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nBody.");
 
         @mkdir($root . '/.github', 0o755, true);
-        // Marker proves boost-core emitted this file (vs operator-authored).
-        file_put_contents($root . '/.github/copilot-instructions.md', "<!-- boost-core:guidelines:start -->\nstale 0.8.x content\n<!-- boost-core:guidelines:end -->\n");
+        // ANY content at this path is treated as boost-emitted under the
+        // path-ownership reframe — pre-0.8.2 wholesale-sync output, 0.8.2+
+        // ManagedRegion output, hand-authored content (per category-3
+        // ownership), all gate-pass equivalently. Trigger conditions:
+        // Copilot active + path in retired registry + path on disk.
+        file_put_contents($root . '/.github/copilot-instructions.md', 'any content — boost-core owns this path');
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
@@ -1738,31 +1742,36 @@ it('0.9.1 cleanup: stale `.github/copilot-instructions.md` (with boost-core guid
             ->and($result->countByAction(WriteAction::DELETED))->toBeGreaterThanOrEqual(1);
 
         $infoMessages = array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics);
-        expect(implode("\n", $infoMessages))->toContain('Cleanup: removed stale boost-core-emitted path `.github/copilot-instructions.md`');
+        expect(implode("\n", $infoMessages))->toContain('Cleanup: removed retired boost-core path `.github/copilot-instructions.md`');
     } finally {
         rmTreeE2E($root);
     }
 });
 
-it('0.9.1 cleanup safety: `.github/copilot-instructions.md` WITHOUT boost markers (operator-authored) is preserved', function (): void {
+it('0.9.6 path-ownership: pre-0.8.2 wholesale-sync content (no markers) removed unconditionally — the canonical failure mode the 0.9.1 marker-guard incorrectly skipped', function (): void {
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::COPILOT]);");
         file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nBody.");
 
         @mkdir($root . '/.github', 0o755, true);
-        file_put_contents($root . '/.github/copilot-instructions.md', "# Hand-authored Copilot instructions\n\nUse only TypeScript.");
+        // Pre-0.8.2 content has NO ManagedRegion markers (ManagedRegion
+        // introduced in 0.8.2). Under 0.9.1-0.9.5's marker-presence guard,
+        // this file silently survived cleanup forever. Under 0.9.6 path-
+        // ownership: gate passes on Copilot-active + path-in-retired-
+        // registry; delete unconditionally. Closes the failure mode that
+        // surfaced via package-boost-php proving-consumer absorption.
+        file_put_contents($root . '/.github/copilot-instructions.md', "# Pre-0.8.2 wholesale-sync content\n\nNo markers because ManagedRegion is 0.8.2+.\n");
 
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect(file_exists($root . '/.github/copilot-instructions.md'))->toBeTrue()
-            ->and((string) file_get_contents($root . '/.github/copilot-instructions.md'))->toContain('Hand-authored');
+        expect(file_exists($root . '/.github/copilot-instructions.md'))->toBeFalse();
     } finally {
         rmTreeE2E($root);
     }
 });
 
-it('0.9.1 cleanup: stale `.github/skills/` removed when in prior boost-managed gitignore block', function (): void {
+it('0.9.6 path-ownership: retired `.github/skills/` removed unconditionally when Copilot active', function (): void {
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::COPILOT]);");
@@ -1771,34 +1780,14 @@ it('0.9.1 cleanup: stale `.github/skills/` removed when in prior boost-managed g
         @mkdir($root . '/.github/skills/legacy', 0o755, true);
         file_put_contents($root . '/.github/skills/legacy/SKILL.md', 'stale 0.8.x skill');
 
-        // Prior 0.8.x gitignore listed .github/skills/ as boost-managed → proves prior emission.
-        file_put_contents($root . '/.gitignore', "# >>> boost (managed) >>>\n.github/skills/\n.github/prompts/\n# <<< boost (managed) <<<\n");
-
+        // No prior gitignore-manifest required — path-ownership replaces the
+        // gitignore-presence gate. The path is in the retired-paths registry
+        // (deprecated in 0.9.1 — Copilot reads .agents/skills via shared pool).
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
         expect(is_dir($root . '/.github/skills'))->toBeFalse()
             ->and(file_exists($root . '/.github/skills/legacy/SKILL.md'))->toBeFalse()
             ->and(file_exists($root . '/.agents/skills/foo/SKILL.md'))->toBeTrue();
-    } finally {
-        rmTreeE2E($root);
-    }
-});
-
-it('0.9.1 cleanup safety: `.github/skills/` NOT in prior gitignore (operator-authored) is preserved', function (): void {
-    $root = makeEndToEndProject();
-    try {
-        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::COPILOT]);");
-        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nBody.");
-
-        @mkdir($root . '/.github/skills/operator-skill', 0o755, true);
-        file_put_contents($root . '/.github/skills/operator-skill/SKILL.md', "---\nname: operator-skill\n---\nHand-authored.");
-
-        // No prior boost-managed gitignore block → .github/skills/ is operator-authored → MUST survive.
-
-        SyncEngine::default(emptyInstalledPackages())->sync($root);
-
-        expect(file_exists($root . '/.github/skills/operator-skill/SKILL.md'))->toBeTrue()
-            ->and((string) file_get_contents($root . '/.github/skills/operator-skill/SKILL.md'))->toContain('Hand-authored.');
     } finally {
         rmTreeE2E($root);
     }
@@ -1838,7 +1827,7 @@ it('0.9.1 cleanup: --check-only reports drift via WOULD_DELETE write + diagnosti
             ->and($result->countByAction(WriteAction::WOULD_DELETE))->toBeGreaterThanOrEqual(1);
 
         $infoMessages = array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics);
-        expect(implode("\n", $infoMessages))->toContain('would remove stale boost-core-emitted path `.github/copilot-instructions.md`');
+        expect(implode("\n", $infoMessages))->toContain('would remove retired boost-core path `.github/copilot-instructions.md`');
     } finally {
         rmTreeE2E($root);
     }
@@ -1889,33 +1878,34 @@ it('0.9.1 clean-slate safety: error state preserves stale files (no over-pruning
     expect(true)->toBeTrue();
 });
 
-it('0.9.1 cleanup preserves operator content OUTSIDE the boost-managed region in `.github/copilot-instructions.md`', function (): void {
+it('0.9.6 path-ownership: mixed-content at `.github/copilot-instructions.md` (operator prose around managed region) cleaned unconditionally — category-3 paths are end-to-end boost-managed', function (): void {
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::COPILOT]);");
         file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nBody.");
 
         @mkdir($root . '/.github', 0o755, true);
-        // Mixed-ownership file: operator prose at top + boost-managed region.
-        // 0.8.2+ ManagedRegion writes preserved outside-marker content;
-        // 0.9.1 cleanup must too.
+        // 0.9.1-0.9.5 stripped only the managed region here (preserving
+        // outside-marker prose). 0.9.6 path-ownership reframe: `.github/`
+        // category-3 paths are boost-managed end-to-end; operator influence
+        // runs through `.ai/` sources + vendor packages + boost.php, never
+        // via hand-editing emission targets. Mixed-content files at retired
+        // paths get cleaned in full. The diagnostic copy directs operators
+        // to git history if content was deliberately authored.
         $mixed = "# My custom Copilot instructions\n\nAlways prefer TypeScript.\n\n<!-- Managed by boost-core. Edit this file's .ai/ sources, not the region below. -->\n<!-- boost-core:guidelines:start -->\nstale 0.8.x boost-emitted content\n<!-- boost-core:guidelines:end -->\n\n## Additional operator notes\n\nMore prose.\n";
         file_put_contents($root . '/.github/copilot-instructions.md', $mixed);
 
-        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        $after = (string) file_get_contents($root . '/.github/copilot-instructions.md');
+        expect(file_exists($root . '/.github/copilot-instructions.md'))->toBeFalse();
 
-        // Operator content preserved (above + below the stripped region)
-        expect($after)->toContain('# My custom Copilot instructions')
-            ->and($after)->toContain('Always prefer TypeScript.')
-            ->and($after)->toContain('## Additional operator notes')
-            ->and($after)->toContain('More prose.')
-            // Boost-managed region + explainer comment removed
-            ->and($after)->not->toContain('<!-- boost-core:guidelines:start -->')
-            ->and($after)->not->toContain('<!-- boost-core:guidelines:end -->')
-            ->and($after)->not->toContain('Managed by boost-core')
-            ->and($after)->not->toContain('stale 0.8.x boost-emitted content');
+        // Diagnostic explicitly directs operators to git history recovery
+        // if content was deliberately authored (per the path-ownership
+        // contract — operators must move content into `.ai/guidelines/`
+        // sources for boost-core to track it going forward).
+        $infoMessages = array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics);
+        $combined = implode("\n", $infoMessages);
+        expect($combined)->toContain('recover from git history');
     } finally {
         rmTreeE2E($root);
     }

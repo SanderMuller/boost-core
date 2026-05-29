@@ -528,7 +528,7 @@ final readonly class SyncEngine
             $writes[] = $conventionsResult['write'];
         }
 
-        $cleanupResult = $this->cleanupStalePaths($projectRoot, $config, $checkOnly, $priorManagedPatterns);
+        $cleanupResult = $this->cleanupStalePaths($projectRoot, $config, $checkOnly);
         $writes = [...$writes, ...$cleanupResult['writes']];
 
         // Generic stale-file cleanup — 0.9.1 clean-slate model. Any file that
@@ -586,128 +586,74 @@ final readonly class SyncEngine
     }
 
     /**
-     * Remove paths boost-core used to emit but no longer does. Targeted to
-     * the 0.9.x Copilot consolidation: drops stale `.github/skills/` and
-     * `.github/copilot-instructions.md` that 0.8.x emitted.
+     * Remove paths boost-core retired entirely — the 0.9.6 path-ownership
+     * reframe (per design clarification 2026-05-29): boost-core IS the
+     * owner of category-3 AI-agent paths (`.github/copilot-instructions.md`,
+     * `.github/skills/`, agent-spec files, etc.). Operator-side influence
+     * runs through `.ai/` sources, allowlisted vendor packages, remote
+     * skills, and `boost.php` config — NOT through hand-editing emission
+     * targets. When boost-core retires an emission path, the file is
+     * boost-emitted output that no longer has a refresh path; delete it.
      *
-     * Three-layer safety:
-     *  1. Copilot must be in active agents (proves operator opted in to
-     *     boost-core managing these paths).
-     *  2. `.github/copilot-instructions.md`: file MUST contain boost-core's
-     *     `<!-- boost-core:guidelines:start -->` marker — proves the file
-     *     was previously written by boost-core's guideline emitter, not
-     *     hand-authored by the operator.
-     *  3. `.github/skills/`: directory MUST appear in the prior managed
-     *     `.gitignore` block — proves boost-core previously emitted to it
-     *     (each emission target's `gitignorePatterns()` lists its
-     *     skills/commands dir). Hand-authored skills the operator never
-     *     handed to boost-core wouldn't be in the prior managed block,
-     *     so they survive.
+     * Replaces 0.9.1-0.9.5's marker-presence guard (`<!-- boost-core:
+     * guidelines:start -->`) which conflated two distinct ownership
+     * questions: "what content inside the file to preserve" (ManagedRegion
+     * handles correctly via the marker, still load-bearing for active
+     * guideline files) vs. "whether the file should exist at all" (path-
+     * ownership; this method). The marker is right for the former scope,
+     * wrong for the latter — pre-0.8.2 wholesale-sync output has no
+     * markers and would silently survive the marker guard despite being
+     * unambiguously boost-emitted.
+     *
+     * Trigger conditions named explicitly per the auto-X-must-name-trigger
+     * rule (codified across the 0.9.x cycle):
+     *  1. The agent owning the path is in the active agent set (e.g.,
+     *     `.github/*` cleanup requires `Agent::COPILOT` — a project that
+     *     never had Copilot active has no boost-emitted content at those
+     *     paths, so cleanup would be wrong).
+     *  2. The path is in the retired-paths registry (hardcoded list of
+     *     paths boost-core has emitted to in past versions but no longer
+     *     emits in the current version).
+     *  3. The path exists on disk.
+     *
+     * All three must hold; meeting all three means the file is
+     * unambiguously boost-emitted historical output. Delete unconditionally.
      *
      * Reports drift via `WrittenFile` entries (DELETED / WOULD_DELETE) so
      * `boost sync --check` and CI surface the upcoming cleanup as
      * countWouldChange > 0 + hasDrift() = true.
      *
-     * @param  list<string>  $priorManagedPatterns  Boost-managed gitignore
-     *         patterns captured BEFORE the same sync rewrote the block.
-     *         `updateGitignore()` runs upstream of this method, so reading
-     *         `.gitignore` here would only see the new (post-rewrite)
-     *         patterns and miss `.github/skills/` after the Copilot
-     *         consolidation. Must be snapshotted earlier in `sync()`.
      * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>}
      */
-    private function cleanupStalePaths(string $projectRoot, BoostConfig $config, bool $checkOnly, array $priorManagedPatterns): array
+    private function cleanupStalePaths(string $projectRoot, BoostConfig $config, bool $checkOnly): array
     {
         if (! $config->hasAgent(Agent::COPILOT)) {
             return ['writes' => [], 'diagnostics' => []];
         }
 
+        // Retired-paths registry. Paths boost-core has emitted to in past
+        // versions but no longer maintains. Adding a path requires conscious
+        // decision; the registry is the audit surface for "what cleanup
+        // contract does sync enforce."
+        $retiredCopilotPaths = [
+            '.github/copilot-instructions.md', // retired 0.9.0 — Copilot reads root AGENTS.md
+            '.github/skills',                  // retired 0.9.1 — Copilot reads .agents/skills via shared pool
+        ];
+
         $writes = [];
         $diagnostics = [];
 
-        $copilotFile = $projectRoot . '/.github/copilot-instructions.md';
-        if (is_link($copilotFile)) {
-            $writes[] = $this->cleanupPath($copilotFile, '.github/copilot-instructions.md', $checkOnly);
-            $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage('.github/copilot-instructions.md', $checkOnly));
-        } elseif (is_file($copilotFile)) {
-            $content = (string) @file_get_contents($copilotFile);
-            if (str_contains($content, '<!-- boost-core:guidelines:start -->')) {
-                // 0.8.2+ used ManagedRegion when writing here, so operator
-                // bytes may live OUTSIDE the managed region (custom H1,
-                // intro prose, etc.). Strip ONLY the managed region; keep
-                // operator content. If nothing remains after the strip,
-                // delete the file. Matches the round-trip safety contract
-                // CLAUDE.md/AGENTS.md/GEMINI.md get from ManagedRegion.
-                $stripped = $this->stripManagedRegion($content);
-                $strippedTrim = trim($stripped);
-
-                if ($strippedTrim === '') {
-                    $writes[] = $this->cleanupPath($copilotFile, '.github/copilot-instructions.md', $checkOnly);
-                    $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage('.github/copilot-instructions.md', $checkOnly));
-                } else {
-                    if (! $checkOnly) {
-                        @file_put_contents($copilotFile, $stripped);
-                    }
-
-                    $writes[] = new WrittenFile(
-                        relativePath: '.github/copilot-instructions.md',
-                        absolutePath: $copilotFile,
-                        action: $checkOnly ? WriteAction::WOULD_WRITE : WriteAction::WROTE,
-                    );
-                    $diagnostics[] = Diagnostic::info(
-                        null,
-                        'Cleanup: stripped boost-core managed region from `.github/copilot-instructions.md`. Operator-authored content OUTSIDE the markers (custom H1, prose) preserved. Copilot reads root `AGENTS.md` for repository-wide instructions in 0.9.x (per GitHub Changelog 2025-08-28). The remaining operator content stays as-is, never refreshed by future syncs — move guideline content into your `.ai/guidelines/` source if you want it tracked by boost-core.',
-                    );
-                }
+        foreach ($retiredCopilotPaths as $relativePath) {
+            $absolute = $projectRoot . '/' . $relativePath;
+            if (! file_exists($absolute) && ! is_link($absolute)) {
+                continue;
             }
-        }
 
-        $skillsDir = $projectRoot . '/.github/skills';
-        if ((is_dir($skillsDir) || is_link($skillsDir)) && in_array('.github/skills/', $priorManagedPatterns, true)) {
-            $writes[] = $this->cleanupPath($skillsDir, '.github/skills', $checkOnly);
-            $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage('.github/skills', $checkOnly));
+            $writes[] = $this->cleanupPath($absolute, $relativePath, $checkOnly);
+            $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage($relativePath, $checkOnly));
         }
 
         return ['writes' => $writes, 'diagnostics' => $diagnostics];
-    }
-
-    /**
-     * Strip the boost-core guideline managed region (between
-     * `<!-- boost-core:guidelines:start -->` and
-     * `<!-- boost-core:guidelines:end -->`) from a file's contents.
-     * Returns the content with the region (and the explainer comment
-     * immediately above the start marker, if present) removed. Bytes
-     * outside the region are preserved verbatim.
-     */
-    private function stripManagedRegion(string $content): string
-    {
-        $startMarker = '<!-- boost-core:guidelines:start -->';
-        $endMarker = '<!-- boost-core:guidelines:end -->';
-
-        $startPos = strpos($content, $startMarker);
-        if ($startPos === false) {
-            return $content;
-        }
-
-        $endPos = strpos($content, $endMarker, $startPos);
-        if ($endPos === false) {
-            return $content;
-        }
-
-        // Include trailing newline after end marker if present
-        $blockEnd = $endPos + strlen($endMarker);
-        if (isset($content[$blockEnd]) && $content[$blockEnd] === "\n") {
-            ++$blockEnd;
-        }
-
-        // Walk back to include the explainer comment line above start marker if present
-        $blockStart = $startPos;
-        $before = substr($content, 0, $startPos);
-        if (preg_match('/(?:^|\n)<!-- Managed by boost-core[^\n]*-->\n?$/', $before, $m, PREG_OFFSET_CAPTURE) === 1) {
-            $blockStart = $m[0][1] + (str_starts_with($m[0][0], "\n") ? 1 : 0);
-        }
-
-        return substr($content, 0, $blockStart) . substr($content, $blockEnd);
     }
 
     private function cleanupPath(string $absolute, string $relative, bool $checkOnly): WrittenFile
@@ -734,7 +680,7 @@ final readonly class SyncEngine
         $verb = $checkOnly ? 'would remove' : 'removed';
 
         return sprintf(
-            'Cleanup: %s stale boost-core-emitted path `%s`. 0.9.x routes Copilot to the shared `.agents/skills/` + `AGENTS.md` surfaces (per GitHub Changelog 2025-08-28 for instructions and 2025-12-18 for skills). Leftover content at this path would not be refreshed by future syncs; removing it prevents stale-takes-priority risk in Copilot ingestion.',
+            'Cleanup: %s retired boost-core path `%s`. Per the path-ownership contract (0.9.6+): boost-core owns category-3 AI-agent paths end-to-end. When an emitter retires, boost-emitted output at that path no longer has a refresh path and is cleaned automatically. Operator influence runs through `.ai/` sources, allowlisted vendor packages (`withAllowedVendors`), remote skills (`withRemoteSkills`), and `boost.php` config — never via hand-editing emission targets. If you intentionally authored content at this path outside boost-core, recover from git history before next sync. 0.9.x routes Copilot to shared `.agents/skills/` + `AGENTS.md` surfaces (per GitHub Changelog 2025-08-28 for instructions and 2025-12-18 for skills).',
             $verb,
             $relativePath,
         );

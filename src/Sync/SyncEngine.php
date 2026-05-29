@@ -657,22 +657,47 @@ final readonly class SyncEngine
                 continue;
             }
 
-            $writes[] = $this->cleanupPath($absolute, $relativePath, $checkOnly);
+            $failures = [];
+            $writes[] = $this->cleanupPath($absolute, $relativePath, $checkOnly, $failures);
             $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage($relativePath, $checkOnly));
+
+            // 0.10.2 observability: when @-suppressed fs operations leave
+            // residual paths (permission denied, open file descriptor, race
+            // with re-emission), the cleanup diagnostic previously claimed
+            // success regardless. Operators saw "removed retired path X"
+            // while `boost sync --check` immediately re-flagged drift on X,
+            // with no signal what failed. Surface the failed-path list as a
+            // warning diagnostic so the wild-encounter becomes actionable.
+            if ($failures !== []) {
+                $diagnostics[] = Diagnostic::warning(
+                    null,
+                    sprintf(
+                        'Cleanup of `%s` left %d residual path(s) on disk — drift will persist until removed manually. Likely cause: permission denied, open file descriptor, or concurrent re-emission. Residual: %s',
+                        $relativePath,
+                        count($failures),
+                        implode(', ', array_slice($failures, 0, 5)) . (count($failures) > 5 ? sprintf(' (+%d more)', count($failures) - 5) : ''),
+                    ),
+                );
+            }
         }
 
         return ['writes' => $writes, 'diagnostics' => $diagnostics];
     }
 
-    private function cleanupPath(string $absolute, string $relative, bool $checkOnly): WrittenFile
+    /**
+     * @param  list<string>  $failures  Paths that could not be removed (by ref)
+     */
+    private function cleanupPath(string $absolute, string $relative, bool $checkOnly, array &$failures): WrittenFile
     {
         if (! $checkOnly) {
             if (is_link($absolute)) {
-                @unlink($absolute);
+                if (! @unlink($absolute)) {
+                    $failures[] = $absolute;
+                }
             } elseif (is_dir($absolute)) {
-                $this->deleteRecursive($absolute);
-            } else {
-                @unlink($absolute);
+                $this->deleteRecursive($absolute, $failures);
+            } elseif (! @unlink($absolute)) {
+                $failures[] = $absolute;
             }
         }
 
@@ -885,10 +910,15 @@ final readonly class SyncEngine
         return $patterns;
     }
 
-    private function deleteRecursive(string $path): void
+    /**
+     * @param  list<string>  $failures  Paths that could not be removed (by ref)
+     */
+    private function deleteRecursive(string $path, array &$failures = []): void
     {
         if (! is_dir($path)) {
-            @unlink($path);
+            if (! @unlink($path)) {
+                $failures[] = $path;
+            }
 
             return;
         }
@@ -899,14 +929,16 @@ final readonly class SyncEngine
         );
         /** @var SplFileInfo $file */
         foreach ($iter as $file) {
-            if ($file->isDir()) {
-                @rmdir($file->getPathname());
-            } else {
-                @unlink($file->getPathname());
+            $pathname = $file->getPathname();
+            $ok = $file->isDir() ? @rmdir($pathname) : @unlink($pathname);
+            if (! $ok) {
+                $failures[] = $pathname;
             }
         }
 
-        @rmdir($path);
+        if (! @rmdir($path)) {
+            $failures[] = $path;
+        }
     }
 
     /**

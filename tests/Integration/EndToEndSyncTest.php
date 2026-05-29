@@ -1793,6 +1793,88 @@ it('0.9.6 path-ownership: retired `.github/skills/` removed unconditionally when
     }
 });
 
+it('0.10.2 deleteRecursive: deeply-nested retired path with multi-file bundle (mcp-development-shape) fully removed — no residual subdirs', function (): void {
+    // Reproduces project-boost-laravel d948a532's empirical signal: after
+    // cleanup ran, `.github/skills/mcp-development/` survived on disk even
+    // though the registry-level diagnostic confirmed deletion. The shape
+    // we're testing matches a real boost-skills bundle: nested skill dir
+    // with multiple files (SKILL.md + references/ subdir + multiple .md
+    // files inside references/). Earlier 0.9.6 test covers a single-file
+    // subdir; this exercises the realistic multi-bundle case.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::COPILOT]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nBody.");
+
+        // mcp-development bundle shape — multiple files, nested references/
+        @mkdir($root . '/.github/skills/mcp-development/references', 0o755, true);
+        file_put_contents($root . '/.github/skills/mcp-development/SKILL.md', 'stale mcp-dev skill');
+        file_put_contents($root . '/.github/skills/mcp-development/references/api.md', 'api ref');
+        file_put_contents($root . '/.github/skills/mcp-development/references/transport.md', 'transport ref');
+        // Sibling bundle
+        @mkdir($root . '/.github/skills/livewire-development', 0o755, true);
+        file_put_contents($root . '/.github/skills/livewire-development/SKILL.md', 'stale livewire skill');
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(is_dir($root . '/.github/skills'))->toBeFalse()
+            ->and(is_dir($root . '/.github/skills/mcp-development'))->toBeFalse()
+            ->and(is_dir($root . '/.github/skills/mcp-development/references'))->toBeFalse()
+            ->and(is_dir($root . '/.github/skills/livewire-development'))->toBeFalse()
+            ->and(file_exists($root . '/.github/skills/mcp-development/SKILL.md'))->toBeFalse()
+            ->and(file_exists($root . '/.github/skills/mcp-development/references/api.md'))->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.10.2 deleteRecursive observability: residual paths after @-suppressed failure surface as warning diagnostic naming the failed paths', function (): void {
+    // When @unlink/@rmdir fails (permission denied, open fd, fs race), the
+    // pre-0.10.2 cleanup emitted only the success-shaped INFO diagnostic
+    // while drift persisted. Now: residual paths surface as a warning
+    // naming the failed-path list, so operators have a concrete fix path
+    // (`chmod`, identify the holding process, etc.) instead of opaque drift.
+    //
+    // Reproduce the failure mode by chmod'ing the parent dir read-only on
+    // POSIX filesystems — @rmdir on the contained file fails when the
+    // containing directory is non-writeable.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::COPILOT]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nBody.");
+
+        @mkdir($root . '/.github/skills/locked-bundle', 0o755, true);
+        file_put_contents($root . '/.github/skills/locked-bundle/SKILL.md', 'stale skill');
+        // Lock the bundle dir: @unlink of the file requires write on the
+        // containing dir. With 0o555, the file becomes undeletable.
+        chmod($root . '/.github/skills/locked-bundle', 0o555);
+
+        try {
+            $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+            $diagnostics = $result->diagnostics;
+            $warningMessages = array_filter(
+                $diagnostics,
+                static fn (Diagnostic $d): bool => $d->level === 'warning',
+            );
+            $messages = array_map(static fn (Diagnostic $d): string => $d->message, $warningMessages);
+            $joined = implode("\n", $messages);
+
+            expect($joined)->toContain('Cleanup of `.github/skills`')
+                ->and($joined)->toContain('residual path(s) on disk')
+                ->and($joined)->toContain('locked-bundle');
+        } finally {
+            // Restore perms so rmTreeE2E can clean up.
+            @chmod($root . '/.github/skills/locked-bundle', 0o755);
+        }
+    } finally {
+        rmTreeE2E($root);
+    }
+})->skip(
+    DIRECTORY_SEPARATOR !== '/' || (function_exists('posix_geteuid') && posix_geteuid() === 0),
+    'POSIX-only + non-root — Windows fs permissions model differs; root bypasses permission checks.',
+);
+
 it('0.9.1 cleanup: safety gate — Copilot NOT in active agents leaves `.github/` untouched (operator-owned)', function (): void {
     $root = makeEndToEndProject();
     try {

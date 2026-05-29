@@ -57,6 +57,12 @@ final class BoostAutoSync
      * at least one file; silent on a true no-op (`wrote=0, deleted=0`)
      * install. Wire into auto-firing hooks (`post-install-cmd` /
      * `post-update-cmd`).
+     *
+     * **No output = success.** Silence is the designed signal for a true
+     * no-op install — the hook fired, the sync ran, nothing changed. Output
+     * appears only when something actually changed (write/delete count) or
+     * an error surfaced. If you want a positive "ran OK" confirmation on
+     * every install, use {@see runWithSummary()} instead.
      */
     public static function run(Event $event): void
     {

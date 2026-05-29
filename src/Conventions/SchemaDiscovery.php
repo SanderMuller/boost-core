@@ -40,6 +40,16 @@ final readonly class SchemaDiscovery
         $diagnostics = [];
 
         foreach ($allowedVendors as $vendorName) {
+            // Skip self-referential check: boost-core is the engine, it doesn't
+            // ship a conventions catalog. Without this guard, every sync emits
+            // a noise INFO diagnostic for boost-core's own absence-of-schema,
+            // which inverts the signal/noise ratio when boost-core is
+            // self-allowlisted (the common case for dogfood + tooling-author
+            // projects).
+            if ($vendorName === 'sandermuller/boost-core') {
+                continue;
+            }
+
             if (! $this->packages->has($vendorName)) {
                 continue;
             }

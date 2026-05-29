@@ -78,6 +78,12 @@ After `composer global require`-ing one or more skill-bearing packages, run `ven
 
 It checks `Event::isDevMode()`, resolves `composer config.bin-dir`, runs `vendor/bin/boost sync`, surfaces non-zero exits through Composer's IO, and prints the one-line sync summary on installs that actually wrote or deleted files — staying silent on a true no-op (`wrote=0, deleted=0`). Works on Windows + Unix. Honors `BOOST_SKIP_AUTOSYNC=1`. boost-core ships no Composer plugin — wiring this callback is how a consuming project makes a `composer install` re-sync; without it, run `vendor/bin/boost sync` manually or in CI.
 
+> [!NOTE]
+> **No output = success.** `BoostAutoSync::run` stays silent on a true no-op (`wrote=0, deleted=0`) by design — the hook fired, the sync ran, nothing changed. Output appears only when something actually changed or an error surfaced. If you want a positive "ran OK" confirmation on every install (helpful when debugging "did the hook fire?"), use `BoostAutoSync::runWithSummary` instead (next subsection).
+
+> [!IMPORTANT]
+> **If you're on Laravel + [`project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel)**, use `@php artisan project-boost:sync` instead of `BoostAutoSync::run`. The artisan-wrapped path runs through the Laravel container, which bootstraps `BladeRenderer` correctly + delivers laravel/boost's bundled skills to every active agent (Cursor / Copilot / Codex / etc.). The bare-CLI path bypasses both — Claude Code may mask the absence locally via the MCP server, but the cross-agent skill set silently misses the bundled skills. See `project-boost-laravel`'s install guide for the canonical `composer.json` `scripts` shape.
+
 For user-invoked scripts (`composer sync-ai`, etc.) where silence on success reads as a no-op, use `BoostAutoSync::runWithSummary` instead — it streams the binary's one-line success summary on *every* successful sync, including the no-op installs `run` keeps quiet:
 
 ```json

@@ -117,3 +117,27 @@ it('preserves allowlist order in returned sources', function (): void {
         ->and($result['sources'][1]->vendorName)
         ->toBe('vendor/a');
 });
+
+it('0.9.7 self-referential guard: boost-core in the allowlist does NOT produce a "no conventions-schema.json" INFO diagnostic — the engine ships no catalog, so the absence-of-schema is not signal', function (): void {
+    // boost-core is the engine. When self-allowlisted (the common case for
+    // dogfood + tooling-author projects), every sync was emitting a noise
+    // INFO diagnostic for boost-core's own absence-of-schema. The guard skips
+    // boost-core's vendor name before the schema-presence check fires.
+    $boostCorePath = makeTempVendor('sandermuller/boost-core', null);
+    $otherVendorPath = makeTempVendor('vendor/other', null);
+    $scanner = makeStubPackages([
+        'sandermuller/boost-core' => $boostCorePath,
+        'vendor/other' => $otherVendorPath,
+    ]);
+
+    $result = (new SchemaDiscovery($scanner))->discover([
+        'sandermuller/boost-core',
+        'vendor/other',
+    ]);
+
+    // vendor/other still produces the INFO (it's a non-engine vendor in the
+    // allowlist that genuinely doesn't ship a schema — legitimate signal).
+    // boost-core is silenced.
+    expect($result['diagnostics'])->toHaveCount(1)
+        ->and($result['diagnostics'][0]->vendor)->toBe('vendor/other');
+});

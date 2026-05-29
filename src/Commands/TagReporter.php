@@ -27,6 +27,7 @@ final readonly class TagReporter
 {
     public function __construct(
         private SkillTagDiagnostics $diagnostics = new SkillTagDiagnostics(),
+        private ?InstalledPackages $injectedPackages = null,
     ) {}
 
     public function report(SymfonyStyle $io, BoostConfig $config): void
@@ -41,6 +42,24 @@ final readonly class TagReporter
 
         if ($skills === [] && $guidelines === []) {
             $io->writeln('<info>No allowlisted vendor skills or guidelines installed.</info>');
+
+            // 0.10.0 case-3 entry-point hint at the no-skills-loaded gate.
+            // mijntp's bare-CLI repro produced exactly this output — zero
+            // skills surfaced because bare-CLI bypasses the wrapper's
+            // skill-injection pipeline. The diagnostic surfaces the most
+            // likely root cause + the artisan fix path before the operator
+            // assumes "no allowlisted vendors == legitimately empty."
+            $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
+            if ($packages->has('sandermuller/project-boost-laravel')) {
+                $io->writeln('<comment>project-boost-laravel detected. '
+                    . 'If you expected bundled skills (pest-testing, livewire-development, '
+                    . "filament-development, etc.), bare-CLI bypasses the wrapper's "
+                    . 'skill-injection pipeline — producing cross-agent capability asymmetry. '
+                    . 'Claude Code may mask the absence via laravel/boost MCP server; '
+                    . 'Cursor / Copilot / Codex silently miss bundled skills. '
+                    . 'Run via `php artisan project-boost:sync` to deliver them to all '
+                    . 'active agents equally.</comment>');
+            }
 
             return;
         }
@@ -152,10 +171,47 @@ final readonly class TagReporter
 
         $declaredButUnused = $this->diagnostics->declaredButUnusedTags($config, $tagUnion);
         if ($declaredButUnused !== []) {
-            $io->writeln('<comment>Declared tags matched by no installed skill or guideline (possible typo): '
-                . implode(', ', $declaredButUnused) . '</comment>');
+            // Three-case split (0.10.0) for declared-but-unused tags. Same
+            // raw observation, different probable root causes + different
+            // operator fix paths. Detection ordering: typo (cheapest) →
+            // bare-CLI-without-wrapper-injection (Laravel context) →
+            // forward-compat declaration (everything else).
+            $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
+            $wrapperInstalled = $packages->has('sandermuller/project-boost-laravel');
+
+            if ($wrapperInstalled) {
+                // Case 3: bare-CLI-without-wrapper-injection. Tags resolve to no
+                // shipped skills because bare-CLI invocation bypasses the wrapper's
+                // skill-injection pipeline. The bare-CLI gap may be invisible in
+                // MCP-enabled agents (e.g., Claude Code via laravel/boost MCP
+                // server) while affecting Cursor / Copilot / Codex. Surface this
+                // case with explicit fix path before the generic forward-compat
+                // wording fires.
+                $io->writeln('<comment>Declared tags matched by no installed skill or guideline: '
+                    . implode(', ', $declaredButUnused) . '. project-boost-laravel detected — '
+                    . "bare-CLI bypasses the wrapper's skill-injection pipeline. "
+                    . 'Run via `php artisan project-boost:sync` to deliver bundled skills '
+                    . 'to all active agents equally (Cursor / Copilot / Codex silently miss '
+                    . 'them under bare CLI; Claude Code may mask via laravel/boost MCP server).</comment>');
+            } else {
+                // Case 2: forward-compat declaration. The operator declared a
+                // tag now (or one that's spelled correctly + valid) but no
+                // installed skill targets it yet. Harmless per the picker's
+                // preservation rule — declared tags survive across re-installs
+                // even when no installed vendor publishes a matching skill.
+                $io->writeln('<comment>Declared tags matched by no installed skill or guideline: '
+                    . implode(', ', $declaredButUnused) . '. '
+                    . 'If the tag spelling looks right, this is a forward-compat declaration — '
+                    . 'declared tags survive across `boost install` re-runs even when no installed '
+                    . 'vendor currently publishes a matching skill.</comment>');
+            }
         }
 
+        // Case 1: actual typo. Near-duplicate detection runs over the union
+        // of installed-tags + declared-tags — surfaces tags that look alike
+        // (probable misspelling of an existing tag). Fires alongside the
+        // forward-compat / bare-CLI wording above when both apply (a typo'd
+        // declaration is also declared-but-unused).
         foreach ($this->diagnostics->nearDuplicates([...$tagUnion, ...$config->tags]) as $pair) {
             $io->writeln('<comment>Possible tag typo — these look alike: '
                 . $pair[0] . ' / ' . $pair[1] . '</comment>');

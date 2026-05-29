@@ -443,3 +443,62 @@ it('doctor --check-versions: surfaces "lookup failed" without ⚠ when Packagist
         @rmdir($sibling);
     }
 });
+
+it('0.10.0 entry-point mismatch: emits banner-warning when project-boost-laravel is installed and doctor runs via bare CLI', function (): void {
+    // The wrong-entry-point detection: if sandermuller/project-boost-laravel
+    // is in the installed package set + boost doctor is invoked (via bare
+    // CLI by construction — the wrapper has its own command surfaces),
+    // emit the cross-agent-capability-asymmetry banner.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $sibling = sys_get_temp_dir() . '/sibling-pbl-' . bin2hex(random_bytes(8));
+    mkdir($sibling, 0o755, recursive: true);
+
+    try {
+        $fakePackages = new InstalledPackages([
+            'sandermuller/project-boost-laravel' => new PackageInfo(
+                name: 'sandermuller/project-boost-laravel',
+                version: '0.3.6',
+                installPath: $sibling,
+            ),
+        ]);
+
+        $command = new DoctorCommand(
+            injectedPackages: $fakePackages,
+        );
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir]);
+
+        // Strip Symfony's hard-wraps from the WARNING block — banner-long
+        // messages get split mid-phrase, which breaks naive substring checks.
+        $display = (string) preg_replace('/\s+/', ' ', $tester->getDisplay());
+        expect($exit)->toBe(0)
+            ->and($display)->toContain('Entry-point mismatch')
+            ->and($display)->toContain('project-boost-laravel')
+            ->and($display)->toContain('cross-agent capability asymmetry')
+            ->and($display)->toContain('php artisan project-boost:sync');
+    } finally {
+        doctorCleanup($dir);
+        @rmdir($sibling);
+    }
+});
+
+it('0.10.0 entry-point mismatch: omits banner when project-boost-laravel is NOT installed (non-Laravel projects unaffected)', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $command = new DoctorCommand(
+            injectedPackages: new InstalledPackages([]),
+        );
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir]);
+
+        expect($exit)->toBe(0)
+            ->and($tester->getDisplay())->not->toContain('Entry-point mismatch')
+            ->and($tester->getDisplay())->not->toContain('cross-agent capability asymmetry');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

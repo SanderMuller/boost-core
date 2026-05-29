@@ -76,6 +76,7 @@ final class DoctorCommand extends BoostBaseCommand
 
         $io->success(sprintf('boost.php at %s parses cleanly.', $projectRoot . '/boost.php'));
 
+        $this->reportEntryPointMismatch($io);
         $this->reportAgents($io, $config);
         $this->reportSourcePaths($io, $config);
         $this->reportCommandLimitations($io, $config);
@@ -130,6 +131,44 @@ final class DoctorCommand extends BoostBaseCommand
 
         $io->table(['Package', 'Installed (path repo)', 'Packagist latest stable', ''], $rows);
         $io->writeln('<comment>Path repos silently override Packagist resolution for matching constraints. Remove unused `repositories[]` entries from composer.json + re-run `composer update` to pull from Packagist.</comment>');
+    }
+
+    /**
+     * Surface the wrong-entry-point ergonomics gap when boost-core runs as
+     * bare CLI in a Laravel-wrapper project. Detection: `sandermuller/
+     * project-boost-laravel` installed → the consumer adopted the wrapper
+     * → the canonical entry point is `php artisan project-boost:sync`,
+     * not `vendor/bin/boost`. Bare CLI bypasses the wrapper's skill-
+     * injection pipeline + produces cross-agent capability asymmetry:
+     * Claude Code may mask the absence locally via laravel/boost's MCP
+     * server, but Cursor / Copilot / Codex silently miss the bundled
+     * skills (file-fanout is their only delivery mechanism).
+     *
+     * Emits a banner-warning only when this very command is invoked under
+     * bare CLI in such a project. The Laravel wrapper's own command
+     * surfaces (project-boost:doctor etc.) wouldn't reach this code path
+     * unless they delegate here — and if they do, they'd be in the
+     * "doing-it-right" context where the banner is noise. So the gate is
+     * "wrapper installed AND we got here", which is the wrong-entry-point
+     * footprint by construction.
+     */
+    private function reportEntryPointMismatch(SymfonyStyle $io): void
+    {
+        $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
+        if (! $packages->has('sandermuller/project-boost-laravel')) {
+            return;
+        }
+
+        $io->section('Entry-point mismatch');
+        $io->warning(
+            'Detected `sandermuller/project-boost-laravel` installed alongside boost-core. '
+            . "Bare CLI bypasses the wrapper's skill-injection pipeline, producing cross-agent "
+            . 'capability asymmetry — Claude Code may mask the absence locally via laravel/boost\'s '
+            . 'MCP server, but Cursor / Copilot / Codex silently miss bundled skills (file-fanout '
+            . 'is their only delivery mechanism). For full per-agent skill set, use '
+            . '`php artisan project-boost:sync` instead. See project-boost-laravel install guide '
+            . 'for the canonical composer.json scripts shape.',
+        );
     }
 
     private function reportAgents(SymfonyStyle $io, BoostConfig $config): void

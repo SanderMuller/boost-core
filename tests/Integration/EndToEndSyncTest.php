@@ -1863,6 +1863,20 @@ it('0.10.2 deleteRecursive observability: residual paths after @-suppressed fail
             expect($joined)->toContain('Cleanup of `.github/skills`')
                 ->and($joined)->toContain('residual path(s) on disk')
                 ->and($joined)->toContain('locked-bundle');
+
+            // codex-review regression guards: on failure, the WrittenFile is
+            // NOT added to $writes as DELETED (otherwise hasDrift() + the
+            // deleted-count would lie) AND the success-shaped INFO is NOT
+            // emitted (otherwise operators see two contradictory diagnostics
+            // for one cleanup attempt). Only the actionable warning fires.
+            $allMessages = array_map(static fn (Diagnostic $d): string => $d->message, $diagnostics);
+            $joinedAll = implode("\n", $allMessages);
+            expect($joinedAll)->not->toContain('Cleanup: removed retired boost-core path `.github/skills`')
+                ->and($result->hasDrift())->toBeFalse();
+            // hasDrift() reads $writes for WROTE/DELETED/WOULD_* — without
+            // the failure-aware skip, this path would be tagged DELETED and
+            // flip hasDrift() to true under --check, false on real sync,
+            // contradicting the on-disk reality.
         } finally {
             // Restore perms so rmTreeE2E can clean up.
             @chmod($root . '/.github/skills/locked-bundle', 0o755);

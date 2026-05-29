@@ -658,27 +658,37 @@ final readonly class SyncEngine
             }
 
             $failures = [];
-            $writes[] = $this->cleanupPath($absolute, $relativePath, $checkOnly, $failures);
-            $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage($relativePath, $checkOnly));
+            $write = $this->cleanupPath($absolute, $relativePath, $checkOnly, $failures);
 
             // 0.10.2 observability: when @-suppressed fs operations leave
             // residual paths (permission denied, open file descriptor, race
             // with re-emission), the cleanup diagnostic previously claimed
             // success regardless. Operators saw "removed retired path X"
             // while `boost sync --check` immediately re-flagged drift on X,
-            // with no signal what failed. Surface the failed-path list as a
-            // warning diagnostic so the wild-encounter becomes actionable.
-            if ($failures !== []) {
-                $diagnostics[] = Diagnostic::warning(
-                    null,
-                    sprintf(
-                        'Cleanup of `%s` left %d residual path(s) on disk — drift will persist until removed manually. Likely cause: permission denied, open file descriptor, or concurrent re-emission. Residual: %s',
-                        $relativePath,
-                        count($failures),
-                        implode(', ', array_slice($failures, 0, 5)) . (count($failures) > 5 ? sprintf(' (+%d more)', count($failures) - 5) : ''),
-                    ),
-                );
+            // with no signal what failed.
+            //
+            // On failure, do NOT mark this path as DELETED in $writes (would
+            // poison SyncResult::hasDrift() + the "deleted=" summary count
+            // for wrapper-side consumers reading the write log — both would
+            // report cleanup success while the path persists on disk). Do
+            // NOT emit the "removed" INFO either (contradicts the warning we
+            // surface next). Only the actionable warning fires.
+            if ($failures === []) {
+                $writes[] = $write;
+                $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage($relativePath, $checkOnly));
+
+                continue;
             }
+
+            $diagnostics[] = Diagnostic::warning(
+                null,
+                sprintf(
+                    'Cleanup of `%s` left %d residual path(s) on disk — drift will persist until removed manually. Likely cause: permission denied, open file descriptor, or concurrent re-emission. Residual: %s',
+                    $relativePath,
+                    count($failures),
+                    implode(', ', array_slice($failures, 0, 5)) . (count($failures) > 5 ? sprintf(' (+%d more)', count($failures) - 5) : ''),
+                ),
+            );
         }
 
         return ['writes' => $writes, 'diagnostics' => $diagnostics];

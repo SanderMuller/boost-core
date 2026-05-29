@@ -518,14 +518,29 @@ final class DoctorCommand extends BoostBaseCommand
         ['sources' => $sources, 'diagnostics' => $discoveryDiagnostics] = $discovery->discover($config->allowedVendors);
 
         if ($sources === []) {
-            if ($discoveryDiagnostics === []) {
+            // 0.10.1: split malformed-declaration diagnostics (warning/error)
+            // from the noise-collapse summary INFO. SchemaDiscovery's summary
+            // INFO populates the diagnostics list even in the legitimately-
+            // empty case ("no allowlisted vendor publishes a schema yet"),
+            // so the pre-0.10.1 "any diagnostic → all malformed" branch was
+            // false-positive: a clean no-schemas-published project triaged
+            // as if every vendor shipped broken JSON. Filter by level.
+            $malformed = array_values(array_filter(
+                $discoveryDiagnostics,
+                static fn (Diagnostic $d): bool => $d->level !== 'info',
+            ));
+
+            if ($malformed === []) {
                 $io->writeln('No conventions schemas declared by allowlisted vendors.');
+                foreach ($discoveryDiagnostics as $diagnostic) {
+                    $io->writeln("ℹ {$diagnostic->message}");
+                }
 
                 return;
             }
 
             $io->writeln('No usable conventions schemas — all declarations malformed:');
-            foreach ($discoveryDiagnostics as $diagnostic) {
+            foreach ($malformed as $diagnostic) {
                 $vendor = $diagnostic->vendor === null ? '' : "[{$diagnostic->vendor}] ";
                 $io->writeln("⚠ {$vendor}{$diagnostic->message}");
             }

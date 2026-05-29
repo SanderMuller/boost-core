@@ -188,3 +188,31 @@ it('0.10.1 noise collapse: no summary INFO when all vendors ship a schema (all-c
     expect($result['diagnostics'])->toBeEmpty()
         ->and($result['sources'])->toHaveCount(2);
 });
+
+it('0.10.1 noise-collapse wording: summary stays accurate in mixed-allowlist (some vendors loaded a schema, some did not) — must NOT claim layer is dormant', function (): void {
+    // codex-review regression: the 0.10.1-draft wording included "the
+    // conventions-schema layer is dormant until at least one vendor
+    // publishes one" — false when at least one vendor DID load a schema.
+    // Mixed-allowlist case: one schema loads cleanly, one is absent →
+    // summary INFO fires for the absent one, sources is non-empty for the
+    // loaded one. The summary message must not contradict the loaded-source
+    // state.
+    $schemaJson = '{"type":"object"}';
+    $loaded = makeTempVendor('vendor/loaded', $schemaJson);
+    $absent = makeTempVendor('vendor/absent', null);
+    $scanner = makeStubPackages([
+        'vendor/loaded' => $loaded,
+        'vendor/absent' => $absent,
+    ]);
+
+    $result = (new SchemaDiscovery($scanner))->discover(['vendor/loaded', 'vendor/absent']);
+
+    expect($result['sources'])->toHaveCount(1)
+        ->and($result['sources'][0]->vendorName)->toBe('vendor/loaded')
+        ->and($result['diagnostics'])->toHaveCount(1)
+        ->and($result['diagnostics'][0]->message)->toContain('1 of 2 allowlisted vendor(s)')
+        // The lie-by-omission guard: the summary must not claim layer is
+        // dormant when sources is non-empty. Pinned by exact-string so a
+        // future rewording must consciously check this assertion.
+        ->and($result['diagnostics'][0]->message)->not->toContain('dormant');
+});

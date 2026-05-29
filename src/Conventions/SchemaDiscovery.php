@@ -114,16 +114,22 @@ final readonly class SchemaDiscovery
         }
 
         // 0.10.1 noise-collapse: emit ONE summary INFO instead of N per-vendor
-        // INFOs. The schema-discovery pass is informational; the load-bearing
-        // signal is "did the engine find any schemas?" not "which specific
-        // vendors don't ship one?" Per-vendor detail is surfaced via
-        // `boost doctor` (the vendor allowlist section already lists every
-        // allowlisted vendor) when operators need it for triage.
+        // INFOs. The schema-discovery pass is informational; per-vendor detail
+        // is surfaced via `boost doctor` (the vendor allowlist section already
+        // lists every allowlisted vendor) when operators need it for triage.
+        //
+        // Wording is stateless w.r.t. whether OTHER allowlisted vendors did
+        // ship a schema. A 0.10.1-draft regression (caught by codex-review)
+        // claimed "the conventions-schema layer is dormant until at least
+        // one vendor publishes one" — false in the mixed-allowlist case where
+        // some vendors loaded schemas. Stating only "N of M ship no schema"
+        // + the triage pointer is correct regardless of whether $sources is
+        // empty or populated.
         if ($noSchemaVendors !== []) {
             $diagnostics[] = Diagnostic::info(
                 null,
                 sprintf(
-                    '%d of %d allowlisted vendor(s) ship no conventions-schema.json. The conventions-schema layer is dormant until at least one vendor publishes one. Inspect `boost doctor` vendor allowlist section for the per-vendor list.',
+                    '%d of %d allowlisted vendor(s) ship no conventions-schema.json. Inspect `boost doctor` vendor allowlist section for the per-vendor list.',
                     count($noSchemaVendors),
                     $allowedCount,
                 ),

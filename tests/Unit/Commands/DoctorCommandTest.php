@@ -558,6 +558,50 @@ it('0.10.1 --check-stale-paths: clean message when registry paths are absent', f
     }
 });
 
+it('0.10.1 --check-conventions: NO-schemas-published case does NOT triage as "all declarations malformed" (codex-review regression guard)', function (): void {
+    // codex-review caught a 0.10.1-draft regression: SchemaDiscovery's
+    // noise-collapse summary INFO populated the diagnostics list even when
+    // no vendor shipped a malformed schema. DoctorCommand::reportConventions
+    // pre-fix branched on `sources === [] && diagnostics !== []` as "all
+    // malformed", false-positive-triaging a clean "no schemas published yet"
+    // project. Filter-by-level fix: only warning/error diagnostics route
+    // through the malformed branch.
+    $vendorPath = sys_get_temp_dir() . '/no-schema-vendor-' . bin2hex(random_bytes(8));
+    mkdir($vendorPath, 0o755, recursive: true);
+    file_put_contents($vendorPath . '/composer.json', (string) json_encode([
+        'name' => 'vendor/no-schema',
+        'extra' => ['boost' => ['skills' => 'resources/boost/skills']],
+    ]));
+
+    $dir = doctorTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['vendor/no-schema'])",
+    );
+    try {
+        $command = new DoctorCommand(
+            injectedPackages: new InstalledPackages([
+                'vendor/no-schema' => new PackageInfo(
+                    name: 'vendor/no-schema',
+                    version: '1.0.0',
+                    installPath: $vendorPath,
+                ),
+            ]),
+        );
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir, '--check-conventions' => true]);
+
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($exit)->toBe(0)
+            ->and($display)->toContain('Project Conventions')
+            ->and($display)->toContain('No conventions schemas declared')
+            ->and($display)->not->toContain('all declarations malformed');
+    } finally {
+        doctorCleanup($dir);
+        doctorCleanup($vendorPath);
+    }
+});
+
 it('0.10.1 --check-stale-paths: scoped-not-applicable when Copilot is NOT in active agents (registry is Copilot-scoped)', function (): void {
     // Registry entries are Copilot-emitted; absence of Copilot in
     // withAgents() means sync has no cleanup intent for these paths.

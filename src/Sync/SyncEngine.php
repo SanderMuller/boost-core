@@ -925,6 +925,21 @@ final readonly class SyncEngine
      */
     private function deleteRecursive(string $path, array &$failures = []): void
     {
+        // is_link() must be checked BEFORE is_dir() — PHP's is_dir() follows
+        // symlinks and reports a symlink-to-directory as a directory, which
+        // would route us into @rmdir($path). rmdir requires a real directory
+        // and fails on a symlink, leaving residual drift. Pre-0.9.6 boost-
+        // core emitted symlinks for vendor-shipped skills (laravel/mcp's
+        // .github/skills/<name> → vendor/laravel/mcp/.../skills/<name>); the
+        // engine encounters them when cleaning the retired registry path.
+        if (is_link($path)) {
+            if (! @unlink($path)) {
+                $failures[] = $path;
+            }
+
+            return;
+        }
+
         if (! is_dir($path)) {
             if (! @unlink($path)) {
                 $failures[] = $path;
@@ -933,6 +948,12 @@ final readonly class SyncEngine
             return;
         }
 
+        // RecursiveDirectoryIterator::hasChildren() defaults to
+        // $allowLinks=false, so the iterator never descends INTO yielded
+        // symlinks (which would otherwise walk vendor content through the
+        // symlink target). Symlinks ARE yielded as top-level entries inside
+        // their parent dir so the loop body can unlink them — see the
+        // isLink() branch below.
         $iter = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
             RecursiveIteratorIterator::CHILD_FIRST,
@@ -940,7 +961,17 @@ final readonly class SyncEngine
         /** @var SplFileInfo $file */
         foreach ($iter as $file) {
             $pathname = $file->getPathname();
-            $ok = $file->isDir() ? @rmdir($pathname) : @unlink($pathname);
+            // Same is_link-before-is_dir ordering as the top of this method.
+            // SplFileInfo::isDir() follows symlinks; a symlink-to-dir yielded
+            // by the iterator would route into @rmdir without this guard.
+            if ($file->isLink()) {
+                $ok = @unlink($pathname);
+            } elseif ($file->isDir()) {
+                $ok = @rmdir($pathname);
+            } else {
+                $ok = @unlink($pathname);
+            }
+
             if (! $ok) {
                 $failures[] = $pathname;
             }

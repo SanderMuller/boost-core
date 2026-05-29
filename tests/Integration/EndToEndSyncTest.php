@@ -1889,6 +1889,66 @@ it('0.10.2 deleteRecursive observability: residual paths after @-suppressed fail
     'POSIX-only + non-root — Windows fs permissions model differs; root bypasses permission checks.',
 );
 
+it('0.10.3 deleteRecursive symlink handling: vendored symlink-to-dir is unlinked at the link level, vendor target stays intact', function (): void {
+    // Reproduces the exact shape that surfaced in project-boost-laravel
+    // verification of 0.10.2: pre-0.9.6 boost-core emitted symlinks for
+    // laravel/mcp-shipped skills under `.github/skills/<skill-name>`,
+    // pointing at `vendor/laravel/mcp/.../skills/<skill-name>`. SplFileInfo
+    // ::isDir() follows symlinks → reports symlink-to-dir as dir → engine
+    // called @rmdir on the symlink, which fails since rmdir needs a real
+    // directory. Residual: the symlink itself + the parent `.github/skills`
+    // dir that can't be rmdir'd while containing the symlink.
+    //
+    // The fix: is_link() check BEFORE isDir() in deleteRecursive iteration
+    // body. Two regression guards in this test — symlink IS removed, and
+    // vendor target stays intact (RecursiveDirectoryIterator::hasChildren()
+    // defaults to $allowLinks=false so iterator never descends into the
+    // symlink to walk vendor content; this test pins that default).
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::COPILOT]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nBody.");
+
+        // Vendor-shipped skill content the symlink targets — what we must NOT touch.
+        @mkdir($root . '/vendor/laravel/mcp/resources/boost/skills/mcp-development', 0o755, true);
+        file_put_contents(
+            $root . '/vendor/laravel/mcp/resources/boost/skills/mcp-development/SKILL.md',
+            'VENDOR-SHIPPED — must survive cleanup',
+        );
+
+        // Pre-0.9.6 emit-side symlink at the retired path.
+        @mkdir($root . '/.github/skills', 0o755, true);
+        symlink(
+            '../../vendor/laravel/mcp/resources/boost/skills/mcp-development',
+            $root . '/.github/skills/mcp-development',
+        );
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Symlink + `.github/skills/` removed.
+        expect(is_dir($root . '/.github/skills'))->toBeFalse()
+            ->and(is_link($root . '/.github/skills/mcp-development'))->toBeFalse()
+            ->and(file_exists($root . '/.github/skills/mcp-development'))->toBeFalse();
+
+        // Vendor target untouched — neither the dir nor the SKILL.md content.
+        expect(is_dir($root . '/vendor/laravel/mcp/resources/boost/skills/mcp-development'))->toBeTrue()
+            ->and(file_get_contents($root . '/vendor/laravel/mcp/resources/boost/skills/mcp-development/SKILL.md'))
+            ->toBe('VENDOR-SHIPPED — must survive cleanup');
+
+        // No residual-warning in diagnostics — clean cleanup, no failures.
+        $warnings = array_filter(
+            $result->diagnostics,
+            static fn (Diagnostic $d): bool => $d->level === 'warning' && str_contains($d->message, 'residual'),
+        );
+        expect($warnings)->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+    }
+})->skip(
+    DIRECTORY_SEPARATOR !== '/',
+    'POSIX-only — Windows symlink semantics + admin-perm requirements differ.',
+);
+
 it('0.9.1 cleanup: safety gate — Copilot NOT in active agents leaves `.github/` untouched (operator-owned)', function (): void {
     $root = makeEndToEndProject();
     try {

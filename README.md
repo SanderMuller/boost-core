@@ -284,6 +284,7 @@ The `Tag` enum is a non-authoritative convenience — the tag vocabulary is open
 | `boost convert-conventions`          | One-shot migration: extract CLAUDE.md marker YAML into `boost.php` (0.9.0)       | [Project Conventions](#project-conventions)                 |
 | `boost paths`                        | List path globs boost-core manages (vendor-skill-reachable via `--managed`)      | [Project Conventions](#project-conventions)                 |
 | `boost doctor --check-conventions`   | Report Project Conventions slot status (missing, unknown, file-existence)        | [Project Conventions](#project-conventions)                 |
+| `boost doctor --check-stale-paths`   | Read-only audit of retired-paths registry — what next sync would clean up        | [Remote skill sources](#remote-skill-sources)               |
 
 ## Project Conventions
 

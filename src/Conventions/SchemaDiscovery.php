@@ -38,6 +38,10 @@ final readonly class SchemaDiscovery
         $sources = [];
         /** @var list<Diagnostic> $diagnostics */
         $diagnostics = [];
+        /** @var list<string> $noSchemaVendors Accumulated for the 0.10.1 noise-collapse summary diagnostic */
+        $noSchemaVendors = [];
+        /** @var int $allowedCount Vendors actually inspected (excludes self-referential + uninstalled) */
+        $allowedCount = 0;
 
         foreach ($allowedVendors as $vendorName) {
             // Skip self-referential check: boost-core is the engine, it doesn't
@@ -54,14 +58,16 @@ final readonly class SchemaDiscovery
                 continue;
             }
 
+            ++$allowedCount;
             $installPath = $this->packages->path($vendorName);
             $schemaPath = $installPath . '/' . self::SCHEMA_REL_PATH;
             if (! is_file($schemaPath)) {
-                $diagnostics[] = Diagnostic::info(
-                    null,
-                    sprintf('vendor %s is installed but ships no conventions-schema.json at %s', $vendorName, $schemaPath),
-                    $vendorName,
-                );
+                // 0.10.1 noise collapse: accumulate vendor names instead of
+                // emitting one INFO per vendor. The N-vendor sync noise that
+                // adoption dogfood flagged was inverting the signal/noise
+                // ratio when most allowlisted vendors don't ship a schema
+                // (the common case — conventions-schema is a niche feature).
+                $noSchemaVendors[] = $vendorName;
 
                 continue;
             }
@@ -104,6 +110,23 @@ final readonly class SchemaDiscovery
                 vendorName: $vendorName,
                 schemaPath: $schemaPath,
                 schema: $decoded,
+            );
+        }
+
+        // 0.10.1 noise-collapse: emit ONE summary INFO instead of N per-vendor
+        // INFOs. The schema-discovery pass is informational; the load-bearing
+        // signal is "did the engine find any schemas?" not "which specific
+        // vendors don't ship one?" Per-vendor detail is surfaced via
+        // `boost doctor` (the vendor allowlist section already lists every
+        // allowlisted vendor) when operators need it for triage.
+        if ($noSchemaVendors !== []) {
+            $diagnostics[] = Diagnostic::info(
+                null,
+                sprintf(
+                    '%d of %d allowlisted vendor(s) ship no conventions-schema.json. The conventions-schema layer is dormant until at least one vendor publishes one. Inspect `boost doctor` vendor allowlist section for the per-vendor list.',
+                    count($noSchemaVendors),
+                    $allowedCount,
+                ),
             );
         }
 

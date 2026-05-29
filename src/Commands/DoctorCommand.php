@@ -58,6 +58,12 @@ final class DoctorCommand extends BoostBaseCommand
             InputOption::VALUE_NONE,
             'Report Project Conventions slot status (missing required, unknown slots, schema-version mismatches, path-typed file existence).',
         );
+        $this->addOption(
+            'check-stale-paths',
+            null,
+            InputOption::VALUE_NONE,
+            'List retired-paths-registry entries still present on disk. Read-only audit for legacy-migration triage post-0.9.6.',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -92,7 +98,53 @@ final class DoctorCommand extends BoostBaseCommand
             $this->reportConventions($io, $projectRoot, $config);
         }
 
+        if ($input->getOption('check-stale-paths') === true) {
+            $this->reportStalePaths($io, $projectRoot, $config);
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Opt-in (via `--check-stale-paths`) audit of the retired-paths registry
+     * — paths boost-core emitted in past versions but no longer maintains.
+     *
+     * Read-only by contract: sync owns the cleanup (deletes on next run when
+     * Copilot is active); doctor lists registry-tracked paths still present
+     * on disk for legacy-migration triage. Operators upgrading across the
+     * 0.9.0 / 0.9.1 retirement boundaries can see at a glance what next sync
+     * would delete without running sync.
+     *
+     * Gated on Copilot in active agents, matching sync's gate exactly:
+     * registry entries are Copilot-emitted, so absence of Copilot in
+     * `withAgents()` means absence of sync-side cleanup intent.
+     */
+    private function reportStalePaths(SymfonyStyle $io, string $projectRoot, BoostConfig $config): void
+    {
+        $io->section('Stale paths (retired-paths registry)');
+
+        if (! $config->hasAgent(Agent::COPILOT)) {
+            $io->writeln('<info>Copilot not in active agents. Retired-paths registry is Copilot-scoped — nothing to audit.</info>');
+
+            return;
+        }
+
+        $present = [];
+        foreach (SyncEngine::RETIRED_COPILOT_PATHS as $relativePath) {
+            $absolute = $projectRoot . '/' . $relativePath;
+            if (file_exists($absolute) || is_link($absolute)) {
+                $present[] = $relativePath;
+            }
+        }
+
+        if ($present === []) {
+            $io->writeln('<info>No retired-registry paths present on disk. Clean.</info>');
+
+            return;
+        }
+
+        $io->writeln('<comment>Retired paths still present on disk. Next `vendor/bin/boost sync` will delete:</comment>');
+        $io->listing($present);
     }
 
     /**

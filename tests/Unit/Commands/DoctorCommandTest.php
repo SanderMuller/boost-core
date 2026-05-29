@@ -502,3 +502,79 @@ it('0.10.0 entry-point mismatch: omits banner when project-boost-laravel is NOT 
         doctorCleanup($dir);
     }
 });
+
+it('0.10.1 --check-stale-paths: omits section by default (opt-in only)', function (): void {
+    // Default `boost doctor` invocation must not render the audit section —
+    // routine usage stays focused on drift + allowlist. Stale-paths audit
+    // is legacy-migration-triage, opt-in via the flag.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::COPILOT])');
+    // Create a retired path on disk so the section, if it WERE to fire,
+    // would have content. Asserting the section absence is then strict.
+    mkdir($dir . '/.github', 0o755, recursive: true);
+    file_put_contents($dir . '/.github/copilot-instructions.md', 'legacy');
+    try {
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->not->toContain('Stale paths');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.10.1 --check-stale-paths: lists retired-registry paths present on disk when Copilot active', function (): void {
+    // Operator upgraded past the 0.9.0 / 0.9.1 retirement boundaries with
+    // Copilot still in the active agent set. The legacy files on disk
+    // should surface — exactly the paths sync's cleanup pass will delete
+    // on the next run. Read-only here.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::COPILOT])');
+    mkdir($dir . '/.github/skills', 0o755, recursive: true);
+    file_put_contents($dir . '/.github/copilot-instructions.md', 'legacy 0.9.0 file');
+    file_put_contents($dir . '/.github/skills/legacy-skill.md', 'legacy 0.9.1 file');
+    try {
+        $result = runDoctorWithOption($dir, '--check-stale-paths');
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+        expect($result['exit'])->toBe(0)
+            ->and($display)->toContain('Stale paths')
+            ->and($display)->toContain('.github/copilot-instructions.md')
+            ->and($display)->toContain('.github/skills')
+            ->and($display)->toContain('Next `vendor/bin/boost sync` will delete');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.10.1 --check-stale-paths: clean message when registry paths are absent', function (): void {
+    // Operator already on the modern emit surface — no legacy artifacts on
+    // disk. Section renders the clean-positive so the opt-in invocation
+    // confirms the audit ran (not skipped silently).
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::COPILOT])');
+    try {
+        $result = runDoctorWithOption($dir, '--check-stale-paths');
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('Stale paths')
+            ->and($result['display'])->toContain('Clean');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.10.1 --check-stale-paths: scoped-not-applicable when Copilot is NOT in active agents (registry is Copilot-scoped)', function (): void {
+    // Registry entries are Copilot-emitted; absence of Copilot in
+    // withAgents() means sync has no cleanup intent for these paths.
+    // The audit explicitly says "nothing to audit" rather than silently
+    // returning clean — the latter would lie when a non-Copilot project
+    // happens to have a `.github/skills/` from an unrelated source.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.github/skills', 0o755, recursive: true);
+    file_put_contents($dir . '/.github/copilot-instructions.md', 'unrelated content');
+    try {
+        $result = runDoctorWithOption($dir, '--check-stale-paths');
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+        expect($result['exit'])->toBe(0)
+            ->and($display)->toContain('Stale paths')
+            ->and($display)->toContain('Copilot not in active agents')
+            ->and($display)->not->toContain('.github/copilot-instructions.md');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

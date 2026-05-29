@@ -70,6 +70,23 @@ use Throwable;
  */
 final readonly class SyncEngine
 {
+    /**
+     * Retired-paths registry. Paths boost-core has emitted to in past
+     * versions but no longer maintains. Adding a path requires conscious
+     * decision; the registry is the audit surface for "what cleanup
+     * contract does sync enforce."
+     *
+     * Public so `boost doctor --check-stale-paths` (0.10.1) can surface
+     * registry-tracked paths read-only without duplicating the list. Sync
+     * owns deletion, doctor owns read-only reporting.
+     *
+     * @var list<string>
+     */
+    public const RETIRED_COPILOT_PATHS = [
+        '.github/copilot-instructions.md', // retired 0.9.0 — Copilot reads root AGENTS.md
+        '.github/skills',                  // retired 0.9.1 — Copilot reads .agents/skills via shared pool
+    ];
+
     private InstalledPackages $installedPackages;
 
     private SkillLoader $skillLoader;
@@ -631,19 +648,10 @@ final readonly class SyncEngine
             return ['writes' => [], 'diagnostics' => []];
         }
 
-        // Retired-paths registry. Paths boost-core has emitted to in past
-        // versions but no longer maintains. Adding a path requires conscious
-        // decision; the registry is the audit surface for "what cleanup
-        // contract does sync enforce."
-        $retiredCopilotPaths = [
-            '.github/copilot-instructions.md', // retired 0.9.0 — Copilot reads root AGENTS.md
-            '.github/skills',                  // retired 0.9.1 — Copilot reads .agents/skills via shared pool
-        ];
-
         $writes = [];
         $diagnostics = [];
 
-        foreach ($retiredCopilotPaths as $relativePath) {
+        foreach (self::RETIRED_COPILOT_PATHS as $relativePath) {
             $absolute = $projectRoot . '/' . $relativePath;
             if (! file_exists($absolute) && ! is_link($absolute)) {
                 continue;

@@ -82,11 +82,16 @@ it('emits an info diagnostic for a vendor without conventions-schema.json', func
 
     $result = (new SchemaDiscovery($scanner))->discover(['vendor/foo']);
 
+    // 0.10.1 noise collapse: per-vendor INFO replaced by a single summary
+    // INFO. The vendor-name field is null on the summary; the count phrasing
+    // ("1 of 1 allowlisted vendor(s)") carries the equivalent signal.
     expect($result['sources'])
         ->toBeEmpty()
         ->and($result['diagnostics'])->toHaveCount(1)
         ->and($result['diagnostics'][0]->level)->toBe('info')
-        ->and($result['diagnostics'][0]->vendor)->toBe('vendor/foo');
+        ->and($result['diagnostics'][0]->vendor)->toBeNull()
+        ->and($result['diagnostics'][0]->message)->toContain('1 of 1 allowlisted vendor(s)')
+        ->and($result['diagnostics'][0]->message)->toContain('ship no conventions-schema.json');
 });
 
 it('returns a warning diagnostic for malformed JSON, skipping that vendor', function (): void {
@@ -137,7 +142,49 @@ it('0.9.7 self-referential guard: boost-core in the allowlist does NOT produce a
 
     // vendor/other still produces the INFO (it's a non-engine vendor in the
     // allowlist that genuinely doesn't ship a schema — legitimate signal).
-    // boost-core is silenced.
+    // boost-core is silenced. 0.10.1 noise-collapse: the count reflects only
+    // non-engine vendors inspected — boost-core is skipped pre-count so the
+    // "1 of 1" phrasing is honest (only vendor/other was actually inspected).
     expect($result['diagnostics'])->toHaveCount(1)
-        ->and($result['diagnostics'][0]->vendor)->toBe('vendor/other');
+        ->and($result['diagnostics'][0]->vendor)->toBeNull()
+        ->and($result['diagnostics'][0]->message)->toContain('1 of 1 allowlisted vendor(s)');
+});
+
+it('0.10.1 noise collapse: emits ONE summary INFO instead of N per-vendor INFOs when multiple allowlisted vendors lack a schema', function (): void {
+    // Three vendors, none ship a schema → previously 3 per-vendor INFO lines
+    // fired on every sync, inverting the signal/noise ratio. 0.10.1 collapses
+    // to ONE summary INFO naming the count, leaving per-vendor detail to
+    // `boost doctor` (vendor allowlist section).
+    $a = makeTempVendor('vendor/a', null);
+    $b = makeTempVendor('vendor/b', null);
+    $c = makeTempVendor('vendor/c', null);
+    $scanner = makeStubPackages([
+        'vendor/a' => $a,
+        'vendor/b' => $b,
+        'vendor/c' => $c,
+    ]);
+
+    $result = (new SchemaDiscovery($scanner))->discover(['vendor/a', 'vendor/b', 'vendor/c']);
+
+    expect($result['diagnostics'])->toHaveCount(1)
+        ->and($result['diagnostics'][0]->level)->toBe('info')
+        ->and($result['diagnostics'][0]->vendor)->toBeNull()
+        ->and($result['diagnostics'][0]->message)->toContain('3 of 3 allowlisted vendor(s)')
+        ->and($result['diagnostics'][0]->message)->toContain('ship no conventions-schema.json')
+        ->and($result['diagnostics'][0]->message)->toContain('boost doctor');
+});
+
+it('0.10.1 noise collapse: no summary INFO when all vendors ship a schema (all-clean path stays silent)', function (): void {
+    // The summary INFO is opt-in to "actually has a no-schema vendor."
+    // Project with every vendor shipping a schema produces zero diagnostics —
+    // signal preserved for the rare-but-clean case.
+    $schemaJson = '{"type":"object"}';
+    $a = makeTempVendor('vendor/a', $schemaJson);
+    $b = makeTempVendor('vendor/b', $schemaJson);
+    $scanner = makeStubPackages(['vendor/a' => $a, 'vendor/b' => $b]);
+
+    $result = (new SchemaDiscovery($scanner))->discover(['vendor/a', 'vendor/b']);
+
+    expect($result['diagnostics'])->toBeEmpty()
+        ->and($result['sources'])->toHaveCount(2);
 });

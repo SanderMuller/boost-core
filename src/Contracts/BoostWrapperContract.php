@@ -40,6 +40,28 @@ namespace SanderMuller\BoostCore\Contracts;
  *   guideline-file basenames defensively at the gitignore-pattern emit
  *   point, but the contract intent is that wrappers don't include them.
  *
+ * **Computing the emit paths for the active agents.** `$activeAgents` is the
+ * list of agent enum values (`Agent::value`) in the project's
+ * `withAgents(...)` set. Boost-core emits each injected skill into a
+ * different directory per agent — `.claude/skills/<name>/SKILL.md` for
+ * Claude Code, the shared `.agents/skills/<name>/SKILL.md` pool for
+ * Cursor / Copilot / Codex / Amp / Junie / Kiro / OpenCode, etc. A wrapper
+ * computes the correct claim set by mapping each injected skill name across
+ * the active agents' skill directories. Use boost-core's own `AgentTarget`
+ * implementations (public API) to resolve each agent's skill-dir layout
+ * rather than hard-coding paths — this keeps the wrapper in lockstep with
+ * boost-core's emit layout across versions.
+ *
+ * **Scope: stale-file-cleanup exclusion only.** This contract closes the
+ * bare-CLI *deletion* false-positive (standalone emitted files flagged
+ * stale). It does NOT regenerate wrapper-injected *content* on a bare CLI
+ * run — managed-region guideline content injected via
+ * `injectedVendorGuidelines` is not reproducible without the wrapper's
+ * runtime injection args, by construction. Bare-CLI runs that need the full
+ * injected content must use the wrapper's canonical entry point (e.g.
+ * `php artisan project-boost:sync`); boost-core's `boost doctor`
+ * entry-point-mismatch banner points operators there.
+ *
  * **Failure modes (engine handling).**
  *
  * - Class absent across all PSR-4 prefixes: silent fallback to strict-drift
@@ -59,7 +81,11 @@ interface BoostWrapperContract
      * Engine excludes the union of all wrappers' returned paths from the
      * stale-file-cleanup pass.
      *
+     * @param  list<string>  $activeAgents  agent enum values (`Agent::value`)
+     *   in the project's `withAgents(...)` set. Use these to compute the
+     *   per-agent emit paths for the injected skills (see the class-level
+     *   docblock for how to resolve each agent's skill-dir layout).
      * @return list<string>
      */
-    public static function injectedEmitPaths(string $projectRoot): array;
+    public static function injectedEmitPaths(string $projectRoot, array $activeAgents): array;
 }

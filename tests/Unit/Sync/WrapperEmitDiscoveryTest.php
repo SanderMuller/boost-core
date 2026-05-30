@@ -23,6 +23,7 @@ function wrapperFixturePath(string $name): string
         'multi-prefix' => '/../../Doubles/Wrappers',
         'autoload-throwing' => '/../../Doubles/Wrappers/AutoloadThrowing',
         'messy-paths' => '/../../Doubles/Wrappers/MessyPaths',
+        'agents-echo' => '/../../Doubles/Wrappers/AgentsEcho',
     ];
     if (! isset($map[$name])) {
         throw new RuntimeException("unknown fixture: {$name}");
@@ -57,7 +58,7 @@ function packagesWithFixtures(array $fixtures): InstalledPackages
 it('returns empty paths + no diagnostics for empty package set', function (): void {
     $discovery = new WrapperEmitDiscovery(new InstalledPackages([]));
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     expect($result)->toMatchArray(['paths' => [], 'diagnostics' => []]);
 });
@@ -66,7 +67,7 @@ it('happy path: wrapper implementing contract contributes its emit-paths to the 
     $packages = packagesWithFixtures(['test/happy-wrapper' => 'happy']);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     expect($result['paths'])
         ->toHaveKey('.agents/skills/wrapper-injected-foo/SKILL.md')
@@ -90,7 +91,7 @@ it('absent class: package without `BoostWrapper` at any PSR-4 prefix contributes
     ]);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     // boost-core's composer.json has psr-4 `SanderMuller\BoostCore\\` → `src/`.
     // No `SanderMuller\BoostCore\BoostWrapper` class exists. Silent.
@@ -109,7 +110,7 @@ it('contract violation: `BoostWrapper` class exists but does not implement contr
     $packages = packagesWithFixtures(['test/violating-wrapper' => 'violating']);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     expect($result['paths'])->toBeEmpty()
         ->and($result['diagnostics'])->toHaveCount(1);
@@ -128,7 +129,7 @@ it('exception in `injectedEmitPaths()`: engine catches Throwable, emits per-pack
     $packages = packagesWithFixtures(['test/throwing-wrapper' => 'throwing']);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     expect($result['paths'])->toBeEmpty()
         ->and($result['diagnostics'])->toHaveCount(1);
@@ -148,7 +149,7 @@ it('autoload failure: `class_exists` probe that throws during autoload (parse er
     $packages = packagesWithFixtures(['test/autoload-throwing-wrapper' => 'autoload-throwing']);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     expect($result['paths'])->toBeEmpty()
         ->and($result['diagnostics'])->toHaveCount(1);
@@ -166,7 +167,7 @@ it('wrong return-type: `injectedEmitPaths()` returns array containing non-string
     $packages = packagesWithFixtures(['test/wrong-type-wrapper' => 'wrong-type']);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     expect($result['paths'])->toBeEmpty()
         ->and($result['diagnostics'])->toHaveCount(1);
@@ -188,7 +189,7 @@ it('multi-prefix discovery: prefers contract-implementing candidate even when an
     $packages = packagesWithFixtures(['test/multi-prefix-wrapper' => 'multi-prefix']);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     // Valid late-prefix wrapper found → its paths land, no warning fires.
     expect($result['paths'])->toHaveKey('.agents/skills/multi-prefix-found/SKILL.md')
@@ -206,7 +207,7 @@ it('path canonicalization: wrapper returns mixed-form paths; engine normalizes t
 
     // The happy-wrapper returns canonical paths in this test setup; verify
     // separately via the canonicalization helper called on edge-case inputs.
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     expect(array_keys($result['paths']))->each->not->toStartWith('./');
 });
@@ -220,7 +221,7 @@ it('path canonicalization: embedded `./`, backslashes, duplicate slashes, traili
     $packages = packagesWithFixtures(['test/messy-paths-wrapper' => 'messy-paths']);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     $paths = array_keys($result['paths']);
     sort($paths);
@@ -241,6 +242,24 @@ it('path canonicalization: embedded `./`, backslashes, duplicate slashes, traili
     }
 });
 
+it("active-agents context: the engine forwards the project's active agent set into `injectedEmitPaths()` so wrappers can compute per-agent emit paths (codex-review P1.2)", function (): void {
+    // Wrappers emit each injected skill into a different dir per agent
+    // (`.claude/skills/` vs `.agents/skills/` etc.). Without the active-agent
+    // context, a wrapper can't compute the correct claim set. The echo
+    // fixture mirrors the received agents into its returned paths so this
+    // test pins that the engine forwards them.
+    $packages = packagesWithFixtures(['test/agents-echo-wrapper' => 'agents-echo']);
+    $discovery = new WrapperEmitDiscovery($packages);
+
+    $result = $discovery->discover('/some/project', ['claude-code', 'cursor', 'copilot']);
+
+    expect($result['paths'])
+        ->toHaveKey('.agents/skills/echo-claude-code/SKILL.md')
+        ->and($result['paths'])->toHaveKey('.agents/skills/echo-cursor/SKILL.md')
+        ->and($result['paths'])->toHaveKey('.agents/skills/echo-copilot/SKILL.md')
+        ->and($result['diagnostics'])->toBeEmpty();
+});
+
 it('union semantics: multiple wrappers contribute paths; result is the union (deduplicated set-by-key)', function (): void {
     $packages = packagesWithFixtures([
         'test/happy-wrapper' => 'happy',
@@ -248,7 +267,7 @@ it('union semantics: multiple wrappers contribute paths; result is the union (de
     ]);
     $discovery = new WrapperEmitDiscovery($packages);
 
-    $result = $discovery->discover('/some/project');
+    $result = $discovery->discover('/some/project', ['claude-code']);
 
     expect($result['paths'])
         ->toHaveKey('.agents/skills/wrapper-injected-foo/SKILL.md')

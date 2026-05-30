@@ -36,9 +36,15 @@ final readonly class WrapperEmitDiscovery
     ) {}
 
     /**
+     * @param  list<string>  $activeAgents  agent enum values in the project's
+     *   `withAgents(...)` set. Passed through to each wrapper's
+     *   `injectedEmitPaths()` so wrappers can compute the correct emit paths
+     *   for the active agent layout (`.claude/skills/` vs `.agents/skills/`
+     *   vs `.github/skills/` etc.) using boost-core's `AgentTarget` API,
+     *   instead of guessing or over-claiming across all agents.
      * @return array{paths: array<string, true>, diagnostics: list<Diagnostic>}
      */
-    public function discover(string $projectRoot): array
+    public function discover(string $projectRoot, array $activeAgents): array
     {
         /** @var array<string, true> $excludedPaths  set-by-key for dedup */
         $excludedPaths = [];
@@ -60,7 +66,7 @@ final readonly class WrapperEmitDiscovery
                 continue;
             }
 
-            $callResult = $this->callInjectedEmitPaths($package->name, $resolution['class'], $projectRoot);
+            $callResult = $this->callInjectedEmitPaths($package->name, $resolution['class'], $projectRoot, $activeAgents);
             if ($callResult['diagnostic'] instanceof Diagnostic) {
                 $diagnostics[] = $callResult['diagnostic'];
 
@@ -267,10 +273,11 @@ final readonly class WrapperEmitDiscovery
      * checks as dead code.
      *
      * @param  class-string<BoostWrapperContract>  $class
+     * @param  list<string>  $activeAgents
      */
-    private function invokeUntyped(string $class, string $projectRoot): mixed
+    private function invokeUntyped(string $class, string $projectRoot, array $activeAgents): mixed
     {
-        return call_user_func([$class, 'injectedEmitPaths'], $projectRoot);
+        return call_user_func([$class, 'injectedEmitPaths'], $projectRoot, $activeAgents);
     }
 
     private function firstLine(string $message): string
@@ -282,12 +289,13 @@ final readonly class WrapperEmitDiscovery
 
     /**
      * @param  class-string<BoostWrapperContract>  $class
+     * @param  list<string>  $activeAgents
      * @return array{paths: list<string>, diagnostic: ?Diagnostic}
      */
-    private function callInjectedEmitPaths(string $packageName, string $class, string $projectRoot): array
+    private function callInjectedEmitPaths(string $packageName, string $class, string $projectRoot, array $activeAgents): array
     {
         try {
-            $result = $this->invokeUntyped($class, $projectRoot);
+            $result = $this->invokeUntyped($class, $projectRoot, $activeAgents);
         } catch (Throwable $throwable) {
             return [
                 'paths' => [],

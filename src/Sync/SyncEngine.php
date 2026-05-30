@@ -537,7 +537,8 @@ final readonly class SyncEngine
         // review caught this in the initial implementation), the next sync
         // doesn't see them in priorManagedFiles, and the wrapper-injected
         // files leak into git tracking until the next wrapper-driven sync.
-        $wrapperEmits = (new WrapperEmitDiscovery($this->installedPackages))->discover($projectRoot);
+        $activeAgents = array_map(static fn (Agent $agent): string => $agent->value, $config->agents);
+        $wrapperEmits = (new WrapperEmitDiscovery($this->installedPackages))->discover($projectRoot, $activeAgents);
 
         $gitignoreWrite = ($config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false)
             ? $this->updateGitignore($projectRoot, $config, $checkOnly, array_keys($wrapperEmits['paths']))

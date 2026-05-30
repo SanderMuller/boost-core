@@ -195,14 +195,15 @@ use SanderMuller\BoostCore\Contracts\BoostWrapperContract;
 
 final class BoostWrapper implements BoostWrapperContract
 {
-    public static function injectedEmitPaths(string $projectRoot): array
+    /** @param  list<string>  $activeAgents  agent enum values in withAgents(...) */
+    public static function injectedEmitPaths(string $projectRoot, array $activeAgents): array
     {
         return ['.agents/skills/some-injected-skill/SKILL.md', /* ... */];
     }
 }
 ```
 
-`boost sync` reads the declared emit-paths and excludes them from stale-file cleanup, so a **bare-CLI** `boost sync` / `boost sync --check` no longer false-positive-flags wrapper-injected files for deletion (they were written by the wrapper's canonical entry point, which the bare CLI doesn't carry the injection args for). Without the class, bare-CLI sync falls back to strict drift comparison — correct but noisier; the `boost doctor` entry-point banner still points operators at the wrapper's canonical sync command. The class must declare a non-empty PSR-4 prefix and should not return guideline-file paths (`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`) — those are operator-tracked via managed regions, not wholesale-replaced.
+`$activeAgents` is the project's `withAgents(...)` set (agent enum values); use it with boost-core's `AgentTarget` API to compute the per-agent emit paths (`.claude/skills/…` for Claude Code, the shared `.agents/skills/…` pool for Cursor / Copilot / Codex / etc.). `boost sync` reads the declared emit-paths and excludes them from stale-file cleanup, so a **bare-CLI** `boost sync` / `boost sync --check` no longer false-positive-flags wrapper-injected files for deletion (they were written by the wrapper's canonical entry point, which the bare CLI doesn't carry the injection args for). Without the class, bare-CLI sync falls back to strict drift comparison — correct but noisier; the `boost doctor` entry-point banner still points operators at the wrapper's canonical sync command. The class must declare a non-empty PSR-4 prefix and should not return guideline-file paths (`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`) — those are operator-tracked via managed regions, not wholesale-replaced. The contract covers stale-file-cleanup exclusion only; it does not regenerate wrapper-injected managed-region *content* on a bare CLI run — that needs the wrapper's canonical entry point.
 
 ## Remote skill sources
 

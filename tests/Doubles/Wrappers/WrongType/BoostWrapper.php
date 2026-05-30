@@ -15,7 +15,7 @@ use SanderMuller\BoostCore\Contracts\BoostWrapperContract;
  */
 final class BoostWrapper implements BoostWrapperContract
 {
-    public static function injectedEmitPaths(string $projectRoot): array
+    public static function injectedEmitPaths(string $projectRoot, array $activeAgents): array
     {
         /** @phpstan-ignore-next-line return.type  -- intentional contract violation for test fixture */
         return ['ok', 12345, 'also-ok'];

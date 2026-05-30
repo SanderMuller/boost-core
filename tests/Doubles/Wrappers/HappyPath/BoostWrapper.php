@@ -12,7 +12,7 @@ use SanderMuller\BoostCore\Contracts\BoostWrapperContract;
  */
 final class BoostWrapper implements BoostWrapperContract
 {
-    public static function injectedEmitPaths(string $projectRoot): array
+    public static function injectedEmitPaths(string $projectRoot, array $activeAgents): array
     {
         return [
             '.agents/skills/wrapper-injected-foo/SKILL.md',

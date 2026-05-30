@@ -531,8 +531,16 @@ final readonly class SyncEngine
         $priorManagedPatterns = $this->readPriorGitignorePatterns($projectRoot);
         $priorManagedFiles = $this->enumerateManagedFiles($projectRoot, $priorManagedPatterns);
 
+        // 0.11.0: discover wrapper-claimed paths BEFORE updateGitignore so the
+        // managed `.gitignore` block can include them. Otherwise bare-CLI
+        // sync drops the wrapper's emit-paths from the managed block (codex-
+        // review caught this in the initial implementation), the next sync
+        // doesn't see them in priorManagedFiles, and the wrapper-injected
+        // files leak into git tracking until the next wrapper-driven sync.
+        $wrapperEmits = (new WrapperEmitDiscovery($this->installedPackages))->discover($projectRoot);
+
         $gitignoreWrite = ($config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false)
-            ? $this->updateGitignore($projectRoot, $config, $checkOnly)
+            ? $this->updateGitignore($projectRoot, $config, $checkOnly, array_keys($wrapperEmits['paths']))
             : null;
 
         $writes = array_merge($fanOutWrites, $remoteOrphanWrites);
@@ -572,8 +580,24 @@ final readonly class SyncEngine
             }
         }
 
+        // 0.11.0 drift-comparison wrapper-injection awareness: when a wrapper
+        // package (e.g., project-boost-laravel) injects skills/guidelines via
+        // `injectedVendorSkills`/`injectedVendorGuidelines`, bare-CLI sync
+        // would otherwise flag previously-emitted-from-injection files as
+        // stale-to-delete because the resolve pass returns empty. The wrapper
+        // declares its emit surface via a `BoostWrapper` class implementing
+        // `BoostWrapperContract`; the discovery returns the union of those
+        // declarations across all installed wrappers, and the cleanup pass
+        // excludes those paths from stale-file classification.
+        // ($wrapperEmits already computed above to feed the gitignore pass.)
         if (! $hasAnyError) {
-            $writes = $this->cleanupStaleManagedFiles($projectRoot, $priorManagedFiles, $writes, $checkOnly);
+            $writes = $this->cleanupStaleManagedFiles(
+                $projectRoot,
+                $priorManagedFiles,
+                $writes,
+                $checkOnly,
+                $wrapperEmits['paths'],
+            );
         }
 
         // Diagnostic surface for the render-fail-then-write safety gate
@@ -598,7 +622,12 @@ final readonly class SyncEngine
             check: $checkOnly,
             tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
             hostShadows: $skillResolution['hostShadows'],
-            diagnostics: [...$conventionsResult['diagnostics'], ...$cleanupResult['diagnostics'], ...$renderFailDiagnostics],
+            diagnostics: [
+                ...$conventionsResult['diagnostics'],
+                ...$cleanupResult['diagnostics'],
+                ...$wrapperEmits['diagnostics'],
+                ...$renderFailDiagnostics,
+            ],
         );
     }
 
@@ -813,9 +842,13 @@ final readonly class SyncEngine
      *
      * @param  list<string>  $priorManagedFiles
      * @param  list<WrittenFile>  $writes
+     * @param  array<string, true>  $wrapperExcludedPaths  0.11.0: paths
+     *   declared by `BoostWrapper` classes from installed wrapper packages —
+     *   excluded from "stale-to-delete" classification so bare-CLI doesn't
+     *   false-positive-flag wrapper-injected files for deletion.
      * @return list<WrittenFile>
      */
-    private function cleanupStaleManagedFiles(string $projectRoot, array $priorManagedFiles, array $writes, bool $checkOnly): array
+    private function cleanupStaleManagedFiles(string $projectRoot, array $priorManagedFiles, array $writes, bool $checkOnly, array $wrapperExcludedPaths = []): array
     {
         $writtenPaths = [];
         foreach ($writes as $w) {
@@ -824,6 +857,19 @@ final readonly class SyncEngine
 
         foreach ($priorManagedFiles as $relativePath) {
             if (isset($writtenPaths[$relativePath])) {
+                continue;
+            }
+
+            // 0.11.0: wrapper-claimed paths get preserved. Wrapper-driven
+            // sync rewrites them on next invocation; bare-CLI must NOT delete.
+            // Both exact-file and directory-prefix match: a wrapper claim of
+            // `.agents/skills/foo` (directory) should preserve every file
+            // under it. Codex-review P2 pin — without prefix-match, wrapper
+            // dir claims would only preserve the dir entry itself (which
+            // wouldn't be in priorManagedFiles anyway) while children get
+            // false-positive-deleted.
+            $canonicalRelative = $this->canonicalizeWrapperPath($relativePath);
+            if ($this->isUnderWrapperClaim($canonicalRelative, $wrapperExcludedPaths)) {
                 continue;
             }
 
@@ -845,6 +891,72 @@ final readonly class SyncEngine
         }
 
         return $writes;
+    }
+
+    /**
+     * @param  array<string, true>  $wrapperExcludedPaths
+     */
+    private function isUnderWrapperClaim(string $canonicalRelative, array $wrapperExcludedPaths): bool
+    {
+        if (isset($wrapperExcludedPaths[$canonicalRelative])) {
+            return true;
+        }
+
+        // Directory-prefix match: a wrapper claim like `.agents/skills/foo`
+        // should preserve `.agents/skills/foo/SKILL.md`, `.agents/skills/foo/
+        // references/api.md`, etc. The trailing `/` boundary check avoids
+        // false-positive matches on path-prefixes that aren't actual
+        // directory ancestors (e.g., `.agents/skills/foobar` should NOT
+        // match a claim of `.agents/skills/foo`).
+        foreach (array_keys($wrapperExcludedPaths) as $claim) {
+            if (str_starts_with($canonicalRelative, $claim . '/')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Guideline files (CLAUDE.md / AGENTS.md / GEMINI.md / similar) use
+     * ManagedRegion + are operator-tracked, never wholesale-replaced. Adding
+     * them to the gitignore-managed manifest would route them through
+     * cleanupStaleManagedFiles which would delete the WHOLE file when stale,
+     * destroying operator content outside boost-core's markers. Filter at
+     * the gitignore-pattern emit point so wrapper-returned guideline-file
+     * paths are silently dropped from the managed manifest.
+     */
+    private function isGuidelineFilePath(string $relativePath): bool
+    {
+        return in_array($relativePath, ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md'], true);
+    }
+
+    /**
+     * Mirror of WrapperEmitDiscovery's canonical form so both sides of the
+     * union comparison match byte-for-byte regardless of input form.
+     * Segment-based (collapses empty + `.` segments) to stay identical to
+     * the discovery side, which must collapse embedded `./` for the claim
+     * to match the on-disk path. priorManagedFiles paths are already clean
+     * on-disk relative paths, so this is mostly a slash-normalize for them.
+     */
+    private function canonicalizeWrapperPath(string $raw): string
+    {
+        $normalized = str_replace('\\', '/', $raw);
+
+        $out = [];
+        foreach (explode('/', $normalized) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+
+            if ($segment === '.') {
+                continue;
+            }
+
+            $out[] = $segment;
+        }
+
+        return implode('/', $out);
     }
 
     /**
@@ -1183,7 +1295,14 @@ final readonly class SyncEngine
         return [...$parseDiagnostics, ...$schema->validate($values)];
     }
 
-    private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly): ?WrittenFile
+    /**
+     * @param  list<string>  $wrapperClaimedPaths  0.11.0: paths declared by
+     *   `BoostWrapper` classes from installed wrapper packages — included in
+     *   the managed `.gitignore` block so bare-CLI sync doesn't drop wrapper-
+     *   emitted files from gitignore tracking (which would leak them into
+     *   the operator's git working set).
+     */
+    private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly, array $wrapperClaimedPaths = []): ?WrittenFile
     {
         $patterns = [];
         foreach ($this->agentTargets as $target) {
@@ -1201,6 +1320,32 @@ final readonly class SyncEngine
         // noise — it's auto-regenerated by every sync.
         if ($config->remoteSkills !== []) {
             $patterns[] = '/' . RemoteOrphanPruner::MANIFEST_FILE;
+        }
+
+        // 0.11.0: wrapper-claimed paths land in the managed block so bare-CLI
+        // sync doesn't silently drop them. Pattern format matches what agent
+        // targets emit (no leading slash) so subsequent reads via
+        // readPriorGitignorePatterns + enumerateManagedFiles produce the
+        // same key form as `WrittenFile::$relativePath`. Without the form
+        // match, cleanup-pass's `$writtenPaths` check misses files just
+        // written by sync and falsely classifies them stale (codex-review
+        // pin).
+        //
+        // Filter known guideline-file basenames (CLAUDE.md / AGENTS.md /
+        // GEMINI.md): those use ManagedRegion + are operator-tracked, never
+        // wholesale-replaced. Adding them to the gitignore-managed manifest
+        // would route them through cleanupStaleManagedFiles, which deletes
+        // the WHOLE file when stale — destroying operator-authored content
+        // outside boost-core's managed markers (codex-review P1 pin). The
+        // wrapper contract is for files that need stale-cleanup-exclusion;
+        // guideline files don't fit that surface.
+        foreach ($wrapperClaimedPaths as $wrapperPath) {
+            $normalized = ltrim($wrapperPath, '/');
+            if ($this->isGuidelineFilePath($normalized)) {
+                continue;
+            }
+
+            $patterns[] = $normalized;
         }
 
         $absolute = $projectRoot . '/.gitignore';

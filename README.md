@@ -184,6 +184,26 @@ Render failures default to warn-and-skip: an error is recorded in `SyncResult::e
 
 The renderer contract is `@experimental` — the shape will change before v1.0 stable; pin to an exact boost-core version if building against it. Reference consumer: [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) ships a `BladeRenderer` that delegates to laravel/boost's `RendersBladeGuidelines` trait, so `.ai/<pkg>/skill/<name>/SKILL.blade.php` files render with the `$assist = GuidelineAssist` runtime context they expect.
 
+### Wrapper-injection contract (`BoostWrapperContract`)
+
+Wrapper packages that inject skills/guidelines at sync time via `SyncEngine::sync()`'s `injectedVendorSkills` / `injectedVendorGuidelines` args (e.g. `project-boost-laravel` injecting laravel/boost's bundled skills) declare a `BoostWrapper` class implementing `SanderMuller\BoostCore\Contracts\BoostWrapperContract` at any of the package's PSR-4 prefixes:
+
+```php
+namespace SanderMuller\ProjectBoostLaravel;
+
+use SanderMuller\BoostCore\Contracts\BoostWrapperContract;
+
+final class BoostWrapper implements BoostWrapperContract
+{
+    public static function injectedEmitPaths(string $projectRoot): array
+    {
+        return ['.agents/skills/some-injected-skill/SKILL.md', /* ... */];
+    }
+}
+```
+
+`boost sync` reads the declared emit-paths and excludes them from stale-file cleanup, so a **bare-CLI** `boost sync` / `boost sync --check` no longer false-positive-flags wrapper-injected files for deletion (they were written by the wrapper's canonical entry point, which the bare CLI doesn't carry the injection args for). Without the class, bare-CLI sync falls back to strict drift comparison — correct but noisier; the `boost doctor` entry-point banner still points operators at the wrapper's canonical sync command. The class must declare a non-empty PSR-4 prefix and should not return guideline-file paths (`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`) — those are operator-tracked via managed regions, not wholesale-replaced.
+
 ## Remote skill sources
 
 Not every useful skill ships as a Composer package. GitHub repos shipping `.skill` ZIP release bundles, single-skill repos with a root-level `SKILL.md`, and mega-repos to cherry-pick subdirs from are all common. `withRemoteSkills()` declares them directly in `boost.php`, with the same `composer install / update` lifecycle:

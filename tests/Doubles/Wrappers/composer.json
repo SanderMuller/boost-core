@@ -1,0 +1,10 @@
+{
+    "name": "test/multi-prefix-wrapper",
+    "_comment": "0.11.0 multi-prefix test fixture. Declares TWO PSR-4 prefixes; the engine must probe both and prefer the contract-implementing candidate (MultiPrefixLate) over the non-implementing one (MultiPrefixEarly). installPath points at this Wrappers root so both BoostWrapper class files resolve under it for the package-scope file-path check.",
+    "autoload": {
+        "psr-4": {
+            "SanderMuller\\BoostCore\\Tests\\Doubles\\Wrappers\\MultiPrefixEarly\\": "MultiPrefixEarly",
+            "SanderMuller\\BoostCore\\Tests\\Doubles\\Wrappers\\MultiPrefixLate\\": "MultiPrefixLate"
+        }
+    }
+}

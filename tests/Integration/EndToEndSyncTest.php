@@ -1864,6 +1864,20 @@ it('0.10.2 deleteRecursive observability: residual paths after @-suppressed fail
                 ->and($joined)->toContain('residual path(s) on disk')
                 ->and($joined)->toContain('locked-bundle');
 
+            // 0.11.0 task #78 — wording-revert-as-regression-test pin on the
+            // EXACT "Likely cause:" framing. The wording is load-bearing-
+            // invisible-by-design: it signals non-exhaustive-hypothesis-set
+            // to consumers, which made the 0.10.2 → 0.10.3 symlink case
+            // natural to surface as a fourth hypothesis rather than
+            // requiring the consumer to reason about whether their case
+            // "should have been" in the engine's three-hypothesis list.
+            //
+            // Substring would tolerate paraphrase-drift to authoritative
+            // ("Most likely cause:" / "The likely cause is" / "Cause:"),
+            // all of which weaken non-exhaustivity by adding qualifier-
+            // strength. Exact-string check is intentional brittleness.
+            expect($joined)->toContain('Likely cause:');
+
             // codex-review regression guards: on failure, the WrittenFile is
             // NOT added to $writes as DELETED (otherwise hasDrift() + the
             // deleted-count would lie) AND the success-shaped INFO is NOT
@@ -1888,6 +1902,290 @@ it('0.10.2 deleteRecursive observability: residual paths after @-suppressed fail
     DIRECTORY_SEPARATOR !== '/' || (function_exists('posix_geteuid') && posix_geteuid() === 0),
     'POSIX-only + non-root — Windows fs permissions model differs; root bypasses permission checks.',
 );
+
+/**
+ * 0.11.0 helper — synthesize the wrapper-driven-prior-sync state for the
+ * cleanup-pass tests below. Writes the gitignore managed block + the
+ * wrapper-injected files on disk so `cleanupStaleManagedFiles` finds them
+ * via `readPriorGitignorePatterns` and routes them through the wrapper-
+ * exclusion gate.
+ *
+ * @param  list<string>  $relativePaths
+ */
+function simulateWrapperDrivenPriorSync(string $root, array $relativePaths): void
+{
+    // Minimal managed-block in `.gitignore` with the wrapper's emit-paths.
+    // boost-core's cleanup pass reads patterns from this block to identify
+    // prior-managed files. enumerateManagedFiles() reads them as
+    // project-root-relative paths (no leading `/`).
+    $patternsBlock = implode("\n", $relativePaths);
+    file_put_contents(
+        $root . '/.gitignore',
+        "# >>> boost (managed) >>>\n{$patternsBlock}\n# <<< boost (managed) <<<\n",
+    );
+
+    foreach ($relativePaths as $relativePath) {
+        $absolute = $root . '/' . $relativePath;
+        @mkdir(dirname($absolute), 0o755, recursive: true);
+        file_put_contents($absolute, "---\nname: wrapper-injected\n---\nbody");
+    }
+}
+
+it('0.11.0 drift-comparison Test 1 (strict-drift baseline): wrapper NOT installed + bare CLI on previously-emitted state → drift IS flagged on prior-managed files', function (): void {
+    // Regression guard against accidental over-broad gating in the chosen
+    // approach. When no wrapper is installed (or the installed wrapper
+    // doesn't declare a `BoostWrapper` class), the cleanup pass MUST stay
+    // strict — pre-0.11.0 behavior preserved for the wrapper-absent case.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        simulateWrapperDrivenPriorSync($root, [
+            '.agents/skills/wrapper-injected-foo/SKILL.md',
+            '.agents/skills/wrapper-injected-bar/SKILL.md',
+        ]);
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root, checkOnly: true);
+
+        $wouldDeletePaths = [];
+        foreach ($result->writes as $w) {
+            if ($w->action === WriteAction::WOULD_DELETE) {
+                $wouldDeletePaths[] = $w->relativePath;
+            }
+        }
+
+        expect($wouldDeletePaths)
+            ->toContain('.agents/skills/wrapper-injected-foo/SKILL.md')
+            ->and($wouldDeletePaths)->toContain('.agents/skills/wrapper-injected-bar/SKILL.md');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.11.0 drift-comparison Test 2 (load-bearing fix assertion): wrapper installed (declares BoostWrapper) + bare CLI + prior-managed wrapper-injected files → drift is NOT flagged on those paths', function (): void {
+    // The test that captures the 0.11.0 fix. Without the fix this fails:
+    // cleanup-pass would have marked the wrapper-injected files for
+    // deletion. With the fix: WrapperEmitDiscovery finds the happy-wrapper's
+    // BoostWrapper class via PSR-4 probe, calls injectedEmitPaths(), and
+    // cleanup-pass excludes those paths from stale classification.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        simulateWrapperDrivenPriorSync($root, [
+            '.agents/skills/wrapper-injected-foo/SKILL.md',
+            '.agents/skills/wrapper-injected-bar/SKILL.md',
+        ]);
+
+        $happyFixturePath = realpath(__DIR__ . '/../Doubles/Wrappers/HappyPath');
+        if ($happyFixturePath === false) {
+            throw new RuntimeException('missing fixture: happy-wrapper');
+        }
+
+        $wrapperInstalled = new InstalledPackages([
+            'test/happy-wrapper' => new PackageInfo(
+                name: 'test/happy-wrapper',
+                version: '1.0.0',
+                installPath: $happyFixturePath,
+            ),
+        ]);
+
+        $result = SyncEngine::default($wrapperInstalled)->sync($root, checkOnly: true);
+
+        $wouldDeletePaths = [];
+        foreach ($result->writes as $w) {
+            if ($w->action === WriteAction::WOULD_DELETE) {
+                $wouldDeletePaths[] = $w->relativePath;
+            }
+        }
+
+        expect($wouldDeletePaths)
+            ->not->toContain('.agents/skills/wrapper-injected-foo/SKILL.md')
+            ->and($wouldDeletePaths)->not->toContain('.agents/skills/wrapper-injected-bar/SKILL.md');
+
+        // Silent fallback semantic: no contract-violation warning for the
+        // happy wrapper. Engine found the class and used it without noise.
+        $warnings = array_filter(
+            $result->diagnostics,
+            static fn (Diagnostic $d): bool => $d->level === 'warning' && str_contains($d->message, 'BoostWrapperContract'),
+        );
+        expect($warnings)->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.11.0 drift-comparison: wrapper-claimed paths land in the managed `.gitignore` block (codex-review regression — bare-CLI must not drop wrapper-paths from gitignore tracking)', function (): void {
+    // Codex-review surfaced: without this guarantee, bare-CLI sync would
+    // overwrite `.gitignore` with patterns from active agent targets ONLY,
+    // dropping the wrapper's `.agents/skills/foo/SKILL.md` entry. The next
+    // sync would then read priorManagedPatterns missing the wrapper paths
+    // → enumerateManagedFiles wouldn't return them → cleanup-pass wouldn't
+    // see them at all → wrapper-injected files leak into the operator's
+    // git working set until the next wrapper-driven sync rewrites the
+    // gitignore. Test: wrapper-installed bare-CLI sync MUST include the
+    // wrapper's emit-paths in the managed block.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        $happyFixturePath = realpath(__DIR__ . '/../Doubles/Wrappers/HappyPath');
+        if ($happyFixturePath === false) {
+            throw new RuntimeException('missing fixture: happy-wrapper');
+        }
+
+        $wrapperInstalled = new InstalledPackages([
+            'test/happy-wrapper' => new PackageInfo(
+                name: 'test/happy-wrapper',
+                version: '1.0.0',
+                installPath: $happyFixturePath,
+            ),
+        ]);
+
+        SyncEngine::default($wrapperInstalled)->sync($root);
+
+        $gitignoreContent = file_get_contents($root . '/.gitignore');
+        // Pattern form mirrors agent-target patterns (no leading slash) so
+        // subsequent reads via enumerateManagedFiles produce keys matching
+        // WrittenFile::$relativePath form. Codex-review P1 pin.
+        expect($gitignoreContent)
+            ->toContain('.agents/skills/wrapper-injected-foo/SKILL.md')
+            ->and($gitignoreContent)->toContain('.agents/skills/wrapper-injected-bar/SKILL.md');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.11.0 drift-comparison: wrapper directory-claim preserves all files under the claimed directory (codex-review P2 regression — prefix-match required)', function (): void {
+    // Wrapper claims `.agents/skills/wrapper-dir-claim` (directory). The
+    // cleanup-pass exclusion check MUST prefix-match so every file under
+    // the claimed directory is preserved. Without prefix-match, the dir
+    // entry itself wouldn't be in priorManagedFiles (only its files would
+    // be enumerated) and every child file would still be classified as
+    // stale.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        simulateWrapperDrivenPriorSync($root, [
+            '.agents/skills/wrapper-dir-claim/SKILL.md',
+            '.agents/skills/wrapper-dir-claim/references/api.md',
+            // Sibling that is NOT under the wrapper's directory claim — should be deleted.
+            '.agents/skills/unrelated-file/SKILL.md',
+        ]);
+
+        $dirClaimPath = realpath(__DIR__ . '/../Doubles/Wrappers/DirectoryClaim');
+        if ($dirClaimPath === false) {
+            throw new RuntimeException('missing fixture: directory-claim');
+        }
+
+        $wrapperInstalled = new InstalledPackages([
+            'test/directory-claim-wrapper' => new PackageInfo(
+                name: 'test/directory-claim-wrapper',
+                version: '1.0.0',
+                installPath: $dirClaimPath,
+            ),
+        ]);
+
+        $result = SyncEngine::default($wrapperInstalled)->sync($root, checkOnly: true);
+
+        $wouldDeletePaths = [];
+        foreach ($result->writes as $w) {
+            if ($w->action === WriteAction::WOULD_DELETE) {
+                $wouldDeletePaths[] = $w->relativePath;
+            }
+        }
+
+        // Files under the wrapper's directory claim are preserved.
+        expect($wouldDeletePaths)
+            ->not->toContain('.agents/skills/wrapper-dir-claim/SKILL.md')
+            ->and($wouldDeletePaths)->not->toContain('.agents/skills/wrapper-dir-claim/references/api.md')
+            // Sibling NOT under the wrapper's claim still flagged stale.
+            ->and($wouldDeletePaths)->toContain('.agents/skills/unrelated-file/SKILL.md');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.11.0 drift-comparison: wrapper-claimed guideline-file paths (CLAUDE.md / AGENTS.md / GEMINI.md) are filtered from the gitignore-managed manifest (codex-review P1 data-loss guard)', function (): void {
+    // If a wrapper returns guideline-file paths in injectedEmitPaths(),
+    // adding them to the gitignore-managed manifest would route them
+    // through cleanupStaleManagedFiles which deletes the WHOLE file when
+    // stale. Operator content outside boost-core's markers would be lost.
+    // Engine MUST filter these basenames at the gitignore-pattern emit
+    // point. Non-guideline wrapper-claimed paths still land normally.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        $guidelineClaimPath = realpath(__DIR__ . '/../Doubles/Wrappers/GuidelineClaim');
+        if ($guidelineClaimPath === false) {
+            throw new RuntimeException('missing fixture: guideline-claim');
+        }
+
+        $wrapperInstalled = new InstalledPackages([
+            'test/guideline-claim-wrapper' => new PackageInfo(
+                name: 'test/guideline-claim-wrapper',
+                version: '1.0.0',
+                installPath: $guidelineClaimPath,
+            ),
+        ]);
+
+        SyncEngine::default($wrapperInstalled)->sync($root);
+
+        $gitignoreContent = (string) file_get_contents($root . '/.gitignore');
+        // Extract the boost-managed block (between the markers) so the
+        // assertion isn't fooled by operator-authored content elsewhere.
+        $start = strpos($gitignoreContent, '# >>> boost (managed) >>>');
+        $end = strpos($gitignoreContent, '# <<< boost (managed) <<<');
+        $managedBlock = ($start !== false && $end !== false)
+            ? substr($gitignoreContent, $start, $end - $start)
+            : '';
+
+        // Guideline-file paths must NOT land in the managed block.
+        expect($managedBlock)->not->toContain('CLAUDE.md')
+            ->and($managedBlock)->not->toContain('AGENTS.md')
+            ->and($managedBlock)->not->toContain('GEMINI.md')
+            // Legitimate (non-guideline) wrapper-claimed paths still land.
+            ->and($managedBlock)->toContain('.agents/skills/legitimate-wrapper-file/SKILL.md');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.11.0 drift-comparison: absent-class silent fallback — installed package without BoostWrapper class produces NO diagnostic (no engine-side known-wrapper-list)', function (): void {
+    // Trade-off pinned: per spec Resolved warning-behavior section + §4,
+    // engine does NOT emit a warning for packages installed without the
+    // BoostWrapper class. Pure-silent-fallback to avoid engine-side
+    // coordination loops (no known-wrapper-list to maintain). This test
+    // pins the absence of a diagnostic.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        // Stub a package without a BoostWrapper class — use boost-core's
+        // own install root which has PSR-4 but no BoostWrapper.
+        $boostCoreRoot = realpath(__DIR__ . '/../..');
+        if ($boostCoreRoot === false) {
+            throw new RuntimeException('cannot resolve boost-core root');
+        }
+
+        $packagesWithoutWrapper = new InstalledPackages([
+            'fake/non-wrapper' => new PackageInfo(
+                name: 'fake/non-wrapper',
+                version: '1.0.0',
+                installPath: $boostCoreRoot,
+            ),
+        ]);
+
+        $result = SyncEngine::default($packagesWithoutWrapper)->sync($root);
+
+        $wrapperRelatedDiagnostics = array_filter(
+            $result->diagnostics,
+            static fn (Diagnostic $d): bool => str_contains($d->message, 'BoostWrapper') || str_contains($d->message, 'injection-detection'),
+        );
+        expect($wrapperRelatedDiagnostics)->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
 
 it('0.10.3 deleteRecursive symlink handling: vendored symlink-to-dir is unlinked at the link level, vendor target stays intact', function (): void {
     // Reproduces the exact shape that surfaced in project-boost-laravel

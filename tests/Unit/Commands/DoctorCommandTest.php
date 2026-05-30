@@ -622,3 +622,54 @@ it('0.10.1 --check-stale-paths: scoped-not-applicable when Copilot is NOT in act
         doctorCleanup($dir);
     }
 });
+
+it('0.12.0 exclude-key surfacing: bare-name withExcludedSkills entry is flagged as a silent no-op', function (): void {
+    // `withExcludedSkills(['pre-release'])` silently does nothing — the key
+    // must be `vendor/package:pre-release`. Doctor surfaces the bare-name
+    // mismatch so the operator can fix the key.
+    $dir = doctorTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withExcludedSkills(['pre-release'])",
+    );
+    try {
+        $result = runDoctor($dir);
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+        expect($result['exit'])->toBe(0)
+            ->and($display)->toContain('Exclude keys')
+            ->and($display)->toContain('withExcludedSkills(): `pre-release`')
+            ->and($display)->toContain('bare name');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.12.0 exclude-key surfacing: a well-formed `vendor/package:name` exclude is NOT flagged (no false positive — codex P2: remote/injected excludes are valid too)', function (): void {
+    // We flag ONLY bare names. A `vendor/package:name` key is well-formed even
+    // if the vendor isn't in withAllowedVendors() — it could be a remote-skill
+    // (withRemoteSkills, owner/repo:name) or injected-vendor key. Flagging it
+    // would false-positive on those supported configs + on every valid exclude
+    // (a valid exclude removes its item from the resolved set).
+    $dir = doctorTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withExcludedGuidelines(['acme/nope:ghost'])",
+    );
+    try {
+        $result = runDoctor($dir);
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+        expect($result['exit'])->toBe(0)
+            ->and($display)->toContain('Exclude keys')
+            ->and($display)->toContain('well-formed')
+            ->and($display)->not->toContain('withExcludedGuidelines(): `acme/nope:ghost`');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.12.0 exclude-key surfacing: section omitted entirely when no excludes declared', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->not->toContain('Exclude keys');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

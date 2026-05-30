@@ -2,7 +2,6 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
-use SanderMuller\BoostCore\Conventions\ManagedRegion;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;
@@ -69,13 +68,11 @@ abstract class AgentTarget
      *
      * Skill + command directories ARE listed — 100% generated from `.ai/`.
      * The guideline file (CLAUDE.md, AGENTS.md, GEMINI.md) is NOT listed:
-     * guideline writes use marker-bounded regions and preserve
-     * operator-authored content
-     * outside the markers (custom H1, prose, etc.). Auto-gitignoring +
-     * `git rm --cached` would destroy that operator content on first sync.
-     * 0.8.3's tracking decision is preserved through 0.9.0; the
-     * conventions-source-flip (operator-edit surface moves to boost.php's
-     * `->withConventions([...])`) is orthogonal to the gitignore policy.
+     * operators keep these files in version control to see what the agent
+     * reads. As of 0.12.0 the guidance file is wholesale boost-owned
+     * (markerless); operator custom content lives in `.ai/guidelines/`, not
+     * in the emission target. Keeping the file tracked (not gitignored)
+     * preserves the operator's ability to review boost's output in diffs.
      *
      * @return list<string>
      */
@@ -92,7 +89,14 @@ abstract class AgentTarget
     }
 
     /**
-     * Produce the set of writes for the given skills + guidelines.
+     * Produce the per-skill writes for this agent. The guideline file is NOT
+     * planned here.
+     *
+     * 0.12.0: the agent-guidance file (CLAUDE.md / AGENTS.md / GEMINI.md) is
+     * written wholesale + markerless centrally by SyncEngine, which reads
+     * `guidelinesFileRelative()` + `formatGuidelinesContent()` directly and
+     * runs the markerless migration. `$guidelines` is accepted for signature
+     * stability but unused here.
      *
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
@@ -109,35 +113,7 @@ abstract class AgentTarget
             );
         }
 
-        $guidelinesFile = $this->guidelinesFileRelative();
-        if ($guidelinesFile !== null && $guidelines !== []) {
-            $writes[] = new PendingWrite(
-                relativePath: $guidelinesFile,
-                content: $this->formatGuidelinesContent($guidelines),
-                managedRegion: $this->guidelinesManagedRegion(),
-            );
-        }
-
         return $writes;
-    }
-
-    /**
-     * Marker pair bounding boost-core's guideline content within the agent's
-     * shared guideline file (CLAUDE.md, AGENTS.md, GEMINI.md). Content
-     * OUTSIDE the markers is operator-owned and preserved across syncs —
-     * Project Conventions blocks, operator prose, etc.
-     *
-     * Introduced in 0.8.2 to fix the round-trip foot-gun where 0.8.x's
-     * wholesale guideline file write destroyed the Project Conventions
-     * block on every sync.
-     */
-    public function guidelinesManagedRegion(): ManagedRegion
-    {
-        return new ManagedRegion(
-            start: '<!-- boost-core:guidelines:start -->',
-            end: '<!-- boost-core:guidelines:end -->',
-            note: '<!-- Managed by boost-core. Do not remove or move these markers. Content outside is operator-owned. -->',
-        );
     }
 
     /**

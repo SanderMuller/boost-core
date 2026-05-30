@@ -1,0 +1,210 @@
+<?php declare(strict_types=1);
+
+use SanderMuller\BoostCore\Conventions\GuidanceComposer;
+
+function composer(): GuidanceComposer
+{
+    return new GuidanceComposer();
+}
+
+it('renders a markerless conventions section from declared values', function (): void {
+    $section = composer()->renderConventionsSection(['jira-project' => 'BOOST', 'branch-prefix' => 'feat/'], 1);
+
+    expect($section)
+        ->toContain('## Project Conventions')
+        ->and($section)->toContain('```yaml')
+        ->and($section)->toContain('schema-version: 1')
+        ->and($section)->toContain('jira-project: BOOST')
+        // NO marker comments — the whole point of 0.12.0.
+        ->and($section)->not->toContain('boost-core:conventions:start')
+        ->and($section)->not->toContain('Managed by boost-core');
+});
+
+it('renders null conventions section when no conventions declared', function (): void {
+    expect(composer()->renderConventionsSection([], 1))->toBeNull();
+});
+
+it('assembles conventions section + guidelines body in order, markerless', function (): void {
+    $section = "## Project Conventions\n\n```yaml\nschema-version: 1\n```";
+    $content = composer()->assemble($section, "## Some Guideline\n\nBody text.");
+
+    expect($content)
+        ->toStartWith('## Project Conventions')
+        ->and($content)->toContain('## Some Guideline')
+        ->and($content)->not->toContain('boost-core:guidelines:start')
+        ->and($content)->toEndWith("\n");
+
+    // Conventions precedes guidelines.
+    expect((int) strpos($content, 'Project Conventions'))->toBeLessThan((int) strpos($content, 'Some Guideline'));
+});
+
+it('assembles guidelines-only when no conventions section', function (): void {
+    $content = composer()->assemble(null, "## Guideline\n\nBody.");
+
+    expect($content)->toBe("## Guideline\n\nBody.\n");
+});
+
+it('assembles empty string when nothing to write', function (): void {
+    expect(composer()->assemble(null, ''))
+        ->toBeEmpty();
+});
+
+it('migrate: absent file → writes assembled content, no residual', function (): void {
+    $result = composer()->migrate(null, "## G\n\nBody.\n");
+
+    expect($result)->toMatchArray(['content' => "## G\n\nBody.\n", 'residual' => null, 'migrated' => false]);
+});
+
+it('migrate: marker-bounded file with no out-of-marker content → clean replace', function (): void {
+    $existing = "<!-- boost-core:guidelines:start -->\n<!-- note -->\n## Old\n\nOld body.\n<!-- boost-core:guidelines:end -->\n";
+    $assembled = "## New\n\nNew body.\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    expect($result['content'])->toBe($assembled)
+        ->and($result['residual'])->toBeNull()
+        ->and($result['migrated'])->toBeFalse();
+});
+
+it('migrate: pre-marker stale duplicate above the markers is silently absorbed (collectiq case, #79)', function (): void {
+    // The exact collectiq shape: a stale inline copy of the guidelines sits
+    // ABOVE the marker region, byte-duplicating the managed body. Wholesale
+    // migration must absorb it (drop it), leaving a single clean file — no
+    // duplicate, no markers, no residue.
+    $guidelineBody = "## Pest\n\nUse Pest for tests.\n\n---\n\n## Inertia\n\nUse Inertia.";
+    $existing = $guidelineBody . "\n\n"
+        . "<!-- boost-core:guidelines:start -->\n" . $guidelineBody . "\n<!-- boost-core:guidelines:end -->\n";
+    $assembled = $guidelineBody . "\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    expect($result['residual'])->toBeNull()
+        ->and($result['content'])->toBe($assembled)
+        // No duplicate: the guideline content appears exactly once.
+        ->and(substr_count($result['content'], '## Pest'))->toBe(1);
+});
+
+it('migrate: duplicate detection is whitespace-insensitive', function (): void {
+    $assembled = "## Foo\n\nBar baz.\n";
+    // Same content, different whitespace/blank-line shape.
+    $existing = "##    Foo\n\n\n\nBar    baz.\n\n<!-- boost-core:guidelines:start -->\n## Foo\n\nBar baz.\n<!-- boost-core:guidelines:end -->\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    expect($result['residual'])->toBeNull()
+        ->and($result['content'])->toBe($assembled);
+});
+
+it('migrate: genuine operator content (not a duplicate) is preserved below + flagged as residual', function (): void {
+    $assembled = "## Boost Guideline\n\nBoost body.\n";
+    $operatorNote = "# My Project Notes\n\nThis is hand-written, not from boost.";
+    $existing = $operatorNote . "\n\n<!-- boost-core:guidelines:start -->\n## Boost Guideline\n\nBoost body.\n<!-- boost-core:guidelines:end -->\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    expect($result['migrated'])->toBeTrue()
+        ->and($result['residual'])->toBe($operatorNote)
+        ->and($result['content'])->toContain('## Boost Guideline')
+        ->and($result['content'])->toContain('My Project Notes')
+        // Operator content preserved BELOW the wholesale body.
+        ->and((int) strpos($result['content'], 'Boost body'))->toBeLessThan((int) strpos($result['content'], 'My Project Notes'));
+});
+
+it('migrate: CRLF legacy file — markers + explainer are stripped (codex P2: converges to clean markerless on Windows checkouts)', function (): void {
+    // A CRLF-checked-out legacy file. reduceToResidual normalizes CRLF→LF so
+    // the conventions markers + explainer get stripped; otherwise they linger
+    // in the residual and the migration never converges.
+    $assembled = "## G\n\nBody.\n";
+    $existing = "<!-- boost-core:guidelines:start -->\r\n## G\r\n\r\nBody.\r\n<!-- boost-core:guidelines:end -->\r\n\r\n"
+        . "## Project Conventions\r\n\r\n"
+        . "<!-- Managed by boost-core. Edit the YAML between the markers; do not remove or move the markers. -->\r\n"
+        . "<!-- boost-core:conventions:start -->\r\n```yaml\r\nschema-version: 1\r\nkey: CRLF-VALUE\r\n```\r\n<!-- boost-core:conventions:end -->\r\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    expect($result['content'])
+        ->not->toContain('boost-core:conventions:start')
+        ->and($result['content'])->not->toContain('boost-core:guidelines:start')
+        ->and($result['content'])->not->toContain('Edit the YAML between the markers')
+        ->and($result['content'])->toContain('CRLF-VALUE');   // operator YAML survived
+});
+
+it('migrate: markerless file (steady state) is wholesale-OVERWRITTEN — a changed guideline replaces the prior body, not appended (codex P1)', function (): void {
+    // After migration the file has no markers → it is boost-owned. A guideline
+    // edit must REPLACE the old generated body, not be appended below it.
+    $existing = "## Old\n\nOld guidance.\n";
+    $assembled = "## New\n\nNew guidance.\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    expect($result['content'])->toBe($assembled)
+        ->and($result['content'])->not->toContain('Old guidance.')
+        ->and($result['residual'])->toBeNull()
+        ->and($result['migrated'])->toBeFalse();
+});
+
+it('migrate: markerless file with guidelines removed → empty assembled overwrites (no stale content left)', function (): void {
+    $result = composer()->migrate("## Some\n\nGuidance.\n", '');
+
+    expect($result['content'])
+        ->toBeEmpty()
+        ->and($result['residual'])->toBeNull();
+});
+
+it('migrate: operator-filled conventions YAML in legacy markers SURVIVES (unwrapped to residual, not deleted)', function (): void {
+    // Critical data-loss guard: ManagedRegion::strip() would DELETE the body
+    // between the conventions markers — but that body is operator-filled YAML.
+    // The migration must UNWRAP (remove only the marker comment lines, keep the
+    // YAML) so the values survive as residual + get preserved below.
+    $assembled = "## A Guideline\n\nGuideline body.\n";
+    $existing = "<!-- boost-core:guidelines:start -->\n## A Guideline\n\nGuideline body.\n<!-- boost-core:guidelines:end -->\n\n"
+        . "## Project Conventions\n\n"
+        . "<!-- Managed by boost-core. Edit the YAML between the markers; do not remove or move the markers. -->\n"
+        . "<!-- boost-core:conventions:start -->\n```yaml\nschema-version: 1\njira:\n  project_key: HPB-OPERATOR-FILLED\n```\n<!-- boost-core:conventions:end -->\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    expect($result['content'])
+        ->toContain('HPB-OPERATOR-FILLED')          // operator YAML survived
+        ->and($result['content'])->not->toContain('boost-core:conventions:start')
+        ->and($result['content'])->not->toContain('boost-core:guidelines:start')
+        ->and($result['content'])->not->toContain('Edit the YAML between the markers')
+        // The guideline body (which the markers wrapped) appears ONCE — not
+        // duplicated by the residual.
+        ->and(substr_count($result['content'], 'Guideline body.'))->toBe(1)
+        ->and($result['residual'])->toContain('HPB-OPERATOR-FILLED');
+});
+
+it('migrate: legacy marker file with a stale guideline duplicate + genuine conventions YAML — duplicate dropped, conventions preserved', function (): void {
+    // A legacy file (markers present): the guidelines marker body duplicates
+    // the assembled guidelines, plus an operator conventions block in
+    // conventions markers. Migration drops the duplicate, preserves the
+    // conventions YAML as residual.
+    $assembled = "## Pest\n\nUse Pest.\n";
+    $existing = "<!-- boost-core:guidelines:start -->\n## Pest\n\nUse Pest.\n<!-- boost-core:guidelines:end -->\n\n"
+        . "## Project Conventions\n\n<!-- boost-core:conventions:start -->\n```yaml\nschema-version: 1\nkey: VALUE\n```\n<!-- boost-core:conventions:end -->\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    expect(substr_count($result['content'], '## Pest'))->toBe(1)   // no guideline dup
+        ->and($result['content'])->toContain('key: VALUE')          // conventions kept
+        ->and($result['residual'])->toContain('key: VALUE')
+        ->and($result['migrated'])->toBeTrue();
+});
+
+it('migrate: strips a legacy conventions marker region + its explainer/heading, leaving no orphan', function (): void {
+    $existing = "## Project Conventions\n\n"
+        . "<!-- Managed by boost-core. Edit the YAML between the markers; do not remove or move the markers. -->\n"
+        . "<!-- boost-core:conventions:start -->\n```yaml\nschema-version: 1\n```\n<!-- boost-core:conventions:end -->\n\n"
+        . "<!-- boost-core:guidelines:start -->\n## G\n\nBody.\n<!-- boost-core:guidelines:end -->\n";
+    $assembled = "## Project Conventions\n\n```yaml\nschema-version: 1\n```\n\n## G\n\nBody.\n";
+
+    $result = composer()->migrate($existing, $assembled);
+
+    // The legacy conventions region (markers, explainer) gets stripped; the
+    // residual is the bare `## Project Conventions` heading which duplicates
+    // the assembled heading → absorbed, clean replace.
+    expect($result['content'])->not->toContain('boost-core:conventions:start')
+        ->and($result['content'])->not->toContain('Edit the YAML between the markers')
+        ->and($result['content'])->not->toContain('boost-core:guidelines:start');
+});

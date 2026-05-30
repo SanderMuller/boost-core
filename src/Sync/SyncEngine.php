@@ -22,8 +22,8 @@ use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
+use SanderMuller\BoostCore\Conventions\GuidanceComposer;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
-use SanderMuller\BoostCore\Conventions\VendorSchemaSource;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
@@ -51,8 +51,6 @@ use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
 use SplFileInfo;
-use Symfony\Component\Yaml\Exception\ParseException;
-use Symfony\Component\Yaml\Yaml;
 use Throwable;
 
 /**
@@ -549,10 +547,17 @@ final readonly class SyncEngine
             $writes[] = $gitignoreWrite;
         }
 
-        $conventionsResult = $this->syncConventions($projectRoot, $config, $checkOnly);
-        if ($conventionsResult['write'] instanceof WrittenFile) {
-            $writes[] = $conventionsResult['write'];
-        }
+        // 0.12.0: agent-guidance files (CLAUDE.md/AGENTS.md/GEMINI.md) are
+        // written wholesale + markerless here, replacing the former per-target
+        // marker-bounded guideline write + the marker-based conventions write.
+        $guidanceResult = $this->writeGuidanceFiles(
+            $projectRoot,
+            $config,
+            $resolvedGuidelines,
+            $checkOnly,
+            $guidelineRenderErrors !== [],
+        );
+        $writes = [...$writes, ...$guidanceResult['writes']];
 
         $cleanupResult = $this->cleanupStalePaths($projectRoot, $config, $checkOnly);
         $writes = [...$writes, ...$cleanupResult['writes']];
@@ -610,7 +615,7 @@ final readonly class SyncEngine
             $renderFailDiagnostics[] = Diagnostic::warning(
                 null,
                 sprintf(
-                    'Guideline render failed; content between `<!-- boost-core:guidelines:start -->` and `<!-- boost-core:guidelines:end -->` preserved at prior state. Run `vendor/bin/boost sync` again after resolving the render failure. Source: %s',
+                    'Guideline render failed; the prior agent-guidance file content is preserved byte-for-byte (the wholesale markerless write is skipped this run). Run `vendor/bin/boost sync` again after resolving the render failure. Source: %s',
                     $errorMessage,
                 ),
             );
@@ -624,7 +629,7 @@ final readonly class SyncEngine
             tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
             hostShadows: $skillResolution['hostShadows'],
             diagnostics: [
-                ...$conventionsResult['diagnostics'],
+                ...$guidanceResult['diagnostics'],
                 ...$cleanupResult['diagnostics'],
                 ...$wrapperEmits['diagnostics'],
                 ...$renderFailDiagnostics,
@@ -1096,204 +1101,243 @@ final readonly class SyncEngine
     }
 
     /**
-     * Runs schema discovery for allowlisted vendors, optionally scaffolds the
-     * Project Conventions block in CLAUDE.md, and returns a write + diagnostics
-     * to thread into the SyncResult.
+     * 0.12.0: write the agent-guidance files (CLAUDE.md / AGENTS.md /
+     * GEMINI.md) wholesale + markerless. Consolidates the former per-target
+     * guideline write + the marker-based conventions write into ONE wholesale
+     * path per file.
      *
-     * Diagnostics always route through SyncResult::diagnostics (NEW in 0.8.0).
-     * Never affects sync exit code — error-level diagnostics are still visible
-     * via SyncCommand's render but do not trigger FAILURE. See spec §14.
+     * Conventions render markerless into CLAUDE.md (from `boost.php`'s
+     * `->withConventions([...])`); guidelines render markerless into each
+     * guidance file. `GuidanceComposer` migrates legacy marker-bounded files:
+     * it strips the `boost-core:guidelines:*` + `boost-core:conventions:*`
+     * marker regions, silently absorbs out-of-marker content that duplicates
+     * the rendered body (the stale-inline-copy case — solves #79), and
+     * preserves genuine operator content below the wholesale body once with a
+     * warning pointing at `.ai/guidelines/`.
      *
-     * @return array{write: ?WrittenFile, diagnostics: list<Diagnostic>}
+     * Safety: the un-migrated conventions case (filled conventions YAML in
+     * CLAUDE.md markers, no `->withConventions()` in `boost.php`) is handled
+     * by the generic migration — the stripped YAML becomes non-duplicate
+     * residual, preserved below with the warning, so no values are lost. The
+     * warning names `convert-conventions` when the residual looks like a
+     * conventions block.
+     *
+     * Each unique guidance file is written ONCE even when multiple agents
+     * share it (e.g. the `AGENTS.md` shared pool), so the migration never
+     * sees a half-written file from an earlier same-sync write.
+     *
+     * @param  list<Guideline>  $resolvedGuidelines
+     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>}
      */
-    private function syncConventions(string $projectRoot, BoostConfig $config, bool $checkOnly): array
+    private function writeGuidanceFiles(string $projectRoot, BoostConfig $config, array $resolvedGuidelines, bool $checkOnly, bool $skipGuidelineWrites): array
     {
+        /** @var list<WrittenFile> $writes */
+        $writes = [];
+        /** @var list<Diagnostic> $diagnostics */
+        $diagnostics = [];
+
+        $composer = new GuidanceComposer();
+
+        // Conventions: schema discovery + validation, then markerless render.
         $discovery = new SchemaDiscovery($this->installedPackages);
-        ['sources' => $sources, 'diagnostics' => $diagnostics] = $discovery->discover($config->allowedVendors);
+        ['sources' => $sources, 'diagnostics' => $convDiagnostics] = $discovery->discover($config->allowedVendors);
+        $diagnostics = [...$diagnostics, ...$convDiagnostics];
 
-        if ($sources === []) {
-            return ['write' => null, 'diagnostics' => $diagnostics];
+        $conventionsSection = null;
+        if ($sources !== []) {
+            $schema = new ConventionsSchema($sources);
+            $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
+            $seed = (new ConventionsBlockEmitter())->scaffoldSeed($sources);
+            $conventionsSection = $composer->renderConventionsSection($config->conventions, $seed);
         }
 
-        $claudeMdPath = $projectRoot . '/CLAUDE.md';
-        $claudeMd = is_file($claudeMdPath) ? @file_get_contents($claudeMdPath) : null;
-        $claudeMd = $claudeMd === false ? null : $claudeMd;
-
-        $emitter = new ConventionsBlockEmitter();
-        $hasMarkerRegion = $claudeMd !== null && str_contains($claudeMd, ConventionsBlockEmitter::START_MARKER);
-        $existingBody = $hasMarkerRegion ? $emitter->extract($claudeMd) : null;
-        $existingBodyHasFilledContent = $this->existingBodyIsOperatorContent($existingBody);
-
-        // 0.9.0 fail-closed contract — surfaces when CLAUDE.md has filled
-        // marker YAML but boost.php has no `->withConventions(...)` call. This
-        // is the migration case (operator hasn't yet run convert-conventions).
-        // Sync MUST NOT overwrite the YAML to avoid silent destruction.
-        if ($existingBodyHasFilledContent && $config->conventions === []) {
-            $diagnostics[] = Diagnostic::warning(
-                null,
-                'Project Conventions YAML in CLAUDE.md but boost.php has no ->withConventions([...]) call. Run `vendor/bin/boost convert-conventions` to migrate the YAML into boost.php. Sync is leaving the existing CLAUDE.md region intact for now — no values lost.',
-            );
-
-            // Still validate the existing YAML so the operator sees its current state.
-            $diagnostics = [...$diagnostics, ...$this->validateExisting($emitter, $claudeMd, $sources)];
-
-            return ['write' => null, 'diagnostics' => $diagnostics];
+        if ($skipGuidelineWrites) {
+            // A guideline render failed. Conventions + guidelines now assemble
+            // into ONE wholesale file, so the render-fail safety gate (preserve
+            // the prior guidance file byte-for-byte) skips the whole guidance
+            // write — including the conventions section. This is a deliberate
+            // trade-off of the unified markerless write: while a renderer is
+            // broken, the guidance file (conventions + guidelines) holds at its
+            // prior state. It is a TRANSIENT degraded window — once the operator
+            // fixes the failing renderer, the next sync re-renders conventions +
+            // guidelines together. Preserving everything is safer than writing a
+            // partial file that drops the failed guideline's content.
+            return ['writes' => $writes, 'diagnostics' => $diagnostics];
         }
 
-        // Validate the source-of-truth values (BoostConfig::$conventions) regardless of render path.
-        $schema = new ConventionsSchema($sources);
-        $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
+        $guidanceFiles = $this->collectGuidanceFiles($config, $resolvedGuidelines, $conventionsSection);
 
-        // 0.9.x reconcile semantics — boost.php is canonical source of truth.
-        // Three cases when both sources non-empty AND existing body has content:
-        //  - Parseable body, values equal: no-op (renderFromValues returns null)
-        //  - Parseable body, values differ (incl. key removal): warning +
-        //    proceed. boost.php wins, CLAUDE.md re-renders. The 0.9.0 fail-
-        //    closed-on-divergence behavior was too strict — caught legitimate
-        //    edits to boost.php (operator removes a slot key → sync stalls
-        //    silently with no write because the parsed bodies differ). Warning
-        //    preserves the visibility signal without blocking the canonical flow.
-        //  - Unparseable body: still fail-closed. Unparseable YAML means the
-        //    body was hand-edited into a broken state; silently overwriting
-        //    risks destroying recovery context. Operator reconciles manually.
-        if ($config->conventions !== [] && $existingBodyHasFilledContent) {
-            $existingParsed = $this->parseMarkerBodyForCompare($existingBody);
-            $rendered = ['schema-version' => $emitter->scaffoldSeed($sources), ...$config->conventions];
-            $renderedForCompare = $rendered;
-            unset($renderedForCompare['schema-version']);
-            $existingForCompare = $existingParsed ?? [];
-            unset($existingForCompare['schema-version']);
+        foreach ($guidanceFiles as $file => $info) {
+            $assembled = $composer->assemble($info['isClaude'] ? $conventionsSection : null, $info['body']);
+            $absolute = $projectRoot . '/' . $file;
+            $existing = is_file($absolute) ? @file_get_contents($absolute) : null;
+            $existing = $existing === false ? null : $existing;
 
-            if ($existingParsed === null) {
-                $diagnostics[] = Diagnostic::error(
-                    null,
-                    "Project Conventions: CLAUDE.md's marker body could not be parsed as YAML. Sync refuses to overwrite a malformed body to avoid destroying recovery context. Open CLAUDE.md, find the section between <!-- boost-core:conventions:start --> and <!-- boost-core:conventions:end --> markers, and replace the content there with just `schema-version: 1` (leave the markers themselves in place) to let boost.php take over on the next sync.",
-                );
+            // Empty-assembly guard (0.12.0): boost produced NO guidance content
+            // this sync (no resolved guidelines + no conventions). The
+            // markerless model is stateless — for a MARKERLESS file it cannot
+            // tell a boost-owned file that should now go empty from a NEW
+            // adopter's pre-existing CLAUDE.md (laravel/boost's `boost install`
+            // writes one; many repos hand-author one) that boost-core has never
+            // synced. Wholesale-writing the empty assembly would WIPE that file
+            // — and via BoostAutoSync this can fire on a routine
+            // `composer update` without the operator watching. So: never blank a
+            // non-empty MARKERLESS guidance file (left untouched + recoverable;
+            // an operator who genuinely wants it empty deletes it manually).
+            //
+            // A file still carrying boost MARKERS is exempt from the guard: the
+            // markers prove boost wrote it, so it falls through to migrate(),
+            // which strips the markers (converging it to markerless) and
+            // preserves any genuine out-of-marker residual — never a wipe. That
+            // keeps the legacy-marker upgrade path converging even when the
+            // resolved guidance set is empty (codex-review: stale instructions
+            // must not linger in a boost-owned file).
+            //
+            // The rule is binary (empty vs non-empty) with a marker-ownership
+            // exemption — no size-delta heuristic, no new marker, no state.
+            // Peer-reviewed (catalog + downstream-Laravel axes); see 0.12.0 notes.
+            //
+            // DELIBERATE TRADE-OFF — do not "fix" by letting empty assembly
+            // clear a markerless file. That re-creates the fresh-adopter WIPE
+            // above. The two failure modes are mutually exclusive and CANNOT be
+            // distinguished without state (a marker/sentinel, or a manifest of
+            // prior output) — both ruled out by design. We intentionally fail
+            // toward PRESERVATION: the only un-converged case is "synced once on
+            // 0.12 then removed ALL guidance", which is rare, recoverable, and
+            // surfaced by the INFO below. Wiping a hand-authored file is not.
+            if ($assembled === '' && ! ($existing !== null && $composer->hasManagedMarkers($existing))) {
+                $diagnostics = $this->noteGuidanceLeftIntact($diagnostics, $file, $existing);
 
-                return ['write' => null, 'diagnostics' => $diagnostics];
+                continue;
             }
 
-            if ($existingForCompare !== $renderedForCompare) {
-                $diagnostics[] = Diagnostic::warning(
-                    null,
-                    'Project Conventions: CLAUDE.md\'s marker body differs from boost.php\'s ->withConventions([...]). boost.php is canonical; CLAUDE.md is being re-rendered to match. If you intentionally edited CLAUDE.md, that change is being overwritten — make the edit in boost.php\'s ->withConventions([...]) chain instead.',
-                );
+            $migration = $composer->migrate($existing, $assembled);
+
+            // Warn only on the actual marker→markerless transition with genuine
+            // content (not on steady-state syncs).
+            if ($migration['migrated'] && $migration['residual'] !== null) {
+                $diagnostics[] = Diagnostic::warning(null, $this->guidanceReplacedMessage($file, $migration['residual']));
+            }
+
+            $written = $this->writer->write($projectRoot, new PendingWrite($file, $migration['content']), $checkOnly);
+            if ($written->action !== WriteAction::UNCHANGED) {
+                $writes[] = $written;
             }
         }
 
-        ['contents' => $newContents, 'diagnostics' => $emitterDiagnostics] = $emitter->renderFromValues($claudeMd, $sources, $config->conventions);
-        $diagnostics = [...$diagnostics, ...$emitterDiagnostics];
+        return ['writes' => $writes, 'diagnostics' => $diagnostics];
+    }
 
-        if ($newContents === null) {
-            return ['write' => null, 'diagnostics' => $diagnostics];
-        }
+    /**
+     * Warning fired once on the marker→markerless transition when a guidance
+     * file carried genuine non-boost content. The content is PRESERVED below
+     * the generated output (never deleted); the warning points the operator at
+     * the durable home (`.ai/guidelines/`), and — when the content looks like a
+     * legacy Project Conventions YAML stub — at `boost.php`'s ->withConventions.
+     *
+     * NB: it does NOT name `convert-conventions`. That command requires the
+     * `boost-core:conventions:*` markers to read the legacy block, and THIS
+     * sync already stripped them as part of the markerless migration — so the
+     * advice would be dead-on-arrival (the command short-circuits with "no
+     * marker region found"). The operator copies the preserved YAML values into
+     * boost.php by hand instead.
+     */
+    private function guidanceReplacedMessage(string $file, string $residual): string
+    {
+        $looksLikeConventions = str_contains($residual, 'schema-version')
+            || str_contains($residual, ConventionsBlockEmitter::H2_HEADING);
 
-        if ($checkOnly) {
-            return [
-                'write' => new WrittenFile(
-                    relativePath: 'CLAUDE.md',
-                    absolutePath: $claudeMdPath,
-                    action: WriteAction::WOULD_WRITE,
-                ),
-                'diagnostics' => $diagnostics,
+        $tail = $looksLikeConventions
+            ? " If this is the legacy Project Conventions YAML, copy its slot values into `boost.php`'s ->withConventions([...]) chain (the conventions markers are gone, so `convert-conventions` no longer applies); otherwise move it into `.ai/guidelines/`."
+            : ' Move it into `.ai/guidelines/` so boost-core assembles it into the guidance file on every sync.';
+
+        return sprintf(
+            "0.12.0 markerless migration: `%s` is now wholesale-owned by boost-core (no markers). Content found outside boost-core's generated output has been preserved below it.%s",
+            $file,
+            $tail,
+        );
+    }
+
+    /**
+     * Collect each unique guidance file to write, keyed by relative path. The
+     * first active target owning a file defines its guideline body formatting
+     * (shared-pool agents use the default formatter, so this is deterministic).
+     *
+     * Conventions render into CLAUDE.md specifically (its canonical home —
+     * convert-conventions / validate all key off it). Pre-0.12
+     * syncConventions() wrote CLAUDE.md whenever conventions were declared,
+     * INDEPENDENT of which agents were enabled. Preserve that: if there is a
+     * conventions section but the Claude agent isn't active (e.g. a Codex /
+     * Copilot / Gemini-only project that still declares ->withConventions([...]),
+     * schedule CLAUDE.md anyway with an empty guideline body so the conventions
+     * don't silently vanish (codex-review regression fix). assemble() then
+     * writes a conventions-only CLAUDE.md, matching the prior behavior.
+     *
+     * @param  list<Guideline>  $resolvedGuidelines
+     * @return array<string, array{body: string, isClaude: bool}>
+     */
+    private function collectGuidanceFiles(BoostConfig $config, array $resolvedGuidelines, ?string $conventionsSection): array
+    {
+        $guidanceFiles = [];
+        foreach ($this->agentTargets as $target) {
+            if (! $config->hasAgent($target->agent())) {
+                continue;
+            }
+
+            $file = $target->guidelinesFileRelative();
+            if ($file === null) {
+                continue;
+            }
+
+            if (isset($guidanceFiles[$file])) {
+                continue;
+            }
+
+            $guidanceFiles[$file] = [
+                'body' => $resolvedGuidelines === [] ? '' : $target->formatGuidelinesContent($resolvedGuidelines),
+                'isClaude' => $file === 'CLAUDE.md',
             ];
         }
 
-        @file_put_contents($claudeMdPath, $newContents);
+        if ($conventionsSection !== null && ! isset($guidanceFiles['CLAUDE.md'])) {
+            $guidanceFiles['CLAUDE.md'] = ['body' => '', 'isClaude' => true];
+        }
 
-        return [
-            'write' => new WrittenFile(
-                relativePath: 'CLAUDE.md',
-                absolutePath: $claudeMdPath,
-                action: WriteAction::WROTE,
-            ),
-            'diagnostics' => $diagnostics,
-        ];
+        return $guidanceFiles;
     }
 
     /**
-     * Is the marker body operator-filled (real values) vs scaffold-only?
-     * Heuristic: non-empty body that contains a key other than `schema-version`.
-     * Matches the spec's "filled vs scaffold-only" distinction in §3.2.
-     */
-    private function existingBodyIsOperatorContent(?string $body): bool
-    {
-        if ($body === null) {
-            return false;
-        }
-
-        $trimmed = trim($body);
-        if ($trimmed === '') {
-            return false;
-        }
-
-        try {
-            $parsed = Yaml::parse($trimmed);
-        } catch (ParseException) {
-            // Unparseable body — treat as "has content" to be safe (operator
-            // wrote SOMETHING; sync should not overwrite it).
-            return true;
-        }
-
-        if (! is_array($parsed)) {
-            return true;
-        }
-
-        foreach (array_keys($parsed) as $key) {
-            if ($key !== 'schema-version') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Parse the existing marker body YAML for comparison against the
-     * source-of-truth values. Returns null on parse failure (treat as
-     * "incomparable" rather than as "different" — silent destruction risk
-     * stays the operator's call via the migration-warning path above).
+     * Empty-assembly guard bookkeeping: when the existing guidance file is
+     * non-empty, append the INFO recording that it was LEFT INTACT (the caller
+     * skips the write). Returns the possibly-extended diagnostics list.
      *
-     * @return array<mixed, mixed>|null
-     */
-    private function parseMarkerBodyForCompare(?string $body): ?array
-    {
-        if ($body === null) {
-            return null;
-        }
-
-        $trimmed = trim($body);
-        if ($trimmed === '') {
-            return null;
-        }
-
-        try {
-            $parsed = Yaml::parse($trimmed);
-        } catch (ParseException) {
-            return null;
-        }
-
-        return is_array($parsed) ? $parsed : null;
-    }
-
-    /**
-     * @param list<VendorSchemaSource> $sources
+     * @param  list<Diagnostic>  $diagnostics
      * @return list<Diagnostic>
      */
-    private function validateExisting(ConventionsBlockEmitter $emitter, ?string $claudeMd, array $sources): array
+    private function noteGuidanceLeftIntact(array $diagnostics, string $file, ?string $existing): array
     {
-        if ($claudeMd === null) {
-            return [];
+        if ($existing !== null && trim($existing) !== '') {
+            $diagnostics[] = Diagnostic::info(null, $this->guidanceLeftIntactMessage($file));
         }
 
-        ['values' => $values, 'diagnostics' => $parseDiagnostics] = $emitter->parse($claudeMd);
-        if ($values === null) {
-            return $parseDiagnostics;
-        }
+        return $diagnostics;
+    }
 
-        $schema = new ConventionsSchema($sources);
-
-        return [...$parseDiagnostics, ...$schema->validate($values)];
+    /**
+     * INFO fired by the empty-assembly guard: boost resolved no guidance
+     * content this sync, and the existing guidance file is non-empty, so it was
+     * LEFT INTACT rather than blanked (the stateless markerless model can't
+     * distinguish a boost-owned-now-empty file from an operator's pre-existing
+     * one, and wiping the latter is data loss). Makes the leave-prior behavior
+     * observable instead of silent, and tells the operator how to reach an
+     * empty file deliberately.
+     */
+    private function guidanceLeftIntactMessage(string $file): string
+    {
+        return sprintf(
+            'boost-core resolved no guidelines or conventions this sync, so `%s` was left untouched rather than blanked. Add guidelines under `.ai/guidelines/` (or declare conventions in `boost.php`) to populate it; delete the file manually if you want it empty.',
+            $file,
+        );
     }
 
     /**

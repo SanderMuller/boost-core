@@ -1,6 +1,7 @@
 <?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
+use SanderMuller\BoostCore\Conventions\GuidanceComposer;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
@@ -80,8 +81,15 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
         $target = new ClaudeCodeTarget();
         $writer = new FileWriter();
 
+        // 0.12.0: plan() emits skill writes only; the guidance file is written
+        // wholesale + markerless (SyncEngine does this centrally — here we
+        // mirror it via GuidanceComposer for the low-level fan-out test).
         $planned = $target->plan($skills, $guidelines);
         $results = array_map(fn (PendingWrite $p) => $writer->write($root, $p), $planned);
+
+        $guidanceBody = $target->formatGuidelinesContent($guidelines);
+        $guidanceContent = (new GuidanceComposer())->assemble(null, $guidanceBody);
+        $results[] = $writer->write($root, new PendingWrite('CLAUDE.md', $guidanceContent));
 
         // Verify all writes happened
         foreach ($results as $result) {

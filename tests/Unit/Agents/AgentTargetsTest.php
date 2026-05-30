@@ -55,7 +55,16 @@ it('each target reports the correct agent + paths', function (): void {
     }
 });
 
-it('CopilotTarget emits guidelines into root AGENTS.md (joins the shared AGENTS.md pool, no `.github/copilot-instructions.md`)', function (): void {
+it('CopilotTarget guideline file is root AGENTS.md (joins the shared AGENTS.md pool, no `.github/copilot-instructions.md`)', function (): void {
+    // 0.12.0: the guideline file write is handled centrally by SyncEngine
+    // (wholesale markerless), not via plan(). plan() emits skills only; the
+    // guideline destination is declared by guidelinesFileRelative().
+    $target = new CopilotTarget();
+
+    expect($target->guidelinesFileRelative())
+        ->toBe('AGENTS.md')
+        ->not->toBe('.github/copilot-instructions.md');
+
     $guideline = new Guideline(
         name: 'sample',
         description: null,
@@ -64,11 +73,13 @@ it('CopilotTarget emits guidelines into root AGENTS.md (joins the shared AGENTS.
         sourcePath: '/fake',
         sourceVendor: null,
     );
-    $writes = (new CopilotTarget())->plan([], [$guideline]);
-
-    expect($writes)->toHaveCount(1)
-        ->and($writes[0]->relativePath)->toBe('AGENTS.md')
-        ->and($writes[0]->relativePath)->not->toBe('.github/copilot-instructions.md');
+    // plan() no longer emits a guideline write — only skills.
+    expect($target->plan([], [$guideline]))
+        ->toBeEmpty();
+    // The guideline body is markerless (no boost-core markers).
+    expect($target->formatGuidelinesContent([$guideline]))
+        ->toContain('body')
+        ->not->toContain('boost-core:guidelines');
 });
 
 it('CopilotTarget emits skills into `.agents/skills/` (joins the shared skills pool, no `.github/skills/`)', function (): void {

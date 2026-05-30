@@ -85,45 +85,39 @@ it('omits the frontmatter block when frontmatter is empty', function (): void {
     expect($writes[0]->content)->toBe('Just body.');
 });
 
-it('plans a guidelines write at CLAUDE.md when guidelines are present', function (): void {
+it('formats guidelines body markerless for CLAUDE.md (0.12.0: write handled centrally by SyncEngine, not plan())', function (): void {
     $target = new ClaudeCodeTarget();
-    $writes = $target->plan(
-        skills: [],
-        guidelines: [
-            makeGuideline('conventions', '# Conventions\n\nFoo.'),
-            makeGuideline('style', '# Style\n\nBar.'),
-        ],
-    );
 
-    expect($writes)->toHaveCount(1)
-        ->and($writes[0]->relativePath)
-        ->toBe('CLAUDE.md')
-        ->and($writes[0]->content)
+    // The guideline DESTINATION is declared by guidelinesFileRelative().
+    expect($target->guidelinesFileRelative())->toBe('CLAUDE.md');
+
+    // plan() no longer emits a guideline write — only per-skill writes.
+    expect($target->plan(skills: [], guidelines: [makeGuideline('g', 'G')]))
+        ->toBeEmpty();
+
+    // The markerless guideline body assembles the bodies with `---` separators
+    // and carries NO boost-core marker comments.
+    $body = $target->formatGuidelinesContent([
+        makeGuideline('conventions', '# Conventions\n\nFoo.'),
+        makeGuideline('style', '# Style\n\nBar.'),
+    ]);
+    expect($body)
         ->toContain('# Conventions')
         ->toContain('# Style')
-        ->toContain('---'); // separator between guidelines
+        ->toContain('---')
+        ->not->toContain('boost-core:guidelines');
 });
 
-it('omits the guidelines write when no guidelines are provided', function (): void {
+it('plan emits only skill writes (no guideline write) — 0.12.0', function (): void {
     $target = new ClaudeCodeTarget();
-    $writes = $target->plan(
-        skills: [makeSkill('foo', [], 'body')],
-        guidelines: [],
-    );
 
-    expect($writes)->toHaveCount(1)
-        ->and($writes[0]->relativePath)
+    expect($target->plan(skills: [makeSkill('foo', [], 'body')], guidelines: []))
+        ->toHaveCount(1)
+        ->and($target->plan(skills: [makeSkill('foo', [], 'body')], guidelines: [])[0]->relativePath)
         ->toBe('.claude/skills/foo/SKILL.md');
-});
 
-it('handles both skills and guidelines in a single plan', function (): void {
-    $target = new ClaudeCodeTarget();
-    $writes = $target->plan(
-        skills: [makeSkill('foo', [], 'F')],
-        guidelines: [makeGuideline('g', 'G')],
-    );
-
-    expect($writes)->toHaveCount(2);
-    $paths = array_map(fn (PendingWrite $w): string => $w->relativePath, $writes);
-    expect($paths)->toEqual(['.claude/skills/foo/SKILL.md', 'CLAUDE.md']);
+    // Even WITH guidelines, plan() emits only the skill write.
+    $both = $target->plan(skills: [makeSkill('foo', [], 'F')], guidelines: [makeGuideline('g', 'G')]);
+    expect($both)->toHaveCount(1)
+        ->and($both[0]->relativePath)->toBe('.claude/skills/foo/SKILL.md');
 });

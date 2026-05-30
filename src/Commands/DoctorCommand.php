@@ -89,6 +89,7 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportAllowlist($io, $config);
         $this->reportRemoteSkills($io, $config);
         $this->reportTags($io, $config);
+        $this->reportExcludeKeys($io, $config);
         $this->reportDrift($io, $projectRoot);
         if ($input->getOption('check-versions') === true) {
             $this->reportPathRepoShadows($io, $projectRoot);
@@ -482,6 +483,75 @@ final class DoctorCommand extends BoostBaseCommand
     {
         $io->section('Skill tags');
         $this->reporter->report($io, $config);
+    }
+
+    /**
+     * 0.12.0: surface `withExcludedSkills([...])` / `withExcludedGuidelines([...])`
+     * entries that silently no-op because the key doesn't address a real
+     * skill/guideline. The deny-list key is `vendor/package:name` —
+     * `withExcludedSkills(['pre-release'])` (a bare name) matches nothing and
+     * leaves the skill installed with no error. Doctor names the mismatch so
+     * the operator can correct the key (mirrors the 0.10.0 tag-typo split).
+     */
+    private function reportExcludeKeys(SymfonyStyle $io, BoostConfig $config): void
+    {
+        if ($config->excludedSkills === [] && $config->excludedGuidelines === []) {
+            return;
+        }
+
+        $io->section('Exclude keys');
+
+        // The deny-list key is `vendor/package:name`. We flag only the
+        // unambiguous silent-no-op mistake: a BARE NAME (no `vendor/package:`
+        // prefix), e.g. `withExcludedSkills(['pre-release'])`, which matches
+        // nothing and errors silently.
+        //
+        // We deliberately do NOT validate the `vendor/package` part further:
+        // excludes apply to allowlisted-vendor items AND remote-skill items
+        // (`withRemoteSkills`, keyed `owner/repo:name`) AND injected-vendor
+        // items whose `sourceVendor` never appears in `allowedVendors`. An
+        // allowlist check would false-positive on those valid configurations,
+        // and an item-match check would false-positive on every correct
+        // exclude (a valid exclude removes its item from the resolved set).
+        $lines = [
+            ...$this->bareExcludeKeyDiagnostics($config->excludedSkills, 'withExcludedSkills', 'skill'),
+            ...$this->bareExcludeKeyDiagnostics($config->excludedGuidelines, 'withExcludedGuidelines', 'guideline'),
+        ];
+
+        if ($lines === []) {
+            $io->writeln('<info>All exclude keys are well-formed (`vendor/package:name`).</info>');
+
+            return;
+        }
+
+        foreach ($lines as $line) {
+            $io->writeln($line);
+        }
+    }
+
+    /**
+     * @param  list<string>  $entries
+     * @return list<string>
+     */
+    private function bareExcludeKeyDiagnostics(array $entries, string $method, string $kind): array
+    {
+        $out = [];
+        foreach ($entries as $entry) {
+            $colon = strpos($entry, ':');
+            if ($colon !== false && $colon !== 0) {
+                continue;
+            }
+
+            $out[] = sprintf(
+                '<comment>⚠</comment> %s(): `%s` is a bare name — the key must be `vendor/package:%s-name` (e.g. `vendor/package:%s`). As written it silently matches nothing.',
+                $method,
+                $entry,
+                $kind,
+                $entry,
+            );
+        }
+
+        return $out;
     }
 
     private function reportDrift(SymfonyStyle $io, string $projectRoot): void

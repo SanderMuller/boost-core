@@ -1672,7 +1672,151 @@ it('check-only mode skips remote fetch when cache is cold and surfaces a would-f
     }
 });
 
-it('CLAUDE.md guidelines write is round-trip-safe — operator content outside markers survives sync', function (): void {
+it('0.12.0 empty-assembly guard: a pre-existing non-empty CLAUDE.md is LEFT INTACT (not wiped) when boost resolves no guidance + emits an INFO (codex P1 — fresh-adopter wipe)', function (): void {
+    // The median fresh-adopter path: an app already has a CLAUDE.md (laravel/
+    // boost's `boost install` writes one; many repos hand-author one) and a
+    // boost.php, but no host `.ai/guidelines/` yet → assembled is empty. The
+    // stateless markerless write would blank the file (and via BoostAutoSync,
+    // on a routine composer update). The guard must leave it untouched.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        // No .ai/guidelines/* → nothing for boost to assemble.
+        $preExisting = "# My App\n\nHand-written guidance the operator authored before adopting boost.\n";
+        file_put_contents($root . '/CLAUDE.md', $preExisting);
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // File untouched — byte-for-byte.
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toBe($preExisting);
+
+        // The leave-prior behavior is observable, not silent.
+        $messages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics));
+        expect($messages)
+            ->toContain('left untouched rather than blanked')
+            ->toContain('delete the file manually if you want it empty');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.12.0: ->withConventions() still renders CLAUDE.md even when the Claude agent is NOT enabled (codex P1 — conventions independent of active agents)', function (): void {
+    // Pre-0.12 syncConventions() wrote CLAUDE.md whenever conventions were
+    // declared, regardless of which agents were active. A Codex/Gemini-only
+    // project that declares ->withConventions([...]) must still get its
+    // conventions written to CLAUDE.md — the markerless rewrite must not make
+    // conventions vanish for non-Claude agent sets.
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-conv-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+
+        // Only GEMINI is enabled — NOT Claude — but conventions are declared.
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::GEMINI])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-1']]);",
+        );
+
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(is_file($root . '/CLAUDE.md'))->toBeTrue('CLAUDE.md must be created to carry conventions');
+        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($claudeMd)
+            ->toContain('## Project Conventions')
+            ->toContain('project_key: BOOST-1');
+    } finally {
+        rmTreeE2E($root);
+        if (is_dir($vendor)) {
+            rmTreeE2E($vendor);
+        }
+    }
+});
+
+it('0.12.0 empty-assembly guard is EXEMPT for marker-bounded files: a legacy boost-written CLAUDE.md still converges (markers stripped) even when assembly is empty (codex P1a)', function (): void {
+    // A file carrying boost markers is definitively boost-written, so the guard
+    // must NOT protect it — it falls through to migrate(), which strips the
+    // markers (converging to markerless) and drops the now-removed boost
+    // guidelines. Otherwise an upgrade sync where the guidance set is empty
+    // would leave stale marker content + stale instructions on disk forever.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        // No .ai/guidelines/ → empty assembly. Legacy marker file holds only
+        // boost guidelines (no operator residual).
+        $legacy = "<!-- boost-core:guidelines:start -->\n# Old Boost Guideline\n\nStale instruction.\n<!-- boost-core:guidelines:end -->\n";
+        file_put_contents($root . '/CLAUDE.md', $legacy);
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($after)
+            ->not->toContain('<!-- boost-core:guidelines:start -->')   // markers stripped
+            ->and($after)->not->toContain('Stale instruction.');       // stale boost content gone
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.12.0 marker-exemption preserves operator residual: a legacy marker file with out-of-marker operator content keeps that content when assembly is empty (never a wipe)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        $legacy = "# My hand-written intro\n\nKeep this.\n\n<!-- boost-core:guidelines:start -->\n# Boost Guideline\n\nStale.\n<!-- boost-core:guidelines:end -->\n";
+        file_put_contents($root . '/CLAUDE.md', $legacy);
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($after)
+            ->toContain('My hand-written intro')                       // operator residual preserved
+            ->toContain('Keep this.')
+            ->and($after)->not->toContain('<!-- boost-core:guidelines:start -->')
+            ->and($after)->not->toContain('Stale.');                   // boost-owned region dropped
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.12.0 empty-assembly guard does NOT fire when boost HAS content: a non-empty assembly still wholesale-overwrites a pre-existing file (regenerates completely)', function (): void {
+    // The guard is strictly binary — it only protects against EMPTY assembly.
+    // When boost resolves guidelines, the file is still fully boost-owned:
+    // wholesale overwrite, prior hand-content replaced (recoverable via git).
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/strict.md', "---\nname: strict\n---\n# Strict\n\nUse strict types.\n");
+        file_put_contents($root . '/CLAUDE.md', "# Old hand-written content that should be replaced.\n");
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($after)
+            ->toContain('Use strict types.')                       // boost content regenerated
+            ->and($after)->not->toContain('Old hand-written content'); // prior body replaced
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.12.0 markerless migration: legacy conventions YAML in CLAUDE.md markers survives the wholesale takeover (preserved, never deleted)', function (): void {
+    // The 0.12.0 successor to the old round-trip-safety test. Markerless
+    // wholesale ownership replaces the marker round-trip; the migration MUST
+    // still never lose operator-filled conventions YAML — it unwraps the
+    // legacy conventions markers + preserves the YAML below the generated
+    // guidelines, with a convert-conventions warning.
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, 'return BoostConfig::configure()
@@ -1684,38 +1828,106 @@ name: conventions
 
 Use strict types.');
 
-        // First sync — CLAUDE.md scaffolds with markered guidelines block.
+        // First sync — CLAUDE.md gets the markerless guideline body.
         SyncEngine::default(emptyInstalledPackages())->sync($root);
-        expect(file_exists($root . '/CLAUDE.md'))->toBeTrue();
+        $afterFirst = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($afterFirst)
+            ->toContain('Use strict types.')
+            ->not->toContain('<!-- boost-core:guidelines:start -->');
 
-        // Operator appends a Project Conventions block AFTER the markered
-        // guidelines region. This is the canonical 0.8.x conventions-schema
-        // shape — boost-core's own ConventionsBlockEmitter would scaffold
-        // it the same way if a vendor schema were present.
-        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
-        $operatorSection = "
+        // Simulate a LEGACY file: operator-filled conventions YAML inside the
+        // old marker region (the un-migrated convert-conventions case —
+        // boost.php has no ->withConventions()).
+        $legacy = "<!-- boost-core:guidelines:start -->\n# Conventions\n\nUse strict types.\n<!-- boost-core:guidelines:end -->\n\n"
+            . "## Project Conventions\n\n"
+            . "<!-- boost-core:conventions:start -->\n```yaml\nschema-version: 1\njira:\n  project_key: HPB-OPERATOR-FILLED\n```\n<!-- boost-core:conventions:end -->\n";
+        file_put_contents($root . '/CLAUDE.md', $legacy);
 
-## Project Conventions
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-<!-- boost-core:conventions:start -->
-\`\`\`yaml
-schema-version: 1
-jira:
-  project_key: HPB-OPERATOR-FILLED
-\`\`\`
-<!-- boost-core:conventions:end -->
-";
-        file_put_contents($root . '/CLAUDE.md', $claudeMd . $operatorSection);
+        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        // Operator-filled YAML MUST survive — the data-loss guard.
+        expect($after)->toContain('HPB-OPERATOR-FILLED')
+            ->and($after)->toContain('# Conventions')
+            // Markers are gone (markerless).
+            ->and($after)->not->toContain('<!-- boost-core:guidelines:start -->')
+            ->and($after)->not->toContain('<!-- boost-core:conventions:start -->')
+            // Guideline body appears once — no duplication (#79 class).
+            ->and(substr_count($after, 'Use strict types.'))->toBe(1);
 
-        // Second sync — operator-filled content MUST survive.
+        // A migration warning points the operator at boost.php's
+        // ->withConventions — NOT at `convert-conventions`, which can no longer
+        // run (this same sync stripped the markers it requires). codex P2.
+        $messages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics));
+        expect($messages)
+            ->toContain('markerless migration')
+            ->toContain('withConventions')
+            ->toContain('no longer applies');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.12.0 markerless migration is convergent: re-syncing is a no-op + the migration warning does NOT repeat (codex P2)', function (): void {
+    // The preserved residual is STABLE across syncs (same content, same place)
+    // and the marker→markerless transition warning fires ONLY on the sync that
+    // actually had markers — steady-state syncs are silent + write nothing.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\n# Conventions\n\nUse strict types.\n");
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Legacy file with a hand-written operator note outside the markers.
+        $legacy = "<!-- boost-core:guidelines:start -->\n# Conventions\n\nUse strict types.\n<!-- boost-core:guidelines:end -->\n\n"
+            . "# My hand-written note\n\nKeep this around.\n";
+        file_put_contents($root . '/CLAUDE.md', $legacy);
+
+        // Sync A: the marker→markerless migration. Warns + preserves the note
+        // below the generated body for this one sync (grace period).
+        $a = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $afterA = (string) file_get_contents($root . '/CLAUDE.md');
+        $warnedA = str_contains(implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $a->diagnostics)), 'markerless migration');
+        expect($warnedA)->toBeTrue()
+            ->and($afterA)->toContain('My hand-written note')
+            ->and(substr_count($afterA, 'Use strict types.'))->toBe(1);
+
+        // Sync B: steady state (file is now markerless, boost-owned). The file
+        // is wholesale-overwritten to the generated body — the grace-preserved
+        // note is gone (operator was warned to move it to .ai/guidelines/; git
+        // holds it), and NO migration warning repeats.
+        $b = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $afterB = (string) file_get_contents($root . '/CLAUDE.md');
+        $warnedB = str_contains(implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $b->diagnostics)), 'markerless migration');
+        expect($afterB)
+            ->toContain('Use strict types.')
+            ->not->toContain('My hand-written note')   // grace expired — overwritten
+            ->and($warnedB)->toBeFalse();               // no repeated warning
+
+        // Sync C: convergent — identical to B, nothing to write.
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toBe($afterB);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.12.0 markerless: a guideline EDIT replaces the prior body (not appended) — steady-state convergence (codex P1)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# Original\n\nOriginal guidance.\n");
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Edit the guideline source + re-sync.
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# Updated\n\nUpdated guidance.\n");
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
         $after = (string) file_get_contents($root . '/CLAUDE.md');
-        // Operator-filled YAML body MUST survive — was the round-trip foot-gun.
-        expect($after)->toContain('HPB-OPERATOR-FILLED')
-            ->and($after)->toContain('# Conventions')
-            ->and($after)->toContain('<!-- boost-core:guidelines:start -->')
-            ->and($after)->toContain('<!-- boost-core:conventions:start -->');
+        expect($after)
+            ->toContain('Updated guidance.')
+            ->not->toContain('Original guidance.')   // old body replaced, not appended
+            ->and(substr_count($after, '# '))->toBe(1);
     } finally {
         rmTreeE2E($root);
     }
@@ -2376,7 +2588,8 @@ it('0.9.3 render-fail safety: when ANY guideline renderer throws, the prior CLAU
 
         $afterFirst = (string) file_get_contents($root . '/CLAUDE.md');
         expect($afterFirst)->toContain('Use strict types.')
-            ->and($afterFirst)->toContain('<!-- boost-core:guidelines:start -->');
+            // 0.12.0: markerless — the guideline body is written wholesale, no markers.
+            ->and($afterFirst)->not->toContain('<!-- boost-core:guidelines:start -->');
 
         // Sync 2: inject a renderer that throws on .md. The default
         // PassthroughRenderer handles .md, so adding a custom one that
@@ -2410,19 +2623,13 @@ it('0.9.3 render-fail safety: when ANY guideline renderer throws, the prior CLAU
         // know which renderer to investigate.
         $warningMessages = array_filter(
             array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics),
-            static fn (string $m): bool => str_contains($m, 'Guideline render failed; content between `<!-- boost-core:guidelines:start -->` and `<!-- boost-core:guidelines:end -->` preserved at prior state'),
+            static fn (string $m): bool => str_contains($m, 'Guideline render failed; the prior agent-guidance file content is preserved byte-for-byte'),
         );
         expect($warningMessages)->not->toBeEmpty();
 
-        // Locked-out the abstract pre-0.9.5 wording. The wording-revert-as-
-        // regression-test pattern: assert NEW wording present AND OLD wording
-        // absent so a future PR rewording slips can't degrade the diagnostic
-        // back to "managed-region content preserved" (abstract, ungreppable).
-        $allMessages = array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics);
+        // The failed source is named so operators know which renderer to fix.
         $combined = implode("\n", $warningMessages);
-        $allCombined = implode("\n", $allMessages);
-        expect($combined)->toContain('conventions.md')
-            ->and($allCombined)->not->toContain('managed-region content preserved at prior state. Run');
+        expect($combined)->toContain('conventions.md');
     } finally {
         rmTreeE2E($root);
     }

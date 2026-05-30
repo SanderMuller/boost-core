@@ -30,9 +30,17 @@ final readonly class SchemaDiscovery
 
     /**
      * @param  list<string>  $allowedVendors  in operator-declared order
+     * @param  bool  $conventionsDeclared  whether the consumer declared
+     *   `->withConventions([...])`. Together with whether any vendor ships a
+     *   schema, this gates the "N vendors ship no conventions-schema.json"
+     *   summary INFO: when the conventions subsystem is DORMANT (no declared
+     *   conventions AND no vendor schema) the INFO is pure noise — a skills-only
+     *   vendor simply has no conventions feature — so it is suppressed. The
+     *   conventions-audit commands (`validate` / `slots`) pass the default
+     *   `true` so the INFO always surfaces there.
      * @return array{sources: list<VendorSchemaSource>, diagnostics: list<Diagnostic>}
      */
-    public function discover(array $allowedVendors): array
+    public function discover(array $allowedVendors, bool $conventionsDeclared = true): array
     {
         /** @var list<VendorSchemaSource> $sources */
         $sources = [];
@@ -42,6 +50,11 @@ final readonly class SchemaDiscovery
         $noSchemaVendors = [];
         /** @var int $allowedCount Vendors actually inspected (excludes self-referential + uninstalled) */
         $allowedCount = 0;
+        // True once ANY vendor ships a conventions-schema.json file — whether it
+        // loads cleanly into $sources or fails to read/parse (a warning). Either
+        // way the conventions subsystem is in play, so the dormancy gate below
+        // must not suppress the "these vendors ship no schema" context.
+        $schemaFileSeen = false;
 
         foreach ($allowedVendors as $vendorName) {
             // Skip self-referential check: boost-core is the engine, it doesn't
@@ -72,6 +85,7 @@ final readonly class SchemaDiscovery
                 continue;
             }
 
+            $schemaFileSeen = true;
             $raw = @file_get_contents($schemaPath);
             if ($raw === false) {
                 $diagnostics[] = Diagnostic::warning(
@@ -125,7 +139,17 @@ final readonly class SchemaDiscovery
         // some vendors loaded schemas. Stating only "N of M ship no schema"
         // + the triage pointer is correct regardless of whether $sources is
         // empty or populated.
-        if ($noSchemaVendors !== []) {
+        // Dormancy gate: suppress the summary INFO when the conventions
+        // subsystem isn't in play at all — no declared conventions AND no vendor
+        // shipped a schema. In that state a skills-only vendor's absence-of-
+        // schema is not a signal; surfacing it just reads as worrisome noise
+        // ("what's wrong?") when nothing is. The INFO still fires when the
+        // operator declared conventions (they're trying to use the feature, so
+        // a missing schema is actionable) or when at least one vendor shipped a
+        // schema FILE — loaded OR broken (the "these others don't" context is
+        // then meaningful, and a malformed schema still proves the subsystem is
+        // in play even though it never reached $sources). codex-review P2.
+        if ($noSchemaVendors !== [] && ($conventionsDeclared || $schemaFileSeen)) {
             $diagnostics[] = Diagnostic::info(
                 null,
                 sprintf(

@@ -1139,8 +1139,15 @@ final readonly class SyncEngine
         $composer = new GuidanceComposer();
 
         // Conventions: schema discovery + validation, then markerless render.
+        // Pass whether the consumer declared conventions so a sync that doesn't
+        // use the feature stays quiet about skills-only vendors lacking a schema
+        // (the no-schema INFO is dormant-suppressed unless conventions are
+        // declared or some vendor actually ships a schema).
         $discovery = new SchemaDiscovery($this->installedPackages);
-        ['sources' => $sources, 'diagnostics' => $convDiagnostics] = $discovery->discover($config->allowedVendors);
+        ['sources' => $sources, 'diagnostics' => $convDiagnostics] = $discovery->discover(
+            $config->allowedVendors,
+            conventionsDeclared: $config->conventions !== [],
+        );
         $diagnostics = [...$diagnostics, ...$convDiagnostics];
 
         $conventionsSection = null;

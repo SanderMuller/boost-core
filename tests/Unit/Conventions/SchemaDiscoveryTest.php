@@ -1,5 +1,6 @@
 <?php declare(strict_types=1);
 
+use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
@@ -187,6 +188,64 @@ it('0.10.1 noise collapse: no summary INFO when all vendors ship a schema (all-c
 
     expect($result['diagnostics'])->toBeEmpty()
         ->and($result['sources'])->toHaveCount(2);
+});
+
+it('0.12.0 dormancy gate: no summary INFO when conventions are NOT declared AND no vendor ships a schema (skills-only vendor → silent, not worrisome)', function (): void {
+    // The pain: a skills-only vendor (no conventions-schema) in a project that
+    // doesn't use conventions made every sync print "1 of 1 ship no
+    // conventions-schema.json" — pure noise that reads as "something's wrong".
+    // When conventionsDeclared=false AND no vendor ships a schema, the whole
+    // conventions subsystem is dormant → suppress the INFO entirely.
+    $vendorPath = makeTempVendor('vendor/skills-only', null);
+    $scanner = makeStubPackages(['vendor/skills-only' => $vendorPath]);
+
+    $result = (new SchemaDiscovery($scanner))->discover(['vendor/skills-only'], conventionsDeclared: false);
+
+    expect($result['diagnostics'])->toBeEmpty()
+        ->and($result['sources'])->toBeEmpty();
+});
+
+it('0.12.0 dormancy gate: INFO STILL fires when conventions are declared but a vendor ships no schema (actionable misconfiguration signal)', function (): void {
+    // The operator is trying to use conventions but the vendor they expect to
+    // supply the schema doesn't ship one — that IS actionable, so keep the INFO.
+    $vendorPath = makeTempVendor('vendor/skills-only', null);
+    $scanner = makeStubPackages(['vendor/skills-only' => $vendorPath]);
+
+    $result = (new SchemaDiscovery($scanner))->discover(['vendor/skills-only'], conventionsDeclared: true);
+
+    expect($result['diagnostics'])->toHaveCount(1)
+        ->and($result['diagnostics'][0]->message)->toContain('ship no conventions-schema.json');
+});
+
+it('0.12.0 dormancy gate: INFO fires even with conventionsDeclared=false when SOME vendor ships a schema (the "these others don\'t" context is meaningful)', function (): void {
+    $schemaJson = '{"type":"object"}';
+    $loaded = makeTempVendor('vendor/loaded', $schemaJson);
+    $absent = makeTempVendor('vendor/absent', null);
+    $scanner = makeStubPackages(['vendor/loaded' => $loaded, 'vendor/absent' => $absent]);
+
+    $result = (new SchemaDiscovery($scanner))->discover(['vendor/loaded', 'vendor/absent'], conventionsDeclared: false);
+
+    expect($result['sources'])->toHaveCount(1)
+        ->and($result['diagnostics'])->toHaveCount(1)
+        ->and($result['diagnostics'][0]->message)->toContain('1 of 2 allowlisted vendor(s)');
+});
+
+it('0.12.0 dormancy gate (codex P2): a MALFORMED schema counts as the subsystem being in play — no-schema INFO still fires even with conventionsDeclared=false', function (): void {
+    // A vendor ships a conventions-schema.json that fails to parse → it never
+    // reaches $sources (a warning is emitted instead). The subsystem is clearly
+    // active, so the dormancy gate must NOT suppress the "these others ship no
+    // schema" context for the remaining bare vendors.
+    $broken = makeTempVendor('vendor/broken', '{ not valid json');
+    $absent = makeTempVendor('vendor/absent', null);
+    $scanner = makeStubPackages(['vendor/broken' => $broken, 'vendor/absent' => $absent]);
+
+    $result = (new SchemaDiscovery($scanner))->discover(['vendor/broken', 'vendor/absent'], conventionsDeclared: false);
+
+    $messages = array_map(static fn (Diagnostic $d): string => $d->message, $result['diagnostics']);
+    expect($result['sources'])->toBeEmpty()
+        // The parse-failure warning AND the no-schema summary INFO both present.
+        ->and($result['diagnostics'])->toHaveCount(2)
+        ->and(implode("\n", $messages))->toContain('ship no conventions-schema.json');
 });
 
 it('0.10.1 noise-collapse wording: summary stays accurate in mixed-allowlist (some vendors loaded a schema, some did not) — must NOT claim layer is dormant', function (): void {

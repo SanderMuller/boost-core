@@ -50,9 +50,11 @@ final class ManagedFileOps
             if ($segment === '') {
                 continue;
             }
+
             if ($segment === '.') {
                 continue;
             }
+
             $out[] = $segment;
         }
 

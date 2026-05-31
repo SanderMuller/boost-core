@@ -42,11 +42,15 @@ final readonly class WrapperEmitDiscovery
      *   for the active agent layout (`.claude/skills/` vs `.agents/skills/`
      *   vs `.github/skills/` etc.) using boost-core's `AgentTarget` API,
      *   instead of guessing or over-claiming across all agents.
-     * @return array{paths: array<string, true>, diagnostics: list<Diagnostic>}
+     * @return array{paths: array<string, string>, diagnostics: list<Diagnostic>}
+     *   `paths` maps each wrapper-claimed emit path → the OWNING wrapper package
+     *   name (e.g. `sandermuller/project-boost-laravel`), so the manifest writer
+     *   can record `provenance: wrapper:<vendor/package>`. Callers that only
+     *   need membership use the keys / `isset()`.
      */
     public function discover(string $projectRoot, array $activeAgents): array
     {
-        /** @var array<string, true> $excludedPaths  set-by-key for dedup */
+        /** @var array<string, string> $excludedPaths  path → owning wrapper package */
         $excludedPaths = [];
         /** @var list<Diagnostic> $diagnostics */
         $diagnostics = [];
@@ -74,7 +78,9 @@ final readonly class WrapperEmitDiscovery
             }
 
             foreach ($callResult['paths'] as $path) {
-                $excludedPaths[$path] = true;
+                // path → owning wrapper package (last writer wins on the rare
+                // cross-wrapper path collision; membership is unaffected).
+                $excludedPaths[$path] = $package->name;
             }
         }
 

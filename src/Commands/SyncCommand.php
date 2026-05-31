@@ -313,16 +313,27 @@ final class SyncCommand extends BoostBaseCommand
      */
     private function noteHostShadows(SymfonyStyle $io, SyncResult $result): void
     {
-        if ($result->hostShadows === []) {
-            return;
+        if ($result->hostShadows !== []) {
+            $io->note(sprintf(
+                '%d host skill(s) shadowed allowlisted-vendor copies:',
+                count($result->hostShadows),
+            ));
+            foreach ($result->hostShadows as $shadow) {
+                $io->writeln(sprintf('  • <fg=cyan>%s</> shadows %s', $shadow['skill'], $shadow['shadowedVendor']));
+            }
         }
 
-        $io->note(sprintf(
-            '%d host skill(s) shadowed allowlisted-vendor copies:',
-            count($result->hostShadows),
-        ));
-        foreach ($result->hostShadows as $shadow) {
-            $io->writeln(sprintf('  • <fg=cyan>%s</> shadows %s', $shadow['skill'], $shadow['shadowedVendor']));
+        if ($result->hostGuidelineShadows !== []) {
+            // Count UNIQUE host guidelines, not shadow events (one guideline can
+            // shadow the same name across multiple vendors) — codex-review.
+            $uniqueGuidelines = count(array_unique(array_column($result->hostGuidelineShadows, 'guideline')));
+            $io->note(sprintf(
+                '%d host guideline(s) shadowed allowlisted-vendor copies:',
+                $uniqueGuidelines,
+            ));
+            foreach ($result->hostGuidelineShadows as $shadow) {
+                $io->writeln(sprintf('  • <fg=cyan>%s</> shadows %s', $shadow['guideline'], $shadow['shadowedVendor']));
+            }
         }
     }
 

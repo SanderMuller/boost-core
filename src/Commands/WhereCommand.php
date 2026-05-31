@@ -52,7 +52,7 @@ final class WhereCommand extends BoostBaseCommand
             'diff',
             null,
             InputOption::VALUE_REQUIRED,
-            'For a single host skill that shadows an allowlisted vendor copy, print a unified diff between the host file and the vendor file. Pass the skill name as the value: `--diff=deploy`.',
+            'For a single host skill OR guideline that shadows an allowlisted vendor copy, print a unified diff between the host file and the vendor file. Pass the name as the value: `--diff=deploy`. Skills are matched first, then guidelines.',
         );
     }
 
@@ -101,6 +101,7 @@ final class WhereCommand extends BoostBaseCommand
         $scannedSkillKeys = array_flip($inspection['scannedSkillVendorKeys']);
         $scannedGuidelineKeys = array_flip($inspection['scannedGuidelineVendorKeys']);
         $shadowedBy = $this->shadowIndex($result->hostShadows);
+        $guidelineShadowedBy = $this->guidelineShadowIndex($result->hostGuidelineShadows);
 
         // Per-category label inputs — keeps each section from
         // mislabeling an origin based on a sibling pipeline:
@@ -110,14 +111,27 @@ final class WhereCommand extends BoostBaseCommand
         //  - COMMANDS: Phase 1 host-only (vendor commands deferred to
         //    Phase 4 of agent-commands-sync), so both flags = false.
         $this->renderCategory($io, 'SKILLS', '.ai/skills/ (host)', $this->groupSkillsByOrigin($inspection['skills']), $remoteKeys, $scannedSkillKeys, $shadowedBy, 'skill');
-        $this->renderCategory($io, 'GUIDELINES', '.ai/guidelines/ (host)', $this->groupGuidelinesByOrigin($inspection['guidelines']), [], $scannedGuidelineKeys, [], 'guideline');
+        $this->renderCategory($io, 'GUIDELINES', '.ai/guidelines/ (host)', $this->groupGuidelinesByOrigin($inspection['guidelines']), [], $scannedGuidelineKeys, $guidelineShadowedBy, 'guideline');
         $this->renderCategory($io, 'COMMANDS', '.ai/commands/ (host)', $this->groupCommandsByOrigin($inspection['commands']), [], [], [], 'command');
 
+        $shadowNotes = [];
         if ($result->hostShadows !== []) {
+            $shadowNotes[] = sprintf('%d host skill(s)', count($result->hostShadows));
+        }
+
+        if ($result->hostGuidelineShadows !== []) {
+            // Count UNIQUE host guidelines, not shadow events — one host
+            // guideline can shadow the same name across multiple vendors
+            // (codex-review: don't overstate the total).
+            $uniqueGuidelines = count(array_unique(array_column($result->hostGuidelineShadows, 'guideline')));
+            $shadowNotes[] = sprintf('%d host guideline(s)', $uniqueGuidelines);
+        }
+
+        if ($shadowNotes !== []) {
             $io->newLine();
             $io->note(sprintf(
-                '%d host skill(s) shadow allowlisted-vendor copies. Listed inline with `(shadows <vendor>)`.',
-                count($result->hostShadows),
+                '%s shadow allowlisted-vendor copies. Listed inline with `(shadows <vendor>)`.',
+                implode(' + ', $shadowNotes),
             ));
         }
 
@@ -250,6 +264,23 @@ final class WhereCommand extends BoostBaseCommand
         return $idx;
     }
 
+    /**
+     * @param  list<array{guideline: string, shadowedVendor: string}>  $shadows
+     * @return array<string, string>  guideline name → ALL shadowed vendors,
+     *   comma-joined (codex-review: a host guideline can shadow the same-named
+     *   guideline from MULTIPLE allowlisted vendors; don't collapse to one).
+     */
+    private function guidelineShadowIndex(array $shadows): array
+    {
+        /** @var array<string, list<string>> $byName */
+        $byName = [];
+        foreach ($shadows as $shadow) {
+            $byName[$shadow['guideline']][] = $shadow['shadowedVendor'];
+        }
+
+        return array_map(static fn (array $vendors): string => implode(', ', $vendors), $byName);
+    }
+
     private function renderOrigin(string $origin, int $count, bool $isRemote, bool $isVendor, string $hostOrigin, string $itemNoun): string
     {
         // A `<vendor>/<package>` key can legally belong to both a
@@ -270,16 +301,40 @@ final class WhereCommand extends BoostBaseCommand
 
     /**
      * `boost where --diff=<name>` — show a unified diff between a host
-     * skill that shadows an allowlisted vendor copy and the vendor's
-     * upstream version. Answers "what exactly differs in this override"
-     * so a maintainer can decide whether the host copy still earns its
-     * keep vs upstream, or whether it can be dropped + replaced with
-     * the vendor version.
+     * skill OR guideline that shadows an allowlisted vendor copy and the
+     * vendor's upstream version. Answers "what exactly differs in this
+     * override" so a maintainer can decide whether the host copy still
+     * earns its keep vs upstream, or can be dropped + replaced with the
+     * vendor version. Skills are matched first, then guidelines (0.13.0).
      */
-    private function executeDiff(SymfonyStyle $io, string $projectRoot, string $skillName): int
+    private function executeDiff(SymfonyStyle $io, string $projectRoot, string $name): int
     {
         try {
-            $paths = SyncEngine::default($this->injectedPackages)->resolveSkillShadowPaths($projectRoot, $skillName);
+            $engine = SyncEngine::default($this->injectedPackages);
+            $paths = $engine->resolveSkillShadowPaths($projectRoot, $name);
+            $noun = 'skill';
+            if ($paths === null) {
+                $noun = 'guideline';
+                $guidelineMatches = $engine->resolveGuidelineShadowPaths($projectRoot, $name);
+
+                // Multiple allowlisted vendors publish this guideline name — the
+                // host shadows them ALL, so --diff can't pick one upstream to
+                // compare against (codex-review: don't silently diff against the
+                // first + ignore the rest).
+                if (count($guidelineMatches) > 1) {
+                    $vendors = array_map(static fn (array $m): string => $m['vendor'], $guidelineMatches);
+                    $io->error(sprintf(
+                        "Guideline `%s` shadows %d allowlisted vendor copies (%s); `--diff` can't pick one. Run `boost where` to see all shadowed vendors.",
+                        $name,
+                        count($guidelineMatches),
+                        implode(', ', $vendors),
+                    ));
+
+                    return self::FAILURE;
+                }
+
+                $paths = $guidelineMatches[0] ?? null;
+            }
         } catch (BoostConfigNotFoundException $e) {
             $io->error($e->getMessage());
 
@@ -292,8 +347,8 @@ final class WhereCommand extends BoostBaseCommand
 
         if ($paths === null) {
             $io->error(sprintf(
-                'Skill `%s` is not shadowing an allowlisted vendor copy. Either the host skill is missing from `.ai/skills/`, or no allowlisted vendor publishes a skill of the same name. Run `boost where` (no flag) to see the resolved origin map.',
-                $skillName,
+                '`%s` is not shadowing an allowlisted vendor copy. Either no host skill/guideline of that name exists in `.ai/`, or no allowlisted vendor publishes a tag-eligible skill/guideline of the same name. Run `boost where` (no flag) to see the resolved origin map.',
+                $name,
             ));
 
             return self::FAILURE;
@@ -303,7 +358,7 @@ final class WhereCommand extends BoostBaseCommand
         $vendorContent = @file_get_contents($paths['vendorPath']);
 
         if ($hostContent === false || $vendorContent === false) {
-            $io->error('Could not read one or both skill source files for diff.');
+            $io->error('Could not read one or both source files for diff.');
 
             return self::FAILURE;
         }
@@ -311,8 +366,9 @@ final class WhereCommand extends BoostBaseCommand
         // Identical content is a legitimate "no override needed" signal.
         if ($hostContent === $vendorContent) {
             $io->success(sprintf(
-                'Host skill `%s` is byte-identical to the `%s` vendor copy. The override earns nothing — consider removing `%s` and shipping the vendor version.',
-                $skillName,
+                'Host %s `%s` is byte-identical to the `%s` vendor copy. The override earns nothing — consider removing `%s` and shipping the vendor version.',
+                $noun,
+                $name,
                 $paths['vendor'],
                 $paths['hostPath'],
             ));
@@ -320,7 +376,7 @@ final class WhereCommand extends BoostBaseCommand
             return self::SUCCESS;
         }
 
-        $io->writeln(sprintf('<fg=blue;options=bold>Shadow diff — `%s` (host) vs `%s` (vendor)</>', $skillName, $paths['vendor']));
+        $io->writeln(sprintf('<fg=blue;options=bold>Shadow diff — `%s` (host) vs `%s` (vendor)</>', $name, $paths['vendor']));
         $io->writeln('<fg=gray>--- vendor: ' . $paths['vendorPath'] . '</>');
         $io->writeln('<fg=gray>+++ host:   ' . $paths['hostPath'] . '</>');
         $io->newLine();

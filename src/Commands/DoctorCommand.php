@@ -16,6 +16,7 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
+use SanderMuller\BoostCore\Sync\SyncResult;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -90,7 +91,8 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportRemoteSkills($io, $config);
         $this->reportTags($io, $config);
         $this->reportExcludeKeys($io, $config);
-        $this->reportDrift($io, $projectRoot);
+        $driftResult = $this->reportDrift($io, $projectRoot);
+        $this->reportShadows($io, $driftResult);
         if ($input->getOption('check-versions') === true) {
             $this->reportPathRepoShadows($io, $projectRoot);
         }
@@ -554,7 +556,7 @@ final class DoctorCommand extends BoostBaseCommand
         return $out;
     }
 
-    private function reportDrift(SymfonyStyle $io, string $projectRoot): void
+    private function reportDrift(SymfonyStyle $io, string $projectRoot): ?SyncResult
     {
         $io->section('Drift');
 
@@ -563,7 +565,7 @@ final class DoctorCommand extends BoostBaseCommand
         } catch (Throwable $throwable) {
             $io->warning('Could not check drift: ' . $throwable->getMessage());
 
-            return;
+            return null;
         }
 
         if ($result->hasDrift()) {
@@ -572,10 +574,47 @@ final class DoctorCommand extends BoostBaseCommand
                 $result->countWouldChange(),
             ));
 
-            return;
+            return $result;
         }
 
         $io->success('No drift detected. Generated files match sources.');
+
+        return $result;
+    }
+
+    /**
+     * Surface host→vendor shadows (skills AND guidelines) so `boost doctor`
+     * agrees with `boost where` on the shadow story (0.13.0 — guideline shadows
+     * reach parity with skills). A host `.ai/` file overriding an allowlisted-
+     * vendor copy of the same name is silent by design; this makes it visible
+     * in the triage surface. Guideline shadows respect the active tag filter
+     * (a tag-filtered-out vendor guideline isn't shadowed), inherited from
+     * `SyncResult::hostGuidelineShadows`.
+     */
+    private function reportShadows(SymfonyStyle $io, ?SyncResult $result): void
+    {
+        // Reuse the drift section's check-only sync result — no second full sync
+        // (codex-review P3). Null means the drift sync failed; stay quiet here
+        // (the drift section already surfaced it).
+        if (! $result instanceof SyncResult) {
+            return;
+        }
+
+        if ($result->hostShadows === [] && $result->hostGuidelineShadows === []) {
+            return;
+        }
+
+        $io->section('Host overrides (shadows)');
+
+        foreach ($result->hostShadows as $shadow) {
+            $io->writeln(sprintf('  • skill <fg=cyan>%s</> shadows %s', $shadow['skill'], $shadow['shadowedVendor']));
+        }
+
+        foreach ($result->hostGuidelineShadows as $shadow) {
+            $io->writeln(sprintf('  • guideline <fg=cyan>%s</> shadows %s', $shadow['guideline'], $shadow['shadowedVendor']));
+        }
+
+        $io->writeln('<fg=gray>Host copies win; the vendor copies are suppressed. Use `boost where --diff=<name>` to compare.</>');
     }
 
     private function reportConventions(SymfonyStyle $io, string $projectRoot, BoostConfig $config): void

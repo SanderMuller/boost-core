@@ -625,6 +625,41 @@ it('end-to-end: host command fans out to per-agent command files, gitignored', f
     }
 });
 
+it('0.13.0: records a host guideline shadow ONLY when the vendor copy is tag-ELIGIBLE (no false positive on tag-filtered vendor guidelines)', function (): void {
+    // k5m15b0p's mandatory nuance: a host guideline only "shadows" a vendor
+    // guideline that WOULD otherwise emit (tag-eligible under declared
+    // withTags). A tag-filtered-out vendor copy was never going to emit, so the
+    // host copy isn't shadowing anything — recording it would be a false
+    // positive. Tag-filtering runs before resolution, so this falls out cleanly.
+    $root = makeEndToEndProject();
+    $vendorPath = $root . '/vendor/acme/ops-pack';
+    mkdir($vendorPath . '/resources/boost/guidelines', 0o755, recursive: true);
+    try {
+        file_put_contents($vendorPath . '/composer.json', '{"name":"acme/ops-pack","type":"library"}');
+        file_put_contents($vendorPath . '/resources/boost/guidelines/release-automation.md', "# Vendor Release Automation\n\nVendor copy.\n");
+        file_put_contents($vendorPath . '/resources/boost/guidelines/.boost-tags.yaml', "release-automation.md: \"database\"\n");
+
+        // Host authors its OWN release-automation guideline of the same name.
+        file_put_contents($root . '/.ai/guidelines/release-automation.md', "---\nname: release-automation\n---\n# Host Release Automation\n\nHost copy.\n");
+
+        $packages = new InstalledPackages(['acme/ops-pack' => new PackageInfo('acme/ops-pack', '1.0.0', $vendorPath)]);
+
+        // Case B — tag NOT declared → vendor copy is tag-filtered out → NOT a
+        // shadow (the false-positive guard).
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/ops-pack']);");
+        $noTag = SyncEngine::default($packages)->sync($root);
+        expect($noTag->hostGuidelineShadows)
+            ->toBeEmpty();
+
+        // Case A — tag declared → vendor copy tag-eligible → genuine shadow.
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/ops-pack'])\n    ->withTags('database');");
+        $tagged = SyncEngine::default($packages)->sync($root);
+        expect($tagged->hostGuidelineShadows)->toBe([['guideline' => 'release-automation', 'shadowedVendor' => 'acme/ops-pack']]);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('tag-filters a vendor guideline by its .boost-tags.yaml manifest entry', function (): void {
     $root = makeEndToEndProject();
     $vendorPath = $root . '/vendor/acme/db-pack';
@@ -1669,6 +1704,108 @@ it('check-only mode skips remote fetch when cache is cold and surfaces a would-f
         if (is_dir($cacheRoot)) {
             BundleExtractor::recursivelyRemove($cacheRoot);
         }
+    }
+});
+
+it('0.13.0 manifest: a boost-OWNED guidance file CONVERGES to empty when all guidance is removed (resolves the 0.12 empty-guard trade-off)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
+
+        // Sync 1: CLAUDE.md written from guidance + manifest records ownership.
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('Body.')
+            ->and(is_file($root . '/.boost/manifest.json'))->toBeTrue('manifest should be written');
+        // `.boost/` is ignored via the root managed .gitignore block, so the
+        // regenerable manifest never dirties the working tree.
+        expect((string) file_get_contents($root . '/.gitignore'))->toContain('.boost/');
+
+        // Remove all guidance → empty assembly. The file is boost-owned (in the
+        // prior manifest, sha unchanged) → it converges to empty rather than
+        // lingering stale. This is the case 0.12 could not converge.
+        unlink($root . '/.ai/guidelines/g.md');
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(trim((string) file_get_contents($root . '/CLAUDE.md')))
+            ->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.13.0 manifest: a pre-existing operator file that COINCIDENTALLY matches boost output is NOT claimed (UNCHANGED + not-in-prior-manifest → preserved on later empty sync, codex P1)', function (): void {
+    // Capture boost's exact assembled output for a guideline.
+    $probe = makeEndToEndProject();
+    writeBoostPhp($probe, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+    file_put_contents($probe . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
+    SyncEngine::default(emptyInstalledPackages())->sync($probe);
+    $assembled = (string) file_get_contents($probe . '/CLAUDE.md');
+    rmTreeE2E($probe);
+
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
+        // Operator's pre-existing CLAUDE.md happens to byte-match boost's output,
+        // but boost has NEVER synced here (no manifest) → it must not be claimed.
+        file_put_contents($root . '/CLAUDE.md', $assembled);
+
+        // Sync 1: CLAUDE.md is UNCHANGED (matches) + absent from the prior
+        // manifest → ownership is NOT recorded.
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Remove guidance → empty sync. The file is NOT manifest-owned → it must
+        // be PRESERVED, not blanked (the silent-loss path codex flagged).
+        unlink($root . '/.ai/guidelines/g.md');
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toBe($assembled);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.13.0 manifest: NOT written when gitignore management is disabled (no untracked file left behind — codex-review P2)', function (): void {
+    $root = makeEndToEndProject();
+    putenv('BOOST_SKIP_GITIGNORE=1');
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Without gitignore management nothing would ignore `.boost/`, so the
+        // manifest must NOT be written (else a stray untracked file appears).
+        expect($root . '/.boost/manifest.json')->not->toBeFile();
+    } finally {
+        putenv('BOOST_SKIP_GITIGNORE');
+        rmTreeE2E($root);
+    }
+});
+
+it('0.13.0 manifest: a boost-owned guidance file the operator HAND-EDITED is PRESERVED on an empty sync (sha-divergence → never-lossy, codex P1.2)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Operator hand-edits the (boost-owned) CLAUDE.md → sha now diverges
+        // from the manifest record.
+        file_put_contents($root . '/CLAUDE.md', "# My own edits\n\nHand-written, must survive.\n");
+
+        // Remove guidance → empty sync. sha-mismatch means boost can't prove it
+        // still owns the file → PRESERVE (never blank a hand-edited file).
+        unlink($root . '/.ai/guidelines/g.md');
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('Hand-written, must survive.');
+        // Observable: the leave-intact INFO fires.
+        $messages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics));
+        expect($messages)->toContain('left untouched rather than blanked');
+    } finally {
+        rmTreeE2E($root);
     }
 });
 

@@ -20,6 +20,12 @@ final readonly class SyncResult
      *         so `SyncCommand` can log "shadowed: <name> (vendor: <pkg>)" lines —
      *         consumers using `withAllowedVendors` + host overrides can audit which
      *         version actually shipped.
+     * @param  list<array{guideline: string, shadowedVendor: string}>  $hostGuidelineShadows
+     *         Host `.ai/guidelines/<name>.md` shadowing a TAG-ELIGIBLE allowlisted-vendor
+     *         guideline of the same name (0.13.0). Vendor guidelines are tag-filtered
+     *         before resolution, so a tag-filtered-out vendor copy is never recorded as
+     *         shadowed (no false positives). Surfaced in `boost where` / `boost sync` for
+     *         parity with `$hostShadows` (skills).
      * @param  list<Diagnostic>  $diagnostics
      *         NEW in 0.8.0 — lenient diagnostics from the conventions-schema
      *         layer (schema parse failures, validation diagnostics, scaffold
@@ -34,6 +40,7 @@ final readonly class SyncResult
         public bool $check,
         public int $tagFilteredSkillsCount = 0,
         public array $hostShadows = [],
+        public array $hostGuidelineShadows = [],
         public array $diagnostics = [],
     ) {}
 

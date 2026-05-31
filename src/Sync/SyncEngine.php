@@ -477,9 +477,11 @@ final readonly class SyncEngine
 
         /** @var list<string> $guidelineRenderErrors */
         $guidelineRenderErrors = [];
+        /** @var list<array{guideline: string, shadowedVendor: string}> $hostGuidelineShadows */
+        $hostGuidelineShadows = [];
         try {
             $skillResolution = $this->resolveSkills($config, $allowedVendors, $force, $injectedVendorSkills, $checkOnly);
-            $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force, $injectedVendorGuidelines, $guidelineRenderErrors);
+            $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force, $injectedVendorGuidelines, $guidelineRenderErrors, $hostGuidelineShadows);
         } catch (CollidingSkillsException $collidingSkillsException) {
             return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
         } catch (SkillSourceCollisionException $sourceCollisionException) {
@@ -538,8 +540,45 @@ final readonly class SyncEngine
         $activeAgents = array_map(static fn (Agent $agent): string => $agent->value, $config->agents);
         $wrapperEmits = (new WrapperEmitDiscovery($this->installedPackages))->discover($projectRoot, $activeAgents);
 
-        $gitignoreWrite = ($config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false)
-            ? $this->updateGitignore($projectRoot, $config, $checkOnly, array_keys($wrapperEmits['paths']))
+        $gitignoreManaged = $config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false;
+
+        // 0.13.0: load the PRIOR ownership manifest (state at sync start).
+        // All destructive decisions (the empty-guard clear) read this prior
+        // snapshot; the NEW manifest is written only after a successful sync.
+        // Absent/corrupt → empty → exact pre-0.13 behavior (backward-safe).
+        //
+        // Gated on gitignore management: when it's disabled the manifest is no
+        // longer UPDATED (see the write gate below), so reading a now-stale one
+        // could blank a file on later ownership data that no longer tracks
+        // reality. Disabling the READ too makes ownership-based clearing degrade
+        // cleanly to the 0.12 preserve behavior in that mode (codex-review P1).
+        $priorManifest = $gitignoreManaged
+            ? SyncManifest::fromProjectRoot($projectRoot)
+            : SyncManifest::empty();
+
+        // Will this sync write a `.boost/manifest.json`? (Manifest is non-empty
+        // when boost emits guidance/skills/commands, or there's a prior to
+        // refresh.) If so, `.boost/` must be in the managed .gitignore so the
+        // regenerable manifest never dirties the working tree (codex-review:
+        // an unignored manifest breaks clean-tree / CI checks). Computed here —
+        // guidance + skills are already resolved — and passed to updateGitignore
+        // so the ignore lands in the SAME write, gated to avoid adding `.boost/`
+        // to an otherwise-empty project's gitignore. conventions is included
+        // because it renders into CLAUDE.md (→ a manifest entry) even without
+        // host guidelines.
+        // Skills/guidelines/commands only EMIT (→ manifest entries) when there
+        // are active agents to receive them; with no agents nothing is written
+        // regardless of what resolved. Conventions render into CLAUDE.md even
+        // without the Claude agent, so they count on their own. A prior manifest
+        // is refreshed regardless.
+        $willWriteManifest = $gitignoreManaged && (
+            ($config->agents !== [] && ($resolvedSkills !== [] || $resolvedGuidelines !== [] || $resolvedCommands !== []))
+            || $config->conventions !== []
+            || ! $priorManifest->isEmpty()
+        );
+
+        $gitignoreWrite = $gitignoreManaged
+            ? $this->updateGitignore($projectRoot, $config, $checkOnly, array_keys($wrapperEmits['paths']), $willWriteManifest)
             : null;
 
         $writes = array_merge($fanOutWrites, $remoteOrphanWrites);
@@ -556,6 +595,7 @@ final readonly class SyncEngine
             $resolvedGuidelines,
             $checkOnly,
             $guidelineRenderErrors !== [],
+            $priorManifest,
         );
         $writes = [...$writes, ...$guidanceResult['writes']];
 
@@ -606,6 +646,25 @@ final readonly class SyncEngine
             );
         }
 
+        // 0.13.0: write the NEW ownership manifest LAST — only on a successful,
+        // real (non-check) sync, AFTER all non-destructive writes + cleanup
+        // succeeded (codex round-2 P2 ordering; codex P1.3 — never rewrite from
+        // a partial/failed sync, so the prior manifest stays last-known-good).
+        // Gated on gitignore management: without it nothing adds `.boost/` to
+        // the ignore list, so writing the manifest would leave an untracked file
+        // behind and break clean-working-tree / CI flows (codex-review P2). When
+        // gitignore is unmanaged the manifest simply isn't written → ownership
+        // features degrade to exact 0.12 behavior (backward-safe).
+        //
+        // Also skip on a guideline render failure: writeGuidanceFiles() then
+        // preserves the existing guidance files + returns no ownedGuidancePaths,
+        // so rewriting the manifest would DROP guidance ownership and a later
+        // empty sync could no longer converge previously-owned files. Leaving
+        // the prior manifest untouched keeps it last-known-good (codex-review).
+        if (! $checkOnly && ! $hasAnyError && $gitignoreManaged && $guidelineRenderErrors === []) {
+            $this->writeSyncManifest($projectRoot, $guidanceResult['ownedGuidancePaths'], $wrapperEmits['paths']);
+        }
+
         // Diagnostic surface for the render-fail-then-write safety gate
         // (0.9.3): operator-visible signal that guideline writes were
         // skipped, naming each failed source so they know which renderer
@@ -628,6 +687,7 @@ final readonly class SyncEngine
             check: $checkOnly,
             tagFilteredSkillsCount: TagFilterNudge::count($config, $tagFilteredCount),
             hostShadows: $skillResolution['hostShadows'],
+            hostGuidelineShadows: $hostGuidelineShadows,
             diagnostics: [
                 ...$guidanceResult['diagnostics'],
                 ...$cleanupResult['diagnostics'],
@@ -789,6 +849,13 @@ final readonly class SyncEngine
                 continue;
             }
 
+            // 0.13.0: the sync manifest dir is engine-internal state owned by
+            // SyncManifest itself — never a stale-cleanup target. Skip it so the
+            // cleanup pass doesn't delete the manifest it's about to rely on.
+            if (rtrim($pattern, '/') === SyncManifest::DIR) {
+                continue;
+            }
+
             if (str_contains($pattern, '*')) {
                 continue;
             }
@@ -848,7 +915,7 @@ final readonly class SyncEngine
      *
      * @param  list<string>  $priorManagedFiles
      * @param  list<WrittenFile>  $writes
-     * @param  array<string, true>  $wrapperExcludedPaths  0.11.0: paths
+     * @param  array<string, string>  $wrapperExcludedPaths  0.11.0: paths
      *   declared by `BoostWrapper` classes from installed wrapper packages —
      *   excluded from "stale-to-delete" classification so bare-CLI doesn't
      *   false-positive-flag wrapper-injected files for deletion.
@@ -900,7 +967,7 @@ final readonly class SyncEngine
     }
 
     /**
-     * @param  array<string, true>  $wrapperExcludedPaths
+     * @param  array<string, string>  $wrapperExcludedPaths
      */
     private function isUnderWrapperClaim(string $canonicalRelative, array $wrapperExcludedPaths): bool
     {
@@ -1127,14 +1194,24 @@ final readonly class SyncEngine
      * sees a half-written file from an earlier same-sync write.
      *
      * @param  list<Guideline>  $resolvedGuidelines
-     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>}
+     * @param  SyncManifest  $priorManifest  ownership state at sync start (0.13.0).
+     *   When it proves boost owns a markerless guidance file (listed + sha-match),
+     *   the empty-assembly guard CLEARS it (converge); otherwise the file is
+     *   preserved (the 0.12 never-lossy default for operator / unproven files).
+     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>, ownedGuidancePaths: list<string>}
+     *   `ownedGuidancePaths` = relative paths boost wrote with NON-empty content
+     *   this sync (boost-owned guidance), for recording in the new manifest so a
+     *   later empty sync can prove ownership + converge. Excludes preserved
+     *   operator files and empty/cleared files.
      */
-    private function writeGuidanceFiles(string $projectRoot, BoostConfig $config, array $resolvedGuidelines, bool $checkOnly, bool $skipGuidelineWrites): array
+    private function writeGuidanceFiles(string $projectRoot, BoostConfig $config, array $resolvedGuidelines, bool $checkOnly, bool $skipGuidelineWrites, SyncManifest $priorManifest): array
     {
         /** @var list<WrittenFile> $writes */
         $writes = [];
         /** @var list<Diagnostic> $diagnostics */
         $diagnostics = [];
+        /** @var list<string> $ownedGuidancePaths */
+        $ownedGuidancePaths = [];
 
         $composer = new GuidanceComposer();
 
@@ -1169,7 +1246,11 @@ final readonly class SyncEngine
             // fixes the failing renderer, the next sync re-renders conventions +
             // guidelines together. Preserving everything is safer than writing a
             // partial file that drops the failed guideline's content.
-            return ['writes' => $writes, 'diagnostics' => $diagnostics];
+            //
+            // No ownedGuidancePaths reported on this gate — the render failed,
+            // so the manifest write is skipped at the call site anyway (the
+            // prior manifest stays last-known-good).
+            return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => []];
         }
 
         $guidanceFiles = $this->collectGuidanceFiles($config, $resolvedGuidelines, $conventionsSection);
@@ -1200,22 +1281,31 @@ final readonly class SyncEngine
             // resolved guidance set is empty (codex-review: stale instructions
             // must not linger in a boost-owned file).
             //
-            // The rule is binary (empty vs non-empty) with a marker-ownership
-            // exemption — no size-delta heuristic, no new marker, no state.
-            // Peer-reviewed (catalog + downstream-Laravel axes); see 0.12.0 notes.
-            //
-            // DELIBERATE TRADE-OFF — do not "fix" by letting empty assembly
-            // clear a markerless file. That re-creates the fresh-adopter WIPE
-            // above. The two failure modes are mutually exclusive and CANNOT be
-            // distinguished without state (a marker/sentinel, or a manifest of
-            // prior output) — both ruled out by design. We intentionally fail
-            // toward PRESERVATION: the only un-converged case is "synced once on
-            // 0.12 then removed ALL guidance", which is rare, recoverable, and
-            // surfaced by the INFO below. Wiping a hand-authored file is not.
+            // 0.13.0 — the manifest resolves the 0.12 trade-off. A marker file
+            // is exempt (markers prove authorship → falls through to migrate()).
+            // For a MARKERLESS non-empty file under empty assembly, consult the
+            // PRIOR manifest: if it proves boost owns this exact file (listed +
+            // sha-match — i.e. unchanged since boost wrote it), CLEAR it
+            // (converge — the "synced then removed all guidance" case now
+            // converges correctly). Otherwise PRESERVE: operator-authored, or
+            // sha-diverged (operator hand-edited), or no manifest yet (cold
+            // start / pre-0.13) — the never-lossy default. The clear is gated
+            // on the prior manifest only; the new manifest is written after a
+            // successful sync, so the first 0.13 sync can never promote a
+            // pre-existing file to owned mid-run and wipe it (codex P1.1).
             if ($assembled === '' && ! ($existing !== null && $composer->hasManagedMarkers($existing))) {
-                $diagnostics = $this->noteGuidanceLeftIntact($diagnostics, $file, $existing);
+                $ownedByManifest = $existing !== null
+                    && trim($existing) !== ''
+                    && $priorManifest->ownsGuidance($file, hash('sha256', $existing));
 
-                continue;
+                if (! $ownedByManifest) {
+                    $diagnostics = $this->noteGuidanceLeftIntact($diagnostics, $file, $existing);
+
+                    continue;
+                }
+
+                // boost-owned markerless file → fall through; migrate(existing,
+                // '') returns '' → writes empty → converges to empty.
             }
 
             $migration = $composer->migrate($existing, $assembled);
@@ -1230,9 +1320,110 @@ final readonly class SyncEngine
             if ($written->action !== WriteAction::UNCHANGED) {
                 $writes[] = $written;
             }
+
+            // Record boost-owned guidance for the manifest, but ONLY when boost
+            // can actually prove ownership: either boost WROTE the file this run
+            // (action != UNCHANGED → it's boost's fresh output), OR it was
+            // UNCHANGED and the prior manifest still owns this EXACT content
+            // (sha-match — genuine steady-state boost output).
+            //
+            // Crucially, an UNCHANGED file is re-claimed ONLY on a sha-match, not
+            // mere presence (codex-review): a file boost once owned but the
+            // operator later hand-edited has a DIVERGED prior sha; if a later
+            // assembly happens to coincide with the operator's edit byte-for-
+            // byte, `has()` alone would wrongly re-claim it → a subsequent empty
+            // sync could blank an operator-edited file. Empty content is never
+            // owned. (A NOT-listed UNCHANGED file is the first-sync coincidence
+            // case — also not claimed.)
+            $boostProvesOwnership = $written->action !== WriteAction::UNCHANGED
+                || $priorManifest->ownsGuidance($file, hash('sha256', $migration['content']));
+            if (trim($migration['content']) !== '' && $boostProvesOwnership) {
+                $ownedGuidancePaths[] = $file;
+            }
         }
 
-        return ['writes' => $writes, 'diagnostics' => $diagnostics];
+        return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => $ownedGuidancePaths];
+    }
+
+    /**
+     * Write the 0.13.0 ownership manifest to `.boost/manifest.json`. Records
+     * every emission target boost owns after this sync:
+     *  - GUIDANCE files boost wrote with non-empty content (sha-gated ownership
+     *    — a later sync proves ownership only if the on-disk sha still matches);
+     *  - SKILL / COMMAND emission targets currently on disk (the gitignored
+     *    managed files), tagged engine- or wrapper-provenance.
+     *
+     * Source dirs (`.ai/`, `resources/boost/`) can never appear — boost only
+     * writes emission targets, and SyncManifest::withEntry() rejects source
+     * prefixes defensively (the dual-role-publisher invariant).
+     *
+     * @param  list<string>  $ownedGuidancePaths  relative paths from writeGuidanceFiles
+     * @param  array<string, string>  $wrapperPaths  wrapper-claimed emit path => owning package
+     */
+    private function writeSyncManifest(string $projectRoot, array $ownedGuidancePaths, array $wrapperPaths): void
+    {
+        $manifest = SyncManifest::empty();
+
+        foreach ($ownedGuidancePaths as $relativePath) {
+            $sha = $this->fileSha($projectRoot, $relativePath);
+            if ($sha !== null) {
+                $manifest = $manifest->withEntry($relativePath, $sha, 'guidance', SyncManifest::PROVENANCE_ENGINE);
+            }
+        }
+
+        // Skill / command emission targets currently on disk. readPriorGitignore
+        // here reads the JUST-WRITTEN managed block (this is the success path,
+        // so updateGitignore already ran); enumerateManagedFiles skips `.boost/`.
+        foreach ($this->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)) as $relativePath) {
+            $category = match (true) {
+                str_contains($relativePath, '/skills/') => 'skill',
+                str_contains($relativePath, '/commands/') => 'command',
+                default => null,
+            };
+            if ($category === null) {
+                continue;   // not a skill/command emission target (e.g. a manifest file) — skip
+            }
+
+            $sha = $this->fileSha($projectRoot, $relativePath);
+            if ($sha === null) {
+                continue;
+            }
+
+            // Wrapper-claimed paths carry `wrapper:<vendor/package>` provenance
+            // (the owning package from WrapperEmitDiscovery) so callers can tell
+            // wrappers apart; engine-native paths are `engine`.
+            $provenance = isset($wrapperPaths[$relativePath])
+                ? 'wrapper:' . $wrapperPaths[$relativePath]
+                : SyncManifest::PROVENANCE_ENGINE;
+            $manifest = $manifest->withEntry($relativePath, $sha, $category, $provenance);
+        }
+
+        // Don't materialize `.boost/` for a project boost emits nothing into —
+        // but DO update an existing manifest down to empty if everything was
+        // removed (keeps it honest rather than leaving stale ownership).
+        $manifestPath = $projectRoot . '/' . SyncManifest::RELATIVE_PATH;
+        if ($manifest->isEmpty() && ! is_file($manifestPath)) {
+            return;
+        }
+
+        $dir = $projectRoot . '/' . SyncManifest::DIR;
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0o755, true);
+        }
+
+        // `.boost/` is ignored via the root managed .gitignore block (added in
+        // updateGitignore when $willWriteManifest), so the regenerable manifest
+        // never dirties the working tree. No self-contained .gitignore here —
+        // that would itself be an untracked file.
+        @file_put_contents($manifestPath, $manifest->toJson('boost-core'));
+    }
+
+    private function fileSha(string $projectRoot, string $relativePath): ?string
+    {
+        $absolute = $projectRoot . '/' . $relativePath;
+        $content = is_file($absolute) ? @file_get_contents($absolute) : false;
+
+        return $content === false ? null : hash('sha256', $content);
     }
 
     /**
@@ -1354,7 +1545,7 @@ final readonly class SyncEngine
      *   emitted files from gitignore tracking (which would leak them into
      *   the operator's git working set).
      */
-    private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly, array $wrapperClaimedPaths = []): ?WrittenFile
+    private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly, array $wrapperClaimedPaths = [], bool $includeManifestDir = false): ?WrittenFile
     {
         $patterns = [];
         foreach ($this->agentTargets as $target) {
@@ -1372,6 +1563,15 @@ final readonly class SyncEngine
         // noise — it's auto-regenerated by every sync.
         if ($config->remoteSkills !== []) {
             $patterns[] = '/' . RemoteOrphanPruner::MANIFEST_FILE;
+        }
+
+        // 0.13.0: ignore the sync ownership manifest dir. Added ONLY when this
+        // sync will actually write a manifest ($includeManifestDir) — so an
+        // otherwise-empty project never gets a `.boost/` line for a dir that
+        // won't exist. enumerateManagedFiles() skips this dir so the stale-
+        // cleanup pass never deletes the manifest it relies on.
+        if ($includeManifestDir) {
+            $patterns[] = SyncManifest::DIR . '/';
         }
 
         // 0.11.0: wrapper-claimed paths land in the managed block so bare-CLI
@@ -1509,6 +1709,79 @@ final readonly class SyncEngine
     }
 
     /**
+     * Guideline analogue of {@see resolveSkillShadowPaths()} (0.13.0). For a
+     * host guideline that shadows a TAG-ELIGIBLE allowlisted-vendor guideline of
+     * the same name, return both source-file paths so `boost where --diff` can
+     * diff the override against the upstream copy. Returns null when no host
+     * guideline named `$guidelineName` exists, or it isn't shadowing a
+     * tag-eligible vendor guideline.
+     *
+     * Tag-eligibility is enforced exactly as `resolveGuidelines()` does — the
+     * vendor's guidelines are tag-filtered before the name match, so a
+     * tag-filtered-out vendor copy is NOT a diff target (it isn't being
+     * shadowed). This keeps `--diff` consistent with what `boost where` reports.
+     *
+     * Returns ALL tag-eligible vendor matches (a host guideline can shadow the
+     * same-named guideline from MULTIPLE allowlisted vendors) so the caller can
+     * detect ambiguity — `--diff` can't pick one when more than one matches
+     * (codex-review). Empty list = not shadowing.
+     *
+     * @return list<array{hostPath: string, vendorPath: string, vendor: string}>
+     */
+    public function resolveGuidelineShadowPaths(string $projectRoot, string $guidelineName): array
+    {
+        $projectRoot = rtrim($projectRoot, '/');
+        $config = $this->configLoader->load($projectRoot);
+
+        if (! is_dir($config->guidelinesPath)) {
+            return [];
+        }
+
+        $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
+
+        $hostPath = null;
+        foreach ($this->guidelineLoader->load($config->guidelinesPath, null, $dispatcher) as $hostGuideline) {
+            if ($hostGuideline->name === $guidelineName) {
+                $hostPath = $hostGuideline->sourcePath;
+
+                break;
+            }
+        }
+
+        if ($hostPath === null) {
+            return [];
+        }
+
+        /** @var list<array{hostPath: string, vendorPath: string, vendor: string}> $matches */
+        $matches = [];
+        $allowedVendors = $this->discoverAllowedVendors($config);
+        foreach ($allowedVendors as $vendor) {
+            if ($vendor->guidelinesPath === null) {
+                continue;
+            }
+
+            $vendorGuidelines = [];
+            foreach ($this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name, $dispatcher) as $vendorGuideline) {
+                $vendorGuidelines[] = $vendorGuideline;
+            }
+
+            // Tag-filter exactly as resolveGuidelines() does — only
+            // tag-eligible vendor guidelines can be shadowed.
+            foreach ($this->guidelineTagFilter->filter($vendorGuidelines, $config) as $vendorGuideline) {
+                if ($vendorGuideline->name === $guidelineName) {
+                    $matches[] = [
+                        'hostPath' => $hostPath,
+                        'vendorPath' => $vendorGuideline->sourcePath,
+                        'vendor' => $vendor->name,
+                    ];
+                }
+            }
+        }
+
+        return $matches;
+    }
+
+    /**
      * Load host + vendor skills, tag-filter each vendor's set, resolve
      * collisions. Vendor skills are filtered BEFORE resolution so only
      * shippable skills compete (see SkillTagFilter docblock); host skills
@@ -1609,9 +1882,10 @@ final readonly class SyncEngine
      * @param  list<DiscoveredVendor>  $allowedVendors
      * @param  array<string, list<Guideline>>  $injectedVendorGuidelines  Caller-supplied pre-built guidelines keyed by source vendor. Tag-filtered before merging into the vendor map. Mirrors `resolveSkills()`'s injection path.
      * @param  list<string>  $renderErrors  Out-param: render failures (lenient mode) accumulate here for caller-side surfacing in SyncResult::errors.
+     * @param  list<array{guideline: string, shadowedVendor: string}>  $hostGuidelineShadows  Out-param: host `.ai/guidelines/<name>` shadowing a tag-eligible allowlisted-vendor guideline of the same name. Surfaced in `boost where` / `boost sync`.
      * @return list<Guideline>
      */
-    private function resolveGuidelines(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorGuidelines = [], array &$renderErrors = []): array
+    private function resolveGuidelines(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorGuidelines = [], array &$renderErrors = [], array &$hostGuidelineShadows = []): array
     {
         $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
 
@@ -1637,7 +1911,7 @@ final readonly class SyncEngine
 
         $this->injectedVendorMerger->mergeGuidelines($injectedVendorGuidelines, $vendorGuidelines, $config);
 
-        return $this->guidelineResolver->resolve($hostGuidelines, $vendorGuidelines, $force);
+        return $this->guidelineResolver->resolve($hostGuidelines, $vendorGuidelines, $force, $hostGuidelineShadows);
     }
 
     /**

@@ -1927,6 +1927,265 @@ it('0.12.0: ->withConventions() still renders CLAUDE.md even when the Claude age
     }
 });
 
+it('0.15.0 inlining: a vendor skill token is inlined into the emitted skill AND the conventions block drops when fully migrated', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-inline-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills/conv-demo', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        // The vendor skill references the slot via a render-time token.
+        file_put_contents(
+            $vendor . '/resources/boost/skills/conv-demo/SKILL.md',
+            "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n",
+        );
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->hasErrors())->toBeFalse();
+        $skill = (string) file_get_contents($root . '/.claude/skills/conv-demo/SKILL.md');
+        expect($skill)
+            ->toContain('Create issues in BOOST-9.')        // token resolved + inlined
+            ->and($skill)->not->toContain('boost:conv');     // no token left
+        // The ONLY convention consumer is now token-only → fully migrated →
+        // the always-loaded block is dropped.
+        $claudeMd = is_file($root . '/CLAUDE.md') ? (string) file_get_contents($root . '/CLAUDE.md') : '';
+        expect($claudeMd)->not->toContain('## Project Conventions');
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('0.15.0 inlining: the conventions block is KEPT while any skill still uses a legacy $.slot reference (backward-safe, partial migration)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-inline-legacy-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills/legacy-demo', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        // Un-migrated skill: still references the slot as runtime prose.
+        file_put_contents(
+            $vendor . '/resources/boost/skills/legacy-demo/SKILL.md',
+            "---\nname: legacy-demo\ndescription: Demo.\n---\nResolve `\$.jira.project_key` from Project Conventions.\n",
+        );
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+        SyncEngine::default($packages)->sync($root);
+
+        // A live skill still needs runtime resolution → block stays rendered.
+        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($claudeMd)
+            ->toContain('## Project Conventions')
+            ->toContain('project_key: BOOST-9');
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('0.15.0 inlining: the block is KEPT when EXISTING on-disk guidance content still depends on conventions, even with a token-only skill (codex P1.1 — residual visibility)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-inline-residual-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills/conv-demo', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        // Token-only skill → on its own would let the block drop.
+        file_put_contents(
+            $vendor . '/resources/boost/skills/conv-demo/SKILL.md',
+            "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n",
+        );
+        // BUT a pre-existing CLAUDE.md carries operator content with a legacy
+        // $.slot reference (the kind migrate() preserves as residual).
+        file_put_contents($root . '/CLAUDE.md', "# House rules\n\nResolve `\$.jira.project_key` from the conventions block when filing.\n");
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+        SyncEngine::default($packages)->sync($root);
+
+        // The existing content depends on conventions → block stays.
+        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($claudeMd)->toContain('## Project Conventions');
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('0.15.0 inlining: the block is KEPT when preserved legacy RESIDUAL contains an unresolved boost:conv token, even with a token-only skill (codex round-2)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-inline-tokres-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills/conv-demo', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $vendor . '/resources/boost/skills/conv-demo/SKILL.md',
+            "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n",
+        );
+        // Legacy marker-bearing CLAUDE.md with out-of-marker operator residual
+        // that itself carries an unresolved boost:conv token. migrate() preserves
+        // that residual below the new body — so the block must stay.
+        file_put_contents(
+            $root . '/CLAUDE.md',
+            "<!-- boost-core:guidelines:start -->\n# Old\n<!-- boost-core:guidelines:end -->\n\nOperator: file under <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n",
+        );
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+        SyncEngine::default($packages)->sync($root);
+
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('## Project Conventions');
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('0.15.0 inlining: the block DROPS on the re-sync after a skill migrates, even though the prior sync rendered it (codex round-3 — own-block not self-perpetuating)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-inline-migrate-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills/conv-demo', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        $skillFile = $vendor . '/resources/boost/skills/conv-demo/SKILL.md';
+        // Sync 1: un-migrated legacy $.slot skill → block rendered.
+        file_put_contents($skillFile, "---\nname: conv-demo\ndescription: Demo.\n---\nResolve `\$.jira.project_key` from Project Conventions.\n");
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+        SyncEngine::default($packages)->sync($root);
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('## Project Conventions');
+
+        // Sync 2: the skill migrates to a token. The prior CLAUDE.md still
+        // carries the rendered block, but boost's OWN block must not keep itself
+        // alive — fully migrated now → block drops.
+        file_put_contents($skillFile, "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n");
+        SyncEngine::default($packages)->sync($root);
+
+        $claudeMd = is_file($root . '/CLAUDE.md') ? (string) file_get_contents($root . '/CLAUDE.md') : '';
+        expect($claudeMd)->not->toContain('## Project Conventions');
+        $skill = (string) file_get_contents($root . '/.claude/skills/conv-demo/SKILL.md');
+        expect($skill)->toContain('Create issues in BOOST-9.');
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('0.15.0 inlining: a boost-OWNED markerless guidance file with stale conventions-pointer prose does NOT stay sticky once the guideline migrates (codex round-5 over-keep)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-inline-sticky-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+
+        // Sync 1: a host guideline references the conventions section in prose →
+        // CLAUDE.md = block + that guideline body (boost-owned, recorded).
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nFollow the Project Conventions section above for the key.\n");
+        SyncEngine::default($packages)->sync($root);
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('## Project Conventions');
+
+        // Sync 2: the guideline migrates to a token. The prior CLAUDE.md is
+        // boost-owned + markerless → its stale prose does NOT survive the
+        // wholesale regenerate, so the gate must NOT treat it as a live
+        // dependency. Fully migrated → block drops.
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nFile under <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n");
+        SyncEngine::default($packages)->sync($root);
+
+        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        expect($claudeMd)->not->toContain('## Project Conventions')
+            ->and($claudeMd)->toContain('File under BOOST-9.');
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
 it('0.12.0 empty-assembly guard is EXEMPT for marker-bounded files: a legacy boost-written CLAUDE.md still converges (markers stripped) even when assembly is empty (codex P1a)', function (): void {
     // A file carrying boost markers is definitively boost-written, so the guard
     // must NOT protect it — it falls through to migrate(), which strips the

@@ -27,6 +27,24 @@ final readonly class Skill
     }
 
     /**
+     * Return a copy with a replaced body — used by the 0.15.0 conventions
+     * inliner to splice resolved slot values into the skill before fan-out.
+     */
+    public function withBody(string $body): self
+    {
+        return new self(
+            $this->name,
+            $this->description,
+            $this->frontmatter,
+            $body,
+            $this->sourcePath,
+            $this->sourceVendor,
+            $this->tags,
+            $this->tagsValid,
+        );
+    }
+
+    /**
      * The `vendor/package:skill-name` key by which a consumer's
      * `withExcludedSkills()` deny-list addresses this skill — or null for a
      * host-authored skill, which the deny-list has no form to name.

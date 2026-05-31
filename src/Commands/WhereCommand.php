@@ -2,7 +2,11 @@
 
 namespace SanderMuller\BoostCore\Commands;
 
+use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
+use SanderMuller\BoostCore\Conventions\ConventionsAudit;
+use SanderMuller\BoostCore\Conventions\ConventionsSchema;
+use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Skills\Command as BoostCommand;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
@@ -54,12 +58,28 @@ final class WhereCommand extends BoostBaseCommand
             InputOption::VALUE_REQUIRED,
             'For a single host skill OR guideline that shadows an allowlisted vendor copy, print a unified diff between the host file and the vendor file. Pass the name as the value: `--diff=deploy`. Skills are matched first, then guidelines.',
         );
+        $this->addOption(
+            'conventions',
+            null,
+            InputOption::VALUE_NONE,
+            'Print the effective Project Conventions slot values with provenance (declared / schema-default / missing) — the on-request audit surface (0.15.0). Combine with --json for a machine-readable shape.',
+        );
+        $this->addOption(
+            'json',
+            null,
+            InputOption::VALUE_NONE,
+            'With --conventions, emit the resolved slot set as JSON.',
+        );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
+
+        if ($input->getOption('conventions') === true) {
+            return $this->executeConventions($io, $projectRoot, $input->getOption('json') === true);
+        }
 
         $diffSkill = $input->getOption('diff');
         if (is_string($diffSkill) && $diffSkill !== '') {
@@ -307,6 +327,73 @@ final class WhereCommand extends BoostBaseCommand
      * earns its keep vs upstream, or can be dropped + replaced with the
      * vendor version. Skills are matched first, then guidelines (0.13.0).
      */
+    /**
+     * 0.15.0 (spec D5): the on-request convention audit surface. With inlining
+     * the always-loaded `## Project Conventions` block is dropped once a project
+     * is fully migrated, so this is how an operator inspects the effective
+     * resolved slots + their provenance (declared / schema-default / missing) —
+     * a human table, or `--json` for a machine-readable shape.
+     */
+    private function executeConventions(SymfonyStyle $io, string $projectRoot, bool $asJson): int
+    {
+        try {
+            $config = (new BoostConfigLoader())->load($projectRoot);
+        } catch (BoostConfigNotFoundException $boostConfigNotFoundException) {
+            $io->error($boostConfigNotFoundException->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
+        ['sources' => $sources] = (new SchemaDiscovery($packages))->discover(
+            $config->allowedVendors,
+            conventionsDeclared: $config->conventions !== [],
+        );
+        $composed = $sources === [] ? [] : (new ConventionsSchema($sources))->compose();
+        $rows = (new ConventionsAudit())->audit($config->conventions, $composed);
+
+        if ($asJson) {
+            $io->writeln((string) json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+
+            return self::SUCCESS;
+        }
+
+        if ($rows === []) {
+            $io->success('No Project Conventions slots are defined by allowlisted vendors.');
+
+            return self::SUCCESS;
+        }
+
+        $io->section('Project Conventions (effective resolved values)');
+        $io->table(
+            ['Slot', 'Provenance', 'Value'],
+            array_map(static fn (array $row): array => [
+                $row['path'],
+                $row['provenance'],
+                $row['provenance'] === ConventionsAudit::MISSING ? '—' : self::renderConventionValue($row['value']),
+            ], $rows),
+        );
+
+        return self::SUCCESS;
+    }
+
+    private static function renderConventionValue(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if ($value === null) {
+            return 'null';
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        return (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+
     private function executeDiff(SymfonyStyle $io, string $projectRoot, string $name): int
     {
         try {

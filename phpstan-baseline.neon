@@ -1,12 +1,12 @@
 parameters:
 	ignoreErrors:
 		-
-			rawMessage: 'Class cognitive complexity is 363, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 370, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Sync/SyncEngine.php
 		-
-			rawMessage: 'Class cognitive complexity is 113, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 116, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Commands/DoctorCommand.php

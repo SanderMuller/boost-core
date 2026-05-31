@@ -21,10 +21,34 @@ namespace SanderMuller\BoostCore\Conventions;
  *
  * Errors are render-class (D7): an errored token is left in place + reported, so
  * `boost sync --check` fails and the conventions block is kept.
+ *
+ * The line scanner is shared between {@see inline()} (which resolves) and
+ * {@see scanLeaks()} (which detects leaks in EMITTED output, 0.16.0) via
+ * {@see walkLines()}, so the two never drift in how they classify prose vs.
+ * fence vs. inline-code (codex P2a/P2b).
  */
 final readonly class ConventionsInliner
 {
     private const TOKEN = '/<!--(\\\\?)boost:conv\s+(.*?)-->/s';
+
+    /** A line that opens a fenced code block (` ``` ` / ` ~~~ `). */
+    private const CTX_FENCE_OPEN = 'fence_open';
+
+    /** A line that closes the active fence. */
+    private const CTX_FENCE_CLOSE = 'fence_close';
+
+    /**
+     * A fence-marker-looking line INSIDE the active fence that does not close it
+     * (a different/longer marker). Emitted verbatim — never resolved, even in an
+     * opt-in fence — matching the original scanner exactly.
+     */
+    private const CTX_FENCE_MARKER = 'fence_marker';
+
+    /** Ordinary content inside the active fence. */
+    private const CTX_FENCE_BODY = 'fence_body';
+
+    /** A line outside any fence. */
+    private const CTX_PROSE = 'prose';
 
     /**
      * @param  list<string>  $slotRoots  top-level convention roots (for the legacy runtime-ref scan)
@@ -39,45 +63,172 @@ final readonly class ConventionsInliner
         /** @var list<string> $errors */
         $errors = [];
         $inlinedCount = 0;
-        $lines = explode("\n", $body);
-
         $out = [];
+
+        // An OPT-IN fence is BUFFERED: its opener is emitted only on close, once
+        // we know whether the body resolved cleanly. On a clean fence the
+        // `boost:conv` info-string is stripped (` ```yaml boost:conv ` → ` ```yaml `,
+        // unchanged from 0.15). On a fence whose body ERRORED, the info-string is
+        // KEPT, so the unresolved token stays detectable on disk by the same
+        // surviving-info-string signal that catches a pre-0.15 emit (0.16.0 P1 —
+        // closes the fenced-mode-B on-disk gap). Plain fences + prose stream
+        // through unchanged.
+        //
+        // @var array{open: string, body: list<string>, errorsBefore: int}|null $fence
+        $fence = null;
+
+        $this->walkLines($body, function (int $_lineNo, string $line, string $context, bool $optIn) use (&$out, &$errors, &$inlinedCount, &$fence): void {
+            if ($fence !== null) {
+                if ($context === self::CTX_FENCE_CLOSE) {
+                    $this->flushOptInFence($out, $fence, $errors, $line);
+                    $fence = null;
+
+                    return;
+                }
+
+                // Body of the buffered opt-in fence: resolve tokens (a
+                // fence-marker-looking line that doesn't close stays verbatim).
+                $fence['body'][] = $context === self::CTX_FENCE_BODY
+                    ? $this->resolveTokens($line, $errors, $inlinedCount)
+                    : $line;
+
+                return;
+            }
+
+            if ($context === self::CTX_FENCE_OPEN && $optIn) {
+                $fence = ['open' => $line, 'body' => [], 'errorsBefore' => count($errors)];
+
+                return;
+            }
+
+            $out[] = $context === self::CTX_PROSE
+                ? $this->resolveProseLine($line, $errors, $inlinedCount)
+                // CTX_FENCE_OPEN (plain) + CTX_FENCE_CLOSE + CTX_FENCE_MARKER + a
+                // plain fence's body → verbatim.
+                : $line;
+        });
+
+        // An unterminated opt-in fence (no closing marker before EOF) still flushes
+        // — never drop buffered lines.
+        if ($fence !== null) {
+            $this->flushOptInFence($out, $fence, $errors, null);
+        }
+
+        $result = implode("\n", $out);
+
+        return new InlineResult($result, $this->requiresRuntime($result, $errors), $errors, $inlinedCount > 0);
+    }
+
+    /**
+     * Emit a buffered opt-in fence: opener (info-string stripped only if the body
+     * resolved without error), the resolved body, then the close line (null at
+     * EOF for an unterminated fence).
+     *
+     * @param  list<string>  $out
+     * @param  array{open: string, body: list<string>, errorsBefore: int}  $fence
+     * @param  list<string>  $errors
+     */
+    private function flushOptInFence(array &$out, array $fence, array $errors, ?string $closeLine): void
+    {
+        $erroredInFence = count($errors) > $fence['errorsBefore'];
+        $out[] = $erroredInFence ? $fence['open'] : rtrim(str_replace('boost:conv', '', $fence['open']));
+        foreach ($fence['body'] as $bodyLine) {
+            $out[] = $bodyLine;
+        }
+
+        if ($closeLine !== null) {
+            $out[] = $closeLine;
+        }
+    }
+
+    /**
+     * Detect raw, unresolved `boost:conv` tokens in EMITTED output (0.16.0
+     * conventions-token observability — spec
+     * internal/specs/conventions-token-observability.md). Read-only; never
+     * resolves. Two leak signals, both decided by the SAME stateful walker
+     * `inline()` uses, so classification can't drift:
+     *
+     *  - a `<!--boost:conv …-->` token in PROSE context (outside any fence /
+     *    inline-code span) → {@see LeakHit::KIND_PROSE_TOKEN};
+     *  - a surviving ` ```boost:conv ` opt-in fence OPENER → {@see
+     *    LeakHit::KIND_FENCE_OPENER}. A 0.15+ engine strips the info-string when
+     *    it processes the fence, so a surviving one is a definitive leak. Decided
+     *    by the walker's active-fence state (NOT a flat grep): a `boost:conv` line
+     *    nested inside ANOTHER fence is fence content, not an opener (codex P2b).
+     *
+     * Tokens inside plain fences / inline-code spans are intentional literals and
+     * are NOT reported. A token left raw inside a PROCESSED opt-in fence (mode B,
+     * info-string already stripped) is not re-caught here — that case is reported
+     * at emit time by {@see inline()} — see the spec's coverage boundary.
+     *
+     * @return list<LeakHit>
+     */
+    public function scanLeaks(string $body): array
+    {
+        /** @var list<LeakHit> $hits */
+        $hits = [];
+
+        $this->walkLines($body, function (int $lineNo, string $line, string $context, bool $optIn) use (&$hits): void {
+            if ($context === self::CTX_FENCE_OPEN && $optIn) {
+                $hits[] = LeakHit::fenceOpener($lineNo, $line);
+
+                return;
+            }
+
+            if ($context === self::CTX_PROSE) {
+                foreach ($this->proseTokensIn($line) as $token) {
+                    $hits[] = LeakHit::proseToken($lineNo, $token['raw'], $token['path'], $token['mode']);
+                }
+            }
+        });
+
+        return $hits;
+    }
+
+    /**
+     * The single fence/prose state machine. Classifies each line and invokes
+     * `$visit($lineNo, $line, $context, $fenceOptIn)` — `$lineNo` is 1-based,
+     * `$context` is one of the CTX_* constants, `$fenceOptIn` is whether the
+     * ACTIVE fence opted in (`boost:conv` in its info-string). Shared by
+     * `inline()` and `scanLeaks()` so they never diverge.
+     *
+     * @param  callable(int, string, string, bool): void  $visit
+     */
+    private function walkLines(string $body, callable $visit): void
+    {
         $inFence = false;
         $fenceMarker = '';
         $fenceOptIn = false;
+        $lineNo = 0;
 
-        foreach ($lines as $line) {
+        foreach (explode("\n", $body) as $line) {
+            ++$lineNo;
+
             if (preg_match('/^\s*(`{3,}|~{3,})(.*)$/', $line, $m) === 1) {
                 if (! $inFence) {
                     $inFence = true;
                     $fenceMarker = $m[1];
                     $fenceOptIn = str_contains($m[2], 'boost:conv');
-                    // Strip the opt-in flag from the emitted info-string so the
-                    // fence renders clean (```json boost:conv → ```json).
-                    $out[] = $fenceOptIn ? rtrim(str_replace('boost:conv', '', $line)) : $line;
+                    $visit($lineNo, $line, self::CTX_FENCE_OPEN, $fenceOptIn);
                 } elseif (str_starts_with(ltrim($line), $fenceMarker)) {
+                    $visit($lineNo, $line, self::CTX_FENCE_CLOSE, $fenceOptIn);
                     $inFence = false;
                     $fenceOptIn = false;
-                    $out[] = $line;
                 } else {
-                    $out[] = $line;
+                    $visit($lineNo, $line, self::CTX_FENCE_MARKER, $fenceOptIn);
                 }
 
                 continue;
             }
 
             if ($inFence) {
-                $out[] = $fenceOptIn ? $this->resolveTokens($line, $errors, $inlinedCount) : $line;
+                $visit($lineNo, $line, self::CTX_FENCE_BODY, $fenceOptIn);
 
                 continue;
             }
 
-            $out[] = $this->resolveProseLine($line, $errors, $inlinedCount);
+            $visit($lineNo, $line, self::CTX_PROSE, false);
         }
-
-        $result = implode("\n", $out);
-
-        return new InlineResult($result, $this->requiresRuntime($result, $errors), $errors, $inlinedCount > 0);
     }
 
     /**
@@ -88,21 +239,57 @@ final readonly class ConventionsInliner
      */
     private function resolveProseLine(string $line, array &$errors, int &$inlinedCount): string
     {
-        // Mask inline-code spans, resolve, then restore — so tokens inside
-        // backticks are never resolved. Matches a balanced run of N backticks
-        // (codex P2): `…`, ``…``, ```…``` all protect a literal token example.
         $spans = [];
+        $masked = $this->maskInlineCode($line, $spans);
+
+        $resolved = $this->resolveTokens($masked, $errors, $inlinedCount);
+
+        return strtr($resolved, $spans);
+    }
+
+    /**
+     * Mask inline-code spans (`` `…` ``) with placeholders so tokens inside
+     * backticks are never seen as tokens. Matches a balanced run of N backticks
+     * (codex P2): `…`, ``…``, ```…``` all protect a literal token example. The
+     * `$spans` map (placeholder → original) is filled for restoration / lookup.
+     *
+     * @param  array<string, string>  $spans
+     */
+    private function maskInlineCode(string $line, array &$spans): string
+    {
         $masked = preg_replace_callback('/(`+)(.*?)\1/', function (array $m) use (&$spans): string {
             $key = "\x00CODE" . count($spans) . "\x00";
             $spans[$key] = $m[0];
 
             return $key;
         }, $line);
-        $masked ??= $line;
 
-        $resolved = $this->resolveTokens($masked, $errors, $inlinedCount);
+        return $masked ?? $line;
+    }
 
-        return strtr($resolved, $spans);
+    /**
+     * Raw `boost:conv` tokens in a prose line, with inline-code spans masked out
+     * (a token shown as inline code is an intentional literal, not a leak). Used
+     * by {@see scanLeaks()}.
+     *
+     * @return list<array{raw: string, path: ?string, mode: ?string}>
+     */
+    private function proseTokensIn(string $line): array
+    {
+        $spans = [];
+        $masked = $this->maskInlineCode($line, $spans);
+
+        if (preg_match_all(self::TOKEN, $masked, $matches, PREG_SET_ORDER) === 0) {
+            return [];
+        }
+
+        $tokens = [];
+        foreach ($matches as $m) {
+            $attrs = $this->parseAttributes($m[2]);
+            $tokens[] = ['raw' => $m[0], 'path' => $attrs['path'], 'mode' => $attrs['mode']];
+        }
+
+        return $tokens;
     }
 
     /**

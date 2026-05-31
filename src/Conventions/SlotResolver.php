@@ -65,9 +65,11 @@ final readonly class SlotResolver
             return $this->render($declared->value, $mode, $path, SlotResolution::PROVENANCE_DECLARED);
         }
 
-        // 2. schema default.
-        if (array_key_exists('default', $leaf)) {
-            return $this->render($leaf['default'], $mode, $path, SlotResolution::PROVENANCE_SCHEMA_DEFAULT);
+        // 2. schema default — the leaf's own `default`, OR an ancestor open-vocab
+        // map's `default` indexed by the sub-key (e.g. `mcp.jira`), 0.16.0.
+        $default = $this->schemaDefault($path);
+        if ($default->found) {
+            return $this->render($default->value, $mode, $path, SlotResolution::PROVENANCE_SCHEMA_DEFAULT);
         }
 
         // 3. inline fallback prose (emitted verbatim — it's author-written text).
@@ -196,8 +198,11 @@ final readonly class SlotResolver
     }
 
     /**
-     * Look up a slot's leaf schema by dot-path (navigates nested `properties`).
-     * Returns null when the path is not defined in the composed schema.
+     * Look up a slot's leaf schema by dot-path. Navigates nested `properties`;
+     * for a segment with no matching property, descends into an open-vocab map's
+     * `additionalProperties` schema (0.16.0 — so a dynamic map sub-key like
+     * `mcp.jira` is an addressable, type-classifiable leaf, not an "unknown slot").
+     * Returns null when the path is defined by neither.
      *
      * @return array<mixed, mixed>|null
      */
@@ -206,14 +211,91 @@ final readonly class SlotResolver
         $node = $this->composedSchema;
         foreach (explode('.', $path) as $segment) {
             $props = $node['properties'] ?? null;
-            if (! is_array($props) || ! isset($props[$segment]) || ! is_array($props[$segment])) {
-                return null;
+            if (is_array($props) && isset($props[$segment]) && is_array($props[$segment])) {
+                $node = $props[$segment];
+
+                continue;
             }
 
-            $node = $props[$segment];
+            $additional = $node['additionalProperties'] ?? null;
+            if (is_array($additional)) {
+                $node = $additional;
+
+                continue;
+            }
+
+            return null;
         }
 
         return $node;
+    }
+
+    /**
+     * The effective schema default for a slot path, by PATH-EXISTENCE (0.16.0).
+     * Walks the schema along the path; the deepest node carrying a `default` wins,
+     * with the segments BELOW that node indexed into the default value. This
+     * resolves both a normal leaf default (`github.default_base_branch` → the
+     * leaf's `default`) AND an open-vocab map sub-key (`mcp.jira` → the `mcp`
+     * node's `default` map indexed by `jira`), which has no leaf default of its
+     * own. `found` is false when no ancestor default covers the path.
+     */
+    private function schemaDefault(string $path): DeclaredLookup
+    {
+        $segments = explode('.', $path);
+        $node = $this->composedSchema;
+        $best = new DeclaredLookup(false, null);
+
+        for ($i = 0, $n = count($segments); $i <= $n; ++$i) {
+            if (array_key_exists('default', $node)) {
+                $candidate = $this->indexInto($node['default'], array_slice($segments, $i));
+                if ($candidate->found) {
+                    $best = $candidate; // a deeper default-bearing node wins
+                }
+            }
+
+            if ($i === $n) {
+                break;
+            }
+
+            $segment = $segments[$i];
+            $props = $node['properties'] ?? null;
+            if (is_array($props) && isset($props[$segment]) && is_array($props[$segment])) {
+                $node = $props[$segment];
+
+                continue;
+            }
+
+            $additional = $node['additionalProperties'] ?? null;
+            if (is_array($additional)) {
+                $node = $additional;
+
+                continue;
+            }
+
+            break;
+        }
+
+        return $best;
+    }
+
+    /**
+     * Index `$segments` into `$value` (a schema `default`). Empty segments → the
+     * value itself (a normal leaf default). A non-array encountered mid-path, or a
+     * missing key, → not found.
+     *
+     * @param  list<string>  $segments
+     */
+    private function indexInto(mixed $value, array $segments): DeclaredLookup
+    {
+        foreach ($segments as $segment) {
+            if (! is_array($value) || ! array_key_exists($segment, $value)) {
+                return new DeclaredLookup(false, null);
+            }
+
+            $value = $value[$segment];
+        }
+
+        return new DeclaredLookup(true, $value);
     }
 
     /**

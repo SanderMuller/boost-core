@@ -3075,3 +3075,26 @@ it('0.9.3 render-fail safety: when ANY guideline renderer throws, the prior CLAU
         rmTreeE2E($root);
     }
 });
+
+it('0.16.0 self-check: sync surfaces a positional warning + leaves the raw token on disk for a token left raw in guidance', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, 'return BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE]);');
+        // No schema is discoverable (empty packages) → an unknown slot errors,
+        // the inliner leaves the token raw, and the self-check makes it positional.
+        file_put_contents($root . '/.ai/guidelines/conv.md', "---\nname: conv\n---\nBase branch: <!--boost:conv path=\"github.default_base_branch\" mode=\"inline\"-->.");
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        $messages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics));
+        expect($messages)->toContain('left raw')
+            ->and($messages)->toContain('CLAUDE.md');
+
+        // The on-disk emitted file carries the raw token — exactly what doctor /
+        // validate scan for after the fact.
+        expect((string) file_get_contents($root . '/CLAUDE.md'))
+            ->toContain('<!--boost:conv path="github.default_base_branch" mode="inline"-->');
+    } finally {
+        rmTreeE2E($root);
+    }
+});

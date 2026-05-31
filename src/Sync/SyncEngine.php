@@ -24,6 +24,7 @@ use SanderMuller\BoostCore\Conventions\ConventionsInliner;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\GuidanceComposer;
+use SanderMuller\BoostCore\Conventions\LeakHit;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Conventions\SlotResolver;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
@@ -530,6 +531,18 @@ final readonly class SyncEngine
         $conventionsRequiresRuntime = false;
         $conventionsInlinedAny = false;
         $resolvedSkills = $this->inlineSkillBodies($resolvedSkills, $conventionsCtx['inliner'], $conventionsRequiresRuntime, $conventionsErrors, $conventionsInlinedAny);
+
+        // 0.16.0 self-check leg: scan each rendered skill body for tokens left
+        // raw (a fresh mode-B leak — born here, made positional). Warnings only:
+        // the authoritative gate is $conventionsErrors (fails --check); these add
+        // the file:line the bare error lacks. The guidance half runs in
+        // inlineGuidanceAndGate (where the assembled body lives).
+        foreach ($resolvedSkills as $skill) {
+            $conventionsDiagnostics = [
+                ...$conventionsDiagnostics,
+                ...$this->conventionsSelfCheck($conventionsCtx['inliner'], 'skill: ' . $skill->name, $skill->body),
+            ];
+        }
 
         $context = new SyncContext(
             projectRoot: $projectRoot,
@@ -1676,6 +1689,31 @@ final readonly class SyncEngine
      * true if ANY skill still needs the rendered block (legacy `$.slot` ref or
      * an unresolved/errored token), and accumulates render-class token errors.
      *
+     * 0.16.0 self-check: warning-level diagnostics for any conventions token left
+     * RAW in a freshly-rendered body (a mode-B leak born this sync), made
+     * positional with a `<label>:<line>` locator the bare $conventionsErrors
+     * string lacks. Reuses {@see ConventionsInliner::scanLeaks()} so the
+     * sync-time, doctor, and validate legs classify identically. Warnings only —
+     * the authoritative gate stays $conventionsErrors (which fails `--check`);
+     * these just say WHERE. On a healthy sync (every token resolves) it emits
+     * nothing.
+     *
+     * @return list<Diagnostic>
+     */
+    private function conventionsSelfCheck(ConventionsInliner $inliner, string $label, string $body): array
+    {
+        $out = [];
+        foreach ($inliner->scanLeaks($body) as $hit) {
+            $where = $label . ':' . $hit->line;
+            $out[] = Diagnostic::warning($hit->path, $hit->kind === LeakHit::KIND_FENCE_OPENER
+                ? sprintf('unprocessed `boost:conv` fence at %s', $where)
+                : sprintf('conventions token%s left raw at %s', $hit->path !== null ? sprintf(' "%s"', $hit->path) : '', $where));
+        }
+
+        return $out;
+    }
+
+    /**
      * @param  list<Skill>  $skills
      * @param  list<string>  $errors
      * @return list<Skill>
@@ -1801,16 +1839,19 @@ final readonly class SyncEngine
      *
      * @param  array<string, array{body: string, isClaude: bool}>  $guidanceFiles
      * @param  list<string>  $conventionsErrors
-     * @return array{files: array<string, array{body: string, isClaude: bool}>, section: ?string}
+     * @return array{files: array<string, array{body: string, isClaude: bool}>, section: ?string, selfCheck: list<Diagnostic>}
      */
     private function inlineGuidanceAndGate(string $projectRoot, array $guidanceFiles, ConventionsInliner $inliner, bool $skillRequiresRuntime, bool $skillInlinedAny, ?string $conventionsSection, array &$conventionsErrors, SyncManifest $priorManifest): array
     {
         $guidanceRequiresRuntime = false;
         $anyInlined = $skillInlinedAny;
+        /** @var list<Diagnostic> $selfCheck */
+        $selfCheck = [];
         foreach ($guidanceFiles as $file => $info) {
             $result = $inliner->inline($info['body']);
             $guidanceFiles[$file]['body'] = $result->body;
             $conventionsErrors = [...$conventionsErrors, ...$result->errors];
+            $selfCheck = [...$selfCheck, ...$this->conventionsSelfCheck($inliner, $file, $result->body)];
             if ($result->inlinedAny) {
                 $anyInlined = true;
             }
@@ -1846,7 +1887,7 @@ final readonly class SyncEngine
         $fullyMigrated = $anyInlined && ! $skillRequiresRuntime && ! $guidanceRequiresRuntime && $conventionsErrors === [];
         $effectiveSection = ($conventionsSection !== null && ! $fullyMigrated) ? $conventionsSection : null;
 
-        return ['files' => $guidanceFiles, 'section' => $effectiveSection];
+        return ['files' => $guidanceFiles, 'section' => $effectiveSection, 'selfCheck' => $selfCheck];
     }
 
     /**
@@ -1892,7 +1933,7 @@ final readonly class SyncEngine
 
         // 0.15.0: inline slot tokens into each guidance body + decide the drop
         // gate (extracted to keep this method under the complexity budget).
-        ['files' => $guidanceFiles, 'section' => $effectiveSection] = $this->inlineGuidanceAndGate(
+        ['files' => $guidanceFiles, 'section' => $effectiveSection, 'selfCheck' => $guidanceSelfCheck] = $this->inlineGuidanceAndGate(
             $projectRoot,
             $guidanceFiles,
             $inliner,
@@ -1902,6 +1943,7 @@ final readonly class SyncEngine
             $conventionsErrors,
             $priorManifest,
         );
+        $diagnostics = [...$diagnostics, ...$guidanceSelfCheck];
 
         foreach ($guidanceFiles as $file => $info) {
             $assembled = $composer->assemble($info['isClaude'] ? $effectiveSection : null, $info['body']);

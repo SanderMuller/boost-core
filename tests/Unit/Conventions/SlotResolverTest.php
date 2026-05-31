@@ -162,3 +162,54 @@ it('errors on an unknown render mode', function (): void {
     expect($r->ok)->toBeFalse()
         ->and($r->error)->toContain('unknown render mode');
 });
+
+// --- AP: open-vocab (additionalProperties) map sub-key resolution (0.16.0) ----
+// Regression for the gap k5m15b0p hit: `path="mcp.jira"` into an additionalProperties
+// map errored as "unknown slot" because resolve() short-circuited on a null schema
+// leaf — map sub-keys were not addressable at all (declared OR defaulted).
+
+/**
+ * @return array<string, mixed>
+ */
+function apMapSchema(): array
+{
+    return [
+        'properties' => [
+            'mcp' => [
+                'type' => 'object',
+                'additionalProperties' => ['type' => 'string'],
+                'default' => ['jira' => 'mcp-atlassian'],
+            ],
+        ],
+    ];
+}
+
+it('AP1: resolves an additionalProperties map sub-key from the ancestor default map', function (): void {
+    $r = (new SlotResolver([], apMapSchema()))->resolve('mcp.jira', 'inline', null);
+
+    expect($r->ok)->toBeTrue()
+        ->and($r->output)->toBe('mcp-atlassian')
+        ->and($r->provenance)->toBe(SlotResolution::PROVENANCE_SCHEMA_DEFAULT);
+});
+
+it('AP2: resolves a DECLARED additionalProperties map sub-key', function (): void {
+    $r = (new SlotResolver(['mcp' => ['jira' => 'custom-mcp']], apMapSchema()))->resolve('mcp.jira', 'inline', null);
+
+    expect($r->ok)->toBeTrue()
+        ->and($r->output)->toBe('custom-mcp')
+        ->and($r->provenance)->toBe(SlotResolution::PROVENANCE_DECLARED);
+});
+
+it('AP3: a map sub-key absent from the default map AND undeclared errors (no silent vanish)', function (): void {
+    $r = (new SlotResolver([], apMapSchema()))->resolve('mcp.database', 'inline', null);
+
+    expect($r->ok)->toBeFalse();
+});
+
+it('AP4: a map sub-key absent from the default map uses the inline fallback', function (): void {
+    $r = (new SlotResolver([], apMapSchema()))->resolve('mcp.database', 'inline', 'none configured');
+
+    expect($r->ok)->toBeTrue()
+        ->and($r->output)->toBe('none configured')
+        ->and($r->provenance)->toBe(SlotResolution::PROVENANCE_FALLBACK);
+});

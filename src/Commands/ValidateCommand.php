@@ -4,8 +4,10 @@ namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
+use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
+use SanderMuller\BoostCore\Conventions\TokenLeak;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -34,28 +36,44 @@ final class ValidateCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
+        $packages = InstalledPackages::fromComposer();
         $allowedVendors = $config->allowedVendors;
-        $discovery = new SchemaDiscovery(InstalledPackages::fromComposer());
+        $discovery = new SchemaDiscovery($packages);
         ['sources' => $sources, 'diagnostics' => $discoveryDiagnostics] = $discovery->discover($allowedVendors);
 
         $json = (bool) $input->getOption('json');
         $strict = (bool) $input->getOption('strict');
         $verboseInfo = $output->isVerbose();
 
+        // 0.16.0 conventions-token observability: on-disk leak scan over the
+        // EMITTED set (guidance + per-agent SKILL.md, incl. gitignored copies).
+        // Runs regardless of declared schemas — a surviving `boost:conv` fence
+        // opener is a leak with or without a live schema, and prose tokens still
+        // classify (unknown-slot when no schema is composed). Each leak is an
+        // error-level diagnostic, so `boost validate --strict` (the CI recipe)
+        // hard-fails on a leaked token.
+        $leakDiagnostics = $this->leakDiagnostics($projectRoot, $config, $packages);
+
         if ($sources === []) {
-            if ($json) {
-                $output->writeln(json_encode([
-                    'diagnostics' => array_map(static fn (Diagnostic $d): array => $d->toArray(), $discoveryDiagnostics),
-                    'summary' => ['clean' => $discoveryDiagnostics === [], 'count' => count($discoveryDiagnostics)],
-                ], JSON_THROW_ON_ERROR));
-            } else {
-                $io->info('no conventions schemas declared by any allowlisted vendor — nothing to validate');
-                foreach ($discoveryDiagnostics as $diagnostic) {
-                    $output->writeln($this->formatLine($diagnostic));
+            if ($leakDiagnostics === []) {
+                if ($json) {
+                    $output->writeln(json_encode([
+                        'diagnostics' => array_map(static fn (Diagnostic $d): array => $d->toArray(), $discoveryDiagnostics),
+                        'summary' => ['clean' => $discoveryDiagnostics === [], 'count' => count($discoveryDiagnostics)],
+                    ], JSON_THROW_ON_ERROR));
+                } else {
+                    $io->info('no conventions schemas declared by any allowlisted vendor — nothing to validate');
+                    foreach ($discoveryDiagnostics as $diagnostic) {
+                        $output->writeln($this->formatLine($diagnostic));
+                    }
                 }
+
+                return self::SUCCESS;
             }
 
-            return self::SUCCESS;
+            // No schema to validate against, but emitted output carries leaked
+            // tokens — surface them through the normal render + exit path.
+            return $this->render($io, $output, [...$discoveryDiagnostics, ...$leakDiagnostics], $json, $strict, $verboseInfo);
         }
 
         /** @var list<Diagnostic> $diagnostics */
@@ -63,9 +81,30 @@ final class ValidateCommand extends BoostBaseCommand
 
         // 0.9.0: source of truth is BoostConfig::$conventions, not CLAUDE.md.
         $schema = new ConventionsSchema($sources);
-        $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
+        $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions), ...$leakDiagnostics];
 
         return $this->render($io, $output, $diagnostics, $json, $strict, $verboseInfo);
+    }
+
+    /**
+     * On-disk conventions-token leak scan → error-level diagnostics (0.16.0).
+     * One diagnostic per leaked token, slotted by the leaked path, with the
+     * classified cause (resolves-but-unrendered → re-sync; resolver error → its
+     * message; surviving fence opener → unprocessed-fence remedy).
+     *
+     * @return list<Diagnostic>
+     */
+    private function leakDiagnostics(string $projectRoot, BoostConfig $config, InstalledPackages $packages): array
+    {
+        $leaks = ConventionTokenLeakScanner::fromConfig($packages, $config)->scanEmitted($projectRoot, $config);
+
+        return array_map(
+            static fn (TokenLeak $leak): Diagnostic => Diagnostic::error(
+                $leak->path,
+                sprintf('leaked conventions token at %s — %s', $leak->location(), $leak->cause),
+            ),
+            $leaks,
+        );
     }
 
     /**

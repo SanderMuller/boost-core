@@ -673,3 +673,37 @@ it('0.12.0 exclude-key surfacing: section omitted entirely when no excludes decl
         doctorCleanup($dir);
     }
 });
+
+it('0.16.0 conventions-token leak: reports a surviving boost:conv fence in an emitted file', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        // A surviving opt-in fence info-string in emitted output = definitive leak
+        // (a 0.15+ engine would have stripped it on processing).
+        file_put_contents($dir . '/CLAUDE.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
+
+        $result = runDoctor($dir);
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+
+        expect($result['exit'])->toBe(0) // doctor is advisory — never fails the build
+            ->and($display)->toContain('Conventions tokens')
+            ->and($display)->toContain('leaked conventions token')
+            ->and($display)->toContain('CLAUDE.md');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.16.0 conventions-token leak: clean project reports no leaks', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        file_put_contents($dir . '/CLAUDE.md', "# Project\n\nNo tokens here.\n");
+
+        $result = runDoctor($dir);
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+
+        expect($result['exit'])->toBe(0)
+            ->and($display)->toContain('No leaked conventions tokens');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

@@ -5,6 +5,7 @@ namespace SanderMuller\BoostCore\Commands;
 use JsonException;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
+use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Conventions\VendorSchemaSource;
@@ -93,6 +94,7 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportExcludeKeys($io, $config);
         $driftResult = $this->reportDrift($io, $projectRoot);
         $this->reportShadows($io, $driftResult);
+        $this->reportConventionTokenLeaks($io, $projectRoot, $config);
         if ($input->getOption('check-versions') === true) {
             $this->reportPathRepoShadows($io, $projectRoot);
         }
@@ -224,6 +226,41 @@ final class DoctorCommand extends BoostBaseCommand
             . '`php artisan project-boost:sync` instead. See project-boost-laravel install guide '
             . 'for the canonical composer.json scripts shape.',
         );
+    }
+
+    /**
+     * 0.16.0 conventions-token observability: scan EMITTED agent files (guidance +
+     * per-agent SKILL.md, active agents only, incl. gitignored copies) for raw /
+     * unresolved `boost:conv` tokens that leaked instead of resolving. Dominant
+     * cause: a token-bearing skill synced by a pre-0.15 engine (which copies the
+     * token verbatim, no error). Advisory — doctor never fails the build; `boost
+     * validate` is the enforcing gate. Quiet on clean, matching sibling checks.
+     */
+    private function reportConventionTokenLeaks(SymfonyStyle $io, string $projectRoot, BoostConfig $config): void
+    {
+        $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
+        $leaks = ConventionTokenLeakScanner::fromConfig($packages, $config)->scanEmitted($projectRoot, $config);
+
+        $io->section('Conventions tokens');
+
+        if ($leaks === []) {
+            $io->writeln('<info>No leaked conventions tokens in emitted files. Clean.</info>');
+
+            return;
+        }
+
+        $io->warning(sprintf(
+            '%d leaked conventions token%s in emitted output — the agent reads the raw token instead of the resolved value.',
+            count($leaks),
+            count($leaks) === 1 ? '' : 's',
+        ));
+
+        $rows = [];
+        foreach ($leaks as $leak) {
+            $rows[] = [$leak->location(), $leak->path ?? '—', $leak->cause];
+        }
+
+        $io->table(['Location', 'Slot', 'Cause'], $rows);
     }
 
     private function reportAgents(SymfonyStyle $io, BoostConfig $config): void

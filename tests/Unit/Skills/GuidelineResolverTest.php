@@ -76,3 +76,61 @@ it('records NO shadow when there is no host guideline of the vendor name (vendor
         ->and($resolved)->toHaveCount(1)
         ->and($resolved[0]->isHostAuthored())->toBeFalse();
 });
+
+it('#86: vendor/injected emission order is deterministic + host order preserved', function (): void {
+    $resolver = new GuidelineResolver();
+    $shadows = [];
+
+    // Host arrives loader-sorted (deterministic in production) — fed identically
+    // both runs. The real non-determinism is the vendor-scan map order +
+    // within-vendor (unsorted injected) order, SCRAMBLED between the two runs.
+    $host = [grGuideline('a-host', null), grGuideline('z-host', null)];
+
+    $a = $resolver->resolve($host, [
+        'acme/beta' => [grGuideline('migrations', 'acme/beta'), grGuideline('database', 'acme/beta')],
+        'acme/alpha' => [grGuideline('pint', 'acme/alpha')],
+    ], false, $shadows);
+    $b = $resolver->resolve($host, [
+        'acme/alpha' => [grGuideline('pint', 'acme/alpha')],
+        'acme/beta' => [grGuideline('database', 'acme/beta'), grGuideline('migrations', 'acme/beta')],
+    ], false, $shadows);
+
+    $namesA = [];
+    foreach ($a as $g) {
+        $namesA[] = ($g->sourceVendor ?? 'host') . ':' . $g->name;
+    }
+
+    $namesB = [];
+    foreach ($b as $g) {
+        $namesB[] = ($g->sourceVendor ?? 'host') . ':' . $g->name;
+    }
+
+    // Byte-identical resolved order despite scrambled vendor input.
+    expect($namesA)->toBe($namesB);
+    // Host first (loader order preserved), then vendors in (vendor, sourcePath) order.
+    expect($namesA)->toBe([
+        'host:a-host',
+        'host:z-host',
+        'acme/alpha:pint',
+        'acme/beta:database',
+        'acme/beta:migrations',
+    ]);
+});
+
+it('#86: host guideline order is PRESERVED (not re-sorted by path) when vendors are present', function (): void {
+    $resolver = new GuidelineResolver();
+    $shadows = [];
+
+    // Host fed in a non-alphabetical order (the loader's filename order can differ
+    // from frontmatter `name` order). The fix must keep this exact order.
+    $resolved = $resolver->resolve(
+        [grGuideline('zeta', null), grGuideline('alpha', null)],
+        ['acme/pack' => [grGuideline('vendored', 'acme/pack')]],
+        false,
+        $shadows,
+    );
+
+    expect($resolved[0]->name)->toBe('zeta')
+        ->and($resolved[1]->name)->toBe('alpha')
+        ->and($resolved[2]->sourceVendor)->toBe('acme/pack');
+});

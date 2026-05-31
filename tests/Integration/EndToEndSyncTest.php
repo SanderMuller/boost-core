@@ -3098,3 +3098,43 @@ it('0.16.0 self-check: sync surfaces a positional warning + leaves the raw token
         rmTreeE2E($root);
     }
 });
+
+it('Phase0 characterization: an errored sync SKIPS reap + manifest write, and a later clean sync recovers', function (): void {
+    // Locks the line-759 safety gate before any SyncEngine decomposition:
+    // reap + manifest-write happen ONLY on a fully-successful sync. An errored
+    // run must NOT reap an orphan and must NOT rewrite the manifest (prior stays
+    // last-known-good), so a transient error can't cause data loss; the next
+    // clean sync reaps.
+    $root = makeEndToEndProject();
+
+    try {
+        // Run 1 — clean, two agents: CLAUDE.md + GEMINI.md written + owned.
+        writeBoostPhp($root, 'return BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE, Agent::GEMINI]);');
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nGuidance body.");
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(is_file($root . '/GEMINI.md'))->toBeTrue();
+        $manifestAfter1 = (string) file_get_contents($root . '/.boost/manifest.json');
+
+        // Run 2 — GEMINI de-selected (GEMINI.md is now an orphan) AND a bad
+        // conventions token forces $hasAnyError. Reap + manifest write must skip.
+        writeBoostPhp($root, 'return BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE]);');
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nBad token: <!--boost:conv path=\"x.y\" mode=\"inline\"-->.");
+        $errored = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($errored->hasErrors())->toBeTrue();
+        // Orphan NOT reaped (error gated it):
+        expect(is_file($root . '/GEMINI.md'))->toBeTrue();
+        // Manifest NOT rewritten — prior stays last-known-good:
+        expect((string) file_get_contents($root . '/.boost/manifest.json'))->toBe($manifestAfter1);
+
+        // Run 3 — fix the token; clean sync recovers + reaps the orphan.
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nGuidance body.");
+        $recovered = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($recovered->hasErrors())->toBeFalse();
+        expect(is_file($root . '/GEMINI.md'))->toBeFalse(); // reaped now
+    } finally {
+        rmTreeE2E($root);
+    }
+});

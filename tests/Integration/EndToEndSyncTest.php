@@ -3113,7 +3113,8 @@ it('Phase0 characterization: an errored sync SKIPS reap + manifest write, and a 
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nGuidance body.");
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect(is_file($root . '/GEMINI.md'))->toBeTrue();
+        expect($root . '/GEMINI.md')
+            ->toBeFile();
         $manifestAfter1 = (string) file_get_contents($root . '/.boost/manifest.json');
 
         // Run 2 — GEMINI de-selected (GEMINI.md is now an orphan) AND a bad
@@ -3124,7 +3125,8 @@ it('Phase0 characterization: an errored sync SKIPS reap + manifest write, and a 
 
         expect($errored->hasErrors())->toBeTrue();
         // Orphan NOT reaped (error gated it):
-        expect(is_file($root . '/GEMINI.md'))->toBeTrue();
+        expect($root . '/GEMINI.md')
+            ->toBeFile();
         // Manifest NOT rewritten — prior stays last-known-good:
         expect((string) file_get_contents($root . '/.boost/manifest.json'))->toBe($manifestAfter1);
 
@@ -3132,8 +3134,9 @@ it('Phase0 characterization: an errored sync SKIPS reap + manifest write, and a 
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nGuidance body.");
         $recovered = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect($recovered->hasErrors())->toBeFalse();
-        expect(is_file($root . '/GEMINI.md'))->toBeFalse(); // reaped now
+        expect($recovered->hasErrors())->toBeFalse()
+            ->and(is_file($root . '/GEMINI.md'))
+            ->toBeFalse(); // reaped now
     } finally {
         rmTreeE2E($root);
     }

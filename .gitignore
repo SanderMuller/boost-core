@@ -1,9 +1,5 @@
 /vendor/
 /.cache/
-/.phpunit.cache/
-/.phpstan.cache/
-.phpunit.result.cache
-.php-cs-fixer.cache
 composer.lock
 .idea/
 .vscode/
@@ -18,3 +14,4 @@ internal/
 .claude/skills/
 .github/prompts/
 # <<< boost (managed) <<<
+/.claude/scheduled_tasks.lock

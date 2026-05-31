@@ -593,7 +593,7 @@ final readonly class SyncEngine
             'intended' => $intendedEmitterPaths,
             'preserved' => $preservedEmitterFqcns,
             'hasLiveOutput' => $hasLiveEmitterOutput,
-        ] = $this->emitterReapSets($emitterResults);
+        ] = OrphanReaper::emitterReapSets($emitterResults);
 
         [$fanOutWrites, $fanOutErrors] = $this->fanOut(
             $projectRoot,
@@ -755,7 +755,7 @@ final readonly class SyncEngine
             // ownedGuidancePaths / live-emitter sets, so the new manifest below
             // never re-records them. ($intendedEmitterPaths /
             // $preservedEmitterFqcns derived once via emitterReapSets above.)
-            $reap = $this->reapManifestOrphans(
+            $reap = OrphanReaper::reapManifestOrphans(
                 $projectRoot,
                 $priorManifest,
                 $intendedEmitterPaths,
@@ -1061,8 +1061,8 @@ final readonly class SyncEngine
             // dir claims would only preserve the dir entry itself (which
             // wouldn't be in priorManagedFiles anyway) while children get
             // false-positive-deleted.
-            $canonicalRelative = $this->canonicalizeWrapperPath($relativePath);
-            if ($this->isUnderWrapperClaim($canonicalRelative, $wrapperExcludedPaths)) {
+            $canonicalRelative = ManagedFileOps::canonicalizeWrapperPath($relativePath);
+            if (ManagedFileOps::isUnderWrapperClaim($canonicalRelative, $wrapperExcludedPaths)) {
                 continue;
             }
 
@@ -1073,7 +1073,7 @@ final readonly class SyncEngine
 
             if (! $checkOnly) {
                 @unlink($absolute);
-                $this->removeEmptyParentDirs($projectRoot, $absolute);
+                ManagedFileOps::removeEmptyParentDirs($projectRoot, $absolute);
             }
 
             $writes[] = new WrittenFile(
@@ -1084,30 +1084,6 @@ final readonly class SyncEngine
         }
 
         return $writes;
-    }
-
-    /**
-     * @param  array<string, string>  $wrapperExcludedPaths
-     */
-    private function isUnderWrapperClaim(string $canonicalRelative, array $wrapperExcludedPaths): bool
-    {
-        if (isset($wrapperExcludedPaths[$canonicalRelative])) {
-            return true;
-        }
-
-        // Directory-prefix match: a wrapper claim like `.agents/skills/foo`
-        // should preserve `.agents/skills/foo/SKILL.md`, `.agents/skills/foo/
-        // references/api.md`, etc. The trailing `/` boundary check avoids
-        // false-positive matches on path-prefixes that aren't actual
-        // directory ancestors (e.g., `.agents/skills/foobar` should NOT
-        // match a claim of `.agents/skills/foo`).
-        foreach (array_keys($wrapperExcludedPaths) as $claim) {
-            if (str_starts_with($canonicalRelative, $claim . '/')) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -1122,62 +1098,6 @@ final readonly class SyncEngine
     private function isGuidelineFilePath(string $relativePath): bool
     {
         return in_array($relativePath, ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md'], true);
-    }
-
-    /**
-     * Mirror of WrapperEmitDiscovery's canonical form so both sides of the
-     * union comparison match byte-for-byte regardless of input form.
-     * Segment-based (collapses empty + `.` segments) to stay identical to
-     * the discovery side, which must collapse embedded `./` for the claim
-     * to match the on-disk path. priorManagedFiles paths are already clean
-     * on-disk relative paths, so this is mostly a slash-normalize for them.
-     */
-    private function canonicalizeWrapperPath(string $raw): string
-    {
-        $normalized = str_replace('\\', '/', $raw);
-
-        $out = [];
-        foreach (explode('/', $normalized) as $segment) {
-            if ($segment === '') {
-                continue;
-            }
-
-            if ($segment === '.') {
-                continue;
-            }
-
-            $out[] = $segment;
-        }
-
-        return implode('/', $out);
-    }
-
-    /**
-     * Walk up from `$absolute`'s parent toward `$projectRoot`, removing
-     * each directory that's now empty. Stops at the first non-empty parent
-     * or at the project root (never delete that).
-     */
-    private function removeEmptyParentDirs(string $projectRoot, string $absolute): void
-    {
-        $projectRoot = rtrim($projectRoot, '/');
-        $parent = dirname($absolute);
-        while ($parent !== $projectRoot && str_starts_with($parent, $projectRoot . '/')) {
-            $entries = @scandir($parent);
-            if ($entries === false) {
-                return;
-            }
-
-            $remaining = array_values(array_diff($entries, ['.', '..']));
-            if ($remaining !== []) {
-                return;
-            }
-
-            if (! @rmdir($parent)) {
-                return;
-            }
-
-            $parent = dirname($parent);
-        }
     }
 
     /**
@@ -1317,7 +1237,7 @@ final readonly class SyncEngine
         ];
         $prefixes = ['.ai/', 'resources/boost/', strtolower(SyncManifest::DIR) . '/'];
         foreach ($wrapperClaimedPaths as $wrapperPath) {
-            $canonical = strtolower($this->canonicalizeWrapperPath($wrapperPath));
+            $canonical = strtolower(ManagedFileOps::canonicalizeWrapperPath($wrapperPath));
             // Exact match (file claim) AND a descendant prefix (codex high): a
             // wrapper DIRECTORY claim like `.agents/skills/foo` owns its whole
             // subtree, so `.agents/skills/foo/SKILL.md` must also be reserved —
@@ -1377,47 +1297,6 @@ final readonly class SyncEngine
     }
 
     /**
-     * 0.14.0: derive the FileEmitter reap inputs from this sync's results.
-     *  - `intended`: paths emitted this sync (WROTE/UNCHANGED/WOULD_WRITE) —
-     *    kept, never reaped;
-     *  - `preserved`: FQCNs DISABLED or errored this sync — their prior output is
-     *    preserved (disabling ≠ teardown; errored ≠ dormant);
-     *  - `hasLiveOutput`: any real on-disk emitter output (WROTE/UNCHANGED) — a
-     *    manifest entry, so it forces the `.boost/` gitignore line on its own.
-     *
-     * @param  list<EmitterResult>  $emitterResults
-     * @return array{intended: array<string, true>, preserved: array<string, true>, hasLiveOutput: bool}
-     */
-    private function emitterReapSets(array $emitterResults): array
-    {
-        $intended = [];
-        $preserved = [];
-        $hasLiveOutput = false;
-
-        foreach ($emitterResults as $emitterResult) {
-            if (
-                $emitterResult->relativePath !== null
-                && in_array($emitterResult->action, [EmitterAction::WROTE, EmitterAction::UNCHANGED, EmitterAction::WOULD_WRITE], true)
-            ) {
-                $intended[$emitterResult->relativePath] = true;
-            }
-
-            if (
-                $emitterResult->relativePath !== null
-                && in_array($emitterResult->action, [EmitterAction::WROTE, EmitterAction::UNCHANGED], true)
-            ) {
-                $hasLiveOutput = true;
-            }
-
-            if (in_array($emitterResult->action, [EmitterAction::DISABLED, EmitterAction::ERRORED], true)) {
-                $preserved[$emitterResult->fqcn] = true;
-            }
-        }
-
-        return ['intended' => $intended, 'preserved' => $preserved, 'hasLiveOutput' => $hasLiveOutput];
-    }
-
-    /**
      * 0.14.0 (codex high): does the prior manifest own a `file` entry that is
      * the SAME physical file (inode) as $relativePath under a different path
      * spelling? On a case-insensitive filesystem an emitter that renames its
@@ -1452,183 +1331,6 @@ final readonly class SyncEngine
             if ($priorStat !== false && $priorStat['ino'] === $stat['ino'] && $priorStat['dev'] === $stat['dev']) {
                 return true;
             }
-        }
-
-        return false;
-    }
-
-    /**
-     * 0.14.0: reconcile-on-sync orphan reap. Delete boost-owned files recorded
-     * in the PRIOR manifest that this sync no longer intends to emit — covering
-     * two instances of one shape:
-     *  - a dormant FileEmitter's output (category `file`, provenance
-     *    `emitter:<fqcn>`): reaped unless the producing emitter was DISABLED or
-     *    errored this sync (preserve — disabling means "stop regenerating", not
-     *    "delete"), or the path is wrapper-claimed;
-     *  - a de-selected agent's guidance file (category `guidance`, engine
-     *    provenance): reaped IFF still boost-owned (on-disk sha == recorded sha;
-     *    a divergence means the operator hand-edited it → preserve, never-lossy).
-     *
-     * Manifest-GATED by construction (codex P3): the delete predicate consults
-     * the prior manifest's ownership, not raw gitignore membership. Only called
-     * on a successful, real (non-check) sync, after non-destructive writes.
-     *
-     * @param  array<string, true>  $intendedEmitterPaths  emitter paths emitted this sync (kept)
-     * @param  array<string, true>  $preservedEmitterFqcns  FQCNs DISABLED/errored this sync (files preserved)
-     * @param  list<string>  $ownedGuidancePaths  guidance files boost owns this sync (kept)
-     * @param  array<string, string>  $wrapperPaths  wrapper-claimed paths (never reaped here)
-     * @return array{writes: list<WrittenFile>, retained: list<string>}  `retained` = orphans whose delete FAILED — ownership is kept so the next sync retries (codex medium)
-     */
-    private function reapManifestOrphans(
-        string $projectRoot,
-        SyncManifest $priorManifest,
-        array $intendedEmitterPaths,
-        array $preservedEmitterFqcns,
-        array $ownedGuidancePaths,
-        array $wrapperPaths,
-    ): array {
-        $intendedGuidance = array_fill_keys($ownedGuidancePaths, true);
-
-        /** @var list<string> $reaps */
-        $reaps = [];
-        foreach ($priorManifest->entries as $relativePath => $entry) {
-            if ($this->isReapableOrphan($projectRoot, $priorManifest, $relativePath, $entry, $intendedEmitterPaths, $preservedEmitterFqcns, $intendedGuidance, $wrapperPaths)) {
-                $reaps[] = $relativePath;
-            }
-        }
-
-        // 0.14.0 (codex high): identify files boost wrote/kept LIVE this sync by
-        // INODE. On a case-insensitive filesystem an emitter that renames its
-        // output by CASE only (`.Dummy/output.txt` → `.dummy/output.txt`) leaves
-        // a prior manifest entry under the old spelling that string-matches as an
-        // orphan — but it is the SAME on-disk file (inode) as the just-written
-        // live output. Inode is the reliable alias test (macOS `realpath()`
-        // preserves the queried casing, so it does NOT collapse case): same
-        // dev:ino ⇒ same file ⇒ never unlink it; distinct inodes (case-sensitive
-        // FS) ⇒ a genuine orphan ⇒ reap (no leak). Where PHP can't read inodes
-        // (`ino === 0`, some Windows volumes) fall back to a case-folded path
-        // match — preserve rather than risk deleting an aliased live file.
-        $liveInodes = [];
-        $liveLowerPaths = [];
-        foreach ([...array_keys($intendedEmitterPaths), ...$ownedGuidancePaths] as $livePath) {
-            $liveAbsolute = $projectRoot . '/' . $livePath;
-            $stat = @stat($liveAbsolute);
-            if ($stat !== false && $stat['ino'] > 0) {
-                $liveInodes[$stat['dev'] . ':' . $stat['ino']] = true;
-            } else {
-                $liveLowerPaths[strtolower($liveAbsolute)] = true;
-            }
-        }
-
-        $writes = [];
-        /** @var list<string> $retained */
-        $retained = [];
-        foreach ($reaps as $relativePath) {
-            $absolute = $projectRoot . '/' . $relativePath;
-            // Reap ONLY a regular file (codex high): boost's guidance/emitter
-            // outputs are always plain files. If the operator has since
-            // replaced the path with a directory tree or a symlink, that is
-            // THEIR content — never recurse into it or unlink it, and drop
-            // ownership (don't retain). (is_link first — is_file() follows
-            // symlinks.)
-            if (is_link($absolute)) {
-                continue;
-            }
-
-            if (! is_file($absolute)) {
-                continue;
-            }
-
-            // Never unlink a path that aliases a live output (codex high).
-            $stat = @stat($absolute);
-            if ($stat !== false && $stat['ino'] > 0) {
-                if (isset($liveInodes[$stat['dev'] . ':' . $stat['ino']])) {
-                    continue;
-                }
-            } elseif (isset($liveLowerPaths[strtolower($absolute)])) {
-                continue;
-            }
-
-            if (@unlink($absolute)) {
-                $this->removeEmptyParentDirs($projectRoot, $absolute);
-                $writes[] = new WrittenFile($relativePath, $absolute, WriteAction::DELETED);
-
-                continue;
-            }
-
-            // Delete FAILED (codex medium): a transient permission/filesystem
-            // error must NOT silently drop the ownership record — that would
-            // leak the stale file forever (the next sync wouldn't know to retry).
-            // Retain it so writeSyncManifest carries the entry forward.
-            $retained[] = $relativePath;
-        }
-
-        return ['writes' => $writes, 'retained' => $retained];
-    }
-
-    /**
-     * Decide whether a single prior-manifest entry is a reapable orphan
-     * (extracted from reapManifestOrphans for cognitive-complexity).
-     *  - emitter `file`: orphan unless still emitted, wrapper-claimed, or its
-     *    producing emitter was DISABLED/errored this sync (preserved); reaped
-     *    only when the on-disk sha still matches the recorded sha (operator
-     *    hand-edited → preserve, never-lossy);
-     *  - engine `guidance`: orphan unless still scheduled; reap only when the
-     *    on-disk sha still matches (operator-edited → preserve, never-lossy).
-     *
-     * @param  array{sha256: string, category: string, provenance: string, scope: string}  $entry
-     * @param  array<string, true>  $intendedEmitterPaths
-     * @param  array<string, true>  $preservedEmitterFqcns
-     * @param  array<string, true>  $intendedGuidance
-     * @param  array<string, string>  $wrapperPaths
-     */
-    private function isReapableOrphan(
-        string $projectRoot,
-        SyncManifest $priorManifest,
-        string $relativePath,
-        array $entry,
-        array $intendedEmitterPaths,
-        array $preservedEmitterFqcns,
-        array $intendedGuidance,
-        array $wrapperPaths,
-    ): bool {
-        $category = $entry['category'];
-        $provenance = $entry['provenance'];
-
-        if ($category === SyncManifest::CATEGORY_FILE && str_starts_with($provenance, SyncManifest::PROVENANCE_EMITTER_PREFIX)) {
-            // Wrapper preservation must be PREFIX-aware (codex high): a wrapper
-            // DIRECTORY claim (`.agents/skills/foo`) owns its whole subtree, so
-            // a path under it is never reaped here — mirrors the prefix logic
-            // cleanupStaleManagedFiles already uses (exact-match would leak a
-            // delete on descendants).
-            if (isset($intendedEmitterPaths[$relativePath]) || $this->isUnderWrapperClaim($this->canonicalizeWrapperPath($relativePath), $wrapperPaths)) {
-                return false;
-            }
-
-            $fqcn = substr($provenance, strlen(SyncManifest::PROVENANCE_EMITTER_PREFIX));
-            if (isset($preservedEmitterFqcns[$fqcn])) {
-                return false;
-            }
-
-            // sha-revalidation (codex high — never-lossy): an emitter output the
-            // operator hand-edited after boost wrote it (e.g. a tweaked
-            // `.mcp.json`) must NOT be deleted on dormancy. Reap ONLY when the
-            // on-disk content still matches what boost recorded — a divergence
-            // means the operator took it over → preserve. Mirrors the guidance
-            // ownership gate; emitter outputs are operator-editable too.
-            $currentSha = $this->fileSha($projectRoot, $relativePath);
-
-            return $currentSha !== null && $currentSha === $entry['sha256'];
-        }
-
-        if ($category === SyncManifest::CATEGORY_GUIDANCE && $provenance === SyncManifest::PROVENANCE_ENGINE) {
-            if (isset($intendedGuidance[$relativePath])) {
-                return false;
-            }
-
-            $currentSha = $this->fileSha($projectRoot, $relativePath);
-
-            return $currentSha !== null && $priorManifest->ownsGuidance($relativePath, $currentSha);
         }
 
         return false;
@@ -1849,7 +1551,7 @@ final readonly class SyncEngine
                 continue;
             }
 
-            $sha = $this->fileSha($projectRoot, $emitterResult->relativePath);
+            $sha = ManagedFileOps::fileSha($projectRoot, $emitterResult->relativePath);
             if ($sha === null) {
                 continue;
             }
@@ -1877,7 +1579,7 @@ final readonly class SyncEngine
         $manifest = SyncManifest::empty();
 
         foreach ($ownedGuidancePaths as $relativePath) {
-            $sha = $this->fileSha($projectRoot, $relativePath);
+            $sha = ManagedFileOps::fileSha($projectRoot, $relativePath);
             if ($sha !== null) {
                 $manifest = $manifest->withEntry($relativePath, $sha, SyncManifest::CATEGORY_GUIDANCE, SyncManifest::PROVENANCE_ENGINE);
             }
@@ -1898,7 +1600,7 @@ final readonly class SyncEngine
                 continue;   // not a skill/command emission target (e.g. a manifest file) — skip
             }
 
-            $sha = $this->fileSha($projectRoot, $relativePath);
+            $sha = ManagedFileOps::fileSha($projectRoot, $relativePath);
             if ($sha === null) {
                 continue;
             }
@@ -1944,14 +1646,6 @@ final readonly class SyncEngine
         // never dirties the working tree. No self-contained .gitignore here —
         // that would itself be an untracked file.
         @file_put_contents($manifestPath, $manifest->toJson('boost-core'));
-    }
-
-    private function fileSha(string $projectRoot, string $relativePath): ?string
-    {
-        $absolute = $projectRoot . '/' . $relativePath;
-        $content = is_file($absolute) ? @file_get_contents($absolute) : false;
-
-        return $content === false ? null : hash('sha256', $content);
     }
 
     /**
@@ -2564,7 +2258,7 @@ final readonly class SyncEngine
         // `foo.txt`) look like a dormant orphan and reap the just-written live
         // file. Collapsing `.`/empty segments + normalizing separators here
         // makes the string boost stores and the string boost matches identical.
-        $relativePath = $this->canonicalizeWrapperPath($emitted->relativePath);
+        $relativePath = ManagedFileOps::canonicalizeWrapperPath($emitted->relativePath);
         if ($relativePath === '') {
             return new EmitterResult(
                 fqcn: $emitter->fqcn,

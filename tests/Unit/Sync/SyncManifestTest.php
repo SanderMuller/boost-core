@@ -78,6 +78,32 @@ it('REJECTS source-dir paths (.ai/ and resources/boost/) — the dual-role-repo 
         ->and($manifest->has('.claude/skills/z/SKILL.md'))->toBeTrue();
 });
 
+it('0.14.0: round-trips a `file`-category entry with emitter provenance', function (): void {
+    $root = manifestTempRoot();
+    mkdir($root . '/.boost', 0o755, recursive: true);
+    try {
+        $manifest = SyncManifest::empty()->withEntry(
+            '.mcp.json',
+            'abc123',
+            SyncManifest::CATEGORY_FILE,
+            SyncManifest::PROVENANCE_EMITTER_PREFIX . 'Acme\\McpJsonEmitter',
+        );
+        file_put_contents($root . '/.boost/manifest.json', $manifest->toJson('boost-core'));
+
+        $loaded = SyncManifest::fromProjectRoot($root);
+
+        expect($loaded->has('.mcp.json'))->toBeTrue()
+            ->and($loaded->entries['.mcp.json']['category'])->toBe('file')
+            ->and($loaded->provenanceOf('.mcp.json'))->toBe('emitter:Acme\\McpJsonEmitter')
+            ->and(SyncManifest::CATEGORY_FILE)->toBe('file')
+            ->and(SyncManifest::PROVENANCE_EMITTER_PREFIX)->toBe('emitter:');
+    } finally {
+        @unlink($root . '/.boost/manifest.json');
+        @rmdir($root . '/.boost');
+        @rmdir($root);
+    }
+});
+
 it('toJson emits version + generatedBy + an object (not array) for empty emitted', function (): void {
     $json = SyncManifest::empty()->toJson('boost-core/0.13.0');
 

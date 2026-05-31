@@ -1734,6 +1734,51 @@ it('0.13.0 manifest: a boost-OWNED guidance file CONVERGES to empty when all gui
     }
 });
 
+it('0.14.0 manifest: a de-selected agent guidance file is REAPED (krp3e3nf: dropping GEMINI from withAgents left a 5KB stale GEMINI.md)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        // Sync 1: CLAUDE_CODE + GEMINI active → both CLAUDE.md and GEMINI.md are
+        // written from the guideline and recorded in the manifest (engine/guidance).
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE, Agent::GEMINI]);");
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect(file_exists($root . '/GEMINI.md'))->toBeTrue('GEMINI.md should be written on sync 1');
+
+        // Sync 2: GEMINI dropped from withAgents. Its guidance file is no longer
+        // scheduled; the manifest proves boost owns it (sha-match) → REAPED.
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(file_exists($root . '/GEMINI.md'))->toBeFalse('de-selected agent guidance file should be reaped')
+            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue('the still-active agent guidance file stays');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.14.0 manifest: a de-selected agent guidance file the operator HAND-EDITED is PRESERVED (sha-divergence → never-lossy)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE, Agent::GEMINI]);");
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect(file_exists($root . '/GEMINI.md'))->toBeTrue();
+
+        // Operator hand-edits GEMINI.md → sha diverges from the manifest record.
+        file_put_contents($root . '/GEMINI.md', "# My own notes — do not delete\n");
+
+        // Drop GEMINI. Because the on-disk sha no longer matches the manifest,
+        // boost cannot prove ownership → PRESERVE (never-lossy).
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(file_exists($root . '/GEMINI.md'))->toBeTrue('a hand-edited de-selected guidance file must be preserved')
+            ->and((string) file_get_contents($root . '/GEMINI.md'))->toContain('do not delete');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('0.13.0 manifest: a pre-existing operator file that COINCIDENTALLY matches boost output is NOT claimed (UNCHANGED + not-in-prior-manifest → preserved on later empty sync, codex P1)', function (): void {
     // Capture boost's exact assembled output for a guideline.
     $probe = makeEndToEndProject();

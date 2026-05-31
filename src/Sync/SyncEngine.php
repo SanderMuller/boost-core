@@ -151,19 +151,34 @@ final readonly class SyncEngine
     public static function default(?InstalledPackages $installedPackages = null): self
     {
         return new self(
-            agentTargets: [
-                new ClaudeCodeTarget(),
-                new CursorTarget(),
-                new CopilotTarget(),
-                new CodexTarget(),
-                new GeminiTarget(),
-                new JunieTarget(),
-                new KiroTarget(),
-                new OpenCodeTarget(),
-                new AmpTarget(),
-            ],
+            agentTargets: self::allAgentTargets(),
             installedPackages: $installedPackages,
         );
+    }
+
+    /**
+     * The canonical FULL catalog of every supported agent target. Used both by
+     * default() and by the emitter reserved-path denylist — the latter must
+     * reserve EVERY agent's emission roots regardless of the instance's fan-out
+     * subset (codex high: a subset-constructed engine, e.g.
+     * `new SyncEngine([new ClaudeCodeTarget()])`, must still reserve
+     * `.cursor/…`, `.agents/skills/`, etc. against emitter writes).
+     *
+     * @return list<AgentTarget>
+     */
+    public static function allAgentTargets(): array
+    {
+        return [
+            new ClaudeCodeTarget(),
+            new CursorTarget(),
+            new CopilotTarget(),
+            new CodexTarget(),
+            new GeminiTarget(),
+            new JunieTarget(),
+            new KiroTarget(),
+            new OpenCodeTarget(),
+            new AmpTarget(),
+        ];
     }
 
     /**
@@ -504,7 +519,61 @@ final readonly class SyncEngine
             config: $config,
         );
 
-        $emitterResults = $this->runEmitters($projectRoot, $config, $context, $checkOnly);
+        $gitignoreManaged = $config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false;
+
+        // 0.13.0: load the PRIOR ownership manifest (state at sync start).
+        // All destructive decisions (empty-guard clear, 0.14.0 orphan reap) read
+        // this prior snapshot; the NEW manifest is written only after a
+        // successful sync. Absent/corrupt → empty → exact pre-0.13 behavior.
+        //
+        // Gated on gitignore management: when it's disabled the manifest is no
+        // longer UPDATED (see the write gate below), so reading a now-stale one
+        // could blank/reap a file on ownership data that no longer tracks
+        // reality. Disabling the READ too degrades ownership-based actions
+        // cleanly to the 0.12 preserve behavior in that mode (codex-review P1).
+        //
+        // Read BEFORE runEmitters (0.14.0): the emitter first-adoption warn
+        // consults it to detect taking over a not-yet-owned file.
+        $priorManifest = $gitignoreManaged
+            ? SyncManifest::fromProjectRoot($projectRoot)
+            : SyncManifest::empty();
+
+        // 0.11.0: discover wrapper-claimed paths up-front — fed to the managed
+        // gitignore block, the stale-cleanup exclusion, the manifest writer, and
+        // (0.14.0) the emitter reserved-path denylist so an emitter can't claim a
+        // wrapper-owned path.
+        $activeAgents = array_map(static fn (Agent $agent): string => $agent->value, $config->agents);
+        $wrapperEmits = (new WrapperEmitDiscovery($this->installedPackages))->discover($projectRoot, $activeAgents);
+
+        // 0.14.0: an emitter must never write to a path boost-core or the
+        // operator owns (codex P1 — arbitrary emitter paths could overwrite then
+        // later reap operator/core files). Build the denylist before runEmitters.
+        $reservedEmitterPaths = $this->reservedEmitterPaths(array_keys($wrapperEmits['paths']));
+
+        /** @var list<Diagnostic> $emitterDiagnostics */
+        $emitterDiagnostics = [];
+        /** @var array<string, true> $ownableEmitterPaths */
+        $ownableEmitterPaths = [];
+        $emitterResults = $this->runEmitters(
+            $projectRoot,
+            $config,
+            $context,
+            $checkOnly,
+            $priorManifest,
+            $reservedEmitterPaths,
+            $emitterDiagnostics,
+            $ownableEmitterPaths,
+        );
+
+        // 0.14.0: derive the reap sets once — paths emitted this sync (kept),
+        // FQCNs DISABLED/errored this sync (their files preserved), and whether
+        // any live emitter output exists (a manifest entry → needs `.boost/`
+        // gitignored even in an emitter-only project).
+        [
+            'intended' => $intendedEmitterPaths,
+            'preserved' => $preservedEmitterFqcns,
+            'hasLiveOutput' => $hasLiveEmitterOutput,
+        ] = $this->emitterReapSets($emitterResults);
 
         [$fanOutWrites, $fanOutErrors] = $this->fanOut(
             $projectRoot,
@@ -531,30 +600,8 @@ final readonly class SyncEngine
         $priorManagedPatterns = $this->readPriorGitignorePatterns($projectRoot);
         $priorManagedFiles = $this->enumerateManagedFiles($projectRoot, $priorManagedPatterns);
 
-        // 0.11.0: discover wrapper-claimed paths BEFORE updateGitignore so the
-        // managed `.gitignore` block can include them. Otherwise bare-CLI
-        // sync drops the wrapper's emit-paths from the managed block (codex-
-        // review caught this in the initial implementation), the next sync
-        // doesn't see them in priorManagedFiles, and the wrapper-injected
-        // files leak into git tracking until the next wrapper-driven sync.
-        $activeAgents = array_map(static fn (Agent $agent): string => $agent->value, $config->agents);
-        $wrapperEmits = (new WrapperEmitDiscovery($this->installedPackages))->discover($projectRoot, $activeAgents);
-
-        $gitignoreManaged = $config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false;
-
-        // 0.13.0: load the PRIOR ownership manifest (state at sync start).
-        // All destructive decisions (the empty-guard clear) read this prior
-        // snapshot; the NEW manifest is written only after a successful sync.
-        // Absent/corrupt → empty → exact pre-0.13 behavior (backward-safe).
-        //
-        // Gated on gitignore management: when it's disabled the manifest is no
-        // longer UPDATED (see the write gate below), so reading a now-stale one
-        // could blank a file on later ownership data that no longer tracks
-        // reality. Disabling the READ too makes ownership-based clearing degrade
-        // cleanly to the 0.12 preserve behavior in that mode (codex-review P1).
-        $priorManifest = $gitignoreManaged
-            ? SyncManifest::fromProjectRoot($projectRoot)
-            : SyncManifest::empty();
+        // ($priorManifest, $wrapperEmits, $gitignoreManaged, $activeAgents are
+        // computed up-front before runEmitters — see the top of sync().)
 
         // Will this sync write a `.boost/manifest.json`? (Manifest is non-empty
         // when boost emits guidance/skills/commands, or there's a prior to
@@ -571,9 +618,14 @@ final readonly class SyncEngine
         // regardless of what resolved. Conventions render into CLAUDE.md even
         // without the Claude agent, so they count on their own. A prior manifest
         // is refreshed regardless.
+        // 0.14.0: a live FileEmitter output is also a manifest entry
+        // ($hasLiveEmitterOutput, derived above), so it must trigger the
+        // `.boost/` gitignore line on its own — an emitter-only project (no
+        // agents/conventions) still needs the manifest ignored.
         $willWriteManifest = $gitignoreManaged && (
             ($config->agents !== [] && ($resolvedSkills !== [] || $resolvedGuidelines !== [] || $resolvedCommands !== []))
             || $config->conventions !== []
+            || $hasLiveEmitterOutput
             || ! $priorManifest->isEmpty()
         );
 
@@ -626,6 +678,9 @@ final readonly class SyncEngine
             }
         }
 
+        /** @var list<Diagnostic> $reapDiagnostics */
+        $reapDiagnostics = [];
+
         // 0.11.0 drift-comparison wrapper-injection awareness: when a wrapper
         // package (e.g., project-boost-laravel) injects skills/guidelines via
         // `injectedVendorSkills`/`injectedVendorGuidelines`, bare-CLI sync
@@ -662,7 +717,39 @@ final readonly class SyncEngine
         // empty sync could no longer converge previously-owned files. Leaving
         // the prior manifest untouched keeps it last-known-good (codex-review).
         if (! $checkOnly && ! $hasAnyError && $gitignoreManaged && $guidelineRenderErrors === []) {
-            $this->writeSyncManifest($projectRoot, $guidanceResult['ownedGuidancePaths'], $wrapperEmits['paths']);
+            // 0.14.0: reconcile-on-sync orphan reap — delete boost-owned files
+            // recorded in the PRIOR manifest that this sync no longer intends to
+            // emit (a dormant FileEmitter, a de-selected agent's guidance file).
+            // Manifest-GATED (codex P3): the delete predicate consults the prior
+            // manifest's ownership, NOT raw gitignore membership. Runs after all
+            // non-destructive writes + cleanup succeeded, before the new manifest
+            // is written. The reap's targets are absent from the
+            // ownedGuidancePaths / live-emitter sets, so the new manifest below
+            // never re-records them. ($intendedEmitterPaths /
+            // $preservedEmitterFqcns derived once via emitterReapSets above.)
+            $reap = $this->reapManifestOrphans(
+                $projectRoot,
+                $priorManifest,
+                $intendedEmitterPaths,
+                $preservedEmitterFqcns,
+                $guidanceResult['ownedGuidancePaths'],
+                $wrapperEmits['paths'],
+            );
+            $writes = [...$writes, ...$reap['writes']];
+
+            // A failed orphan delete keeps its ownership (codex medium): surface
+            // it and carry the entry forward so the next sync retries.
+            foreach ($reap['retained'] as $retainedPath) {
+                $reapDiagnostics[] = Diagnostic::warning(
+                    null,
+                    sprintf(
+                        'Could not delete orphaned boost-owned file "%s" (permission/filesystem error). Its ownership is retained so the next sync retries the cleanup; remove it by hand if it persists.',
+                        $retainedPath,
+                    ),
+                );
+            }
+
+            $this->writeSyncManifest($projectRoot, $guidanceResult['ownedGuidancePaths'], $wrapperEmits['paths'], $emitterResults, $priorManifest, $reap['retained'], $ownableEmitterPaths);
         }
 
         // Diagnostic surface for the render-fail-then-write safety gate
@@ -693,6 +780,8 @@ final readonly class SyncEngine
                 ...$cleanupResult['diagnostics'],
                 ...$wrapperEmits['diagnostics'],
                 ...$renderFailDiagnostics,
+                ...$emitterDiagnostics,
+                ...$reapDiagnostics,
             ],
         );
     }
@@ -1168,6 +1257,353 @@ final readonly class SyncEngine
     }
 
     /**
+     * 0.14.0: build the reserved-path denylist for FileEmitter outputs. An
+     * emitter must emit only to a path it alone owns; returning any of these is
+     * a contract violation (codex P1 — arbitrary emitter paths could otherwise
+     * overwrite then later reap core/operator files). Exact matches: guidance
+     * basenames + `.gitignore`; per-sync wrapper-claimed paths. Prefix matches:
+     * source dirs + `.boost/` + EVERY agent's skill/command roots (codex high:
+     * reserved regardless of which agents are active — an emitter must not write
+     * into `.claude/skills/…` even when Claude is inactive, since that surface
+     * may already hold tracked content and would otherwise be claimed + reaped).
+     *
+     * @param  list<string>  $wrapperClaimedPaths
+     * @return array{exact: array<string, true>, prefixes: list<string>}
+     */
+    private function reservedEmitterPaths(array $wrapperClaimedPaths): array
+    {
+        // Keys stored LOWERCASED (codex high): on a case-insensitive filesystem
+        // (default macOS) `claude.md` resolves to the same on-disk file as
+        // `CLAUDE.md`, so a case-sensitive compare would let an emitter dodge
+        // the denylist with a case variant. Fold case unconditionally — an
+        // emitter has no business emitting a case-variant of a reserved name on
+        // any platform.
+        $exact = [
+            'claude.md' => true,
+            'agents.md' => true,
+            'gemini.md' => true,
+            '.gitignore' => true,
+        ];
+        $prefixes = ['.ai/', 'resources/boost/', strtolower(SyncManifest::DIR) . '/'];
+        foreach ($wrapperClaimedPaths as $wrapperPath) {
+            $canonical = strtolower($this->canonicalizeWrapperPath($wrapperPath));
+            // Exact match (file claim) AND a descendant prefix (codex high): a
+            // wrapper DIRECTORY claim like `.agents/skills/foo` owns its whole
+            // subtree, so `.agents/skills/foo/SKILL.md` must also be reserved —
+            // an emitter must not write into a wrapper-owned directory. Mirrors
+            // the prefix-aware preservation in the reap path.
+            $exact[$canonical] = true;
+            $prefixes[] = $canonical . '/';
+        }
+
+        // EVERY agent's roots, from the FULL static catalog — NOT $this->
+        // agentTargets (which may be a subset under non-default construction)
+        // and NOT gated on active agents (codex high ×2).
+        foreach (self::allAgentTargets() as $target) {
+            foreach ($target->gitignorePatterns() as $pattern) {
+                $prefixes[] = strtolower($pattern);
+            }
+        }
+
+        return ['exact' => $exact, 'prefixes' => array_values(array_unique($prefixes))];
+    }
+
+    /**
+     * Is this path already ignored by a dir-level managed pattern (one ending
+     * in `/`)? Used to dedup per-file wrapper entries against the dir glob.
+     *
+     * @param  list<string>  $patterns
+     */
+    private function isCoveredByDirPattern(string $path, array $patterns): bool
+    {
+        foreach ($patterns as $pattern) {
+            if ($pattern !== '' && str_ends_with($pattern, '/') && str_starts_with($path, $pattern)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array{exact: array<string, true>, prefixes: list<string>}  $reserved
+     */
+    private function isReservedEmitterPath(string $relativePath, array $reserved): bool
+    {
+        // Case-fold the comparison (codex high — case-insensitive filesystems).
+        $normalized = strtolower(ltrim($relativePath, '/'));
+        if (isset($reserved['exact'][$normalized])) {
+            return true;
+        }
+
+        foreach ($reserved['prefixes'] as $prefix) {
+            if ($prefix !== '' && str_starts_with($normalized, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 0.14.0: derive the FileEmitter reap inputs from this sync's results.
+     *  - `intended`: paths emitted this sync (WROTE/UNCHANGED/WOULD_WRITE) —
+     *    kept, never reaped;
+     *  - `preserved`: FQCNs DISABLED or errored this sync — their prior output is
+     *    preserved (disabling ≠ teardown; errored ≠ dormant);
+     *  - `hasLiveOutput`: any real on-disk emitter output (WROTE/UNCHANGED) — a
+     *    manifest entry, so it forces the `.boost/` gitignore line on its own.
+     *
+     * @param  list<EmitterResult>  $emitterResults
+     * @return array{intended: array<string, true>, preserved: array<string, true>, hasLiveOutput: bool}
+     */
+    private function emitterReapSets(array $emitterResults): array
+    {
+        $intended = [];
+        $preserved = [];
+        $hasLiveOutput = false;
+
+        foreach ($emitterResults as $emitterResult) {
+            if (
+                $emitterResult->relativePath !== null
+                && in_array($emitterResult->action, [EmitterAction::WROTE, EmitterAction::UNCHANGED, EmitterAction::WOULD_WRITE], true)
+            ) {
+                $intended[$emitterResult->relativePath] = true;
+            }
+
+            if (
+                $emitterResult->relativePath !== null
+                && in_array($emitterResult->action, [EmitterAction::WROTE, EmitterAction::UNCHANGED], true)
+            ) {
+                $hasLiveOutput = true;
+            }
+
+            if (in_array($emitterResult->action, [EmitterAction::DISABLED, EmitterAction::ERRORED], true)) {
+                $preserved[$emitterResult->fqcn] = true;
+            }
+        }
+
+        return ['intended' => $intended, 'preserved' => $preserved, 'hasLiveOutput' => $hasLiveOutput];
+    }
+
+    /**
+     * 0.14.0 (codex high): does the prior manifest own a `file` entry that is
+     * the SAME physical file (inode) as $relativePath under a different path
+     * spelling? On a case-insensitive filesystem an emitter that renames its
+     * output by CASE only (`.Dummy/output.txt` → `.dummy/output.txt`) writes the
+     * same inode; the prior entry is under the old casing so an exact
+     * `has()` misses it. Matching by inode carries ownership forward to the new
+     * spelling so the file is still reaped on a LATER dormant sync (rather than
+     * leaking). INODE identity (not case-folding) keeps this SAFE on
+     * case-sensitive filesystems: `.Dummy` and `.dummy` are distinct inodes
+     * there, so a genuinely-separate operator file is never falsely claimed.
+     * Where inodes are unavailable (`ino === 0`, some Windows volumes) this
+     * returns false — ownership isn't transferred (benign leak, not a wrong
+     * claim).
+     */
+    private function priorOwnsSameInode(SyncManifest $priorManifest, string $projectRoot, string $relativePath): bool
+    {
+        $stat = @stat($projectRoot . '/' . $relativePath);
+        if ($stat === false || $stat['ino'] <= 0) {
+            return false;
+        }
+
+        foreach ($priorManifest->entries as $priorPath => $entry) {
+            if ($entry['category'] !== SyncManifest::CATEGORY_FILE) {
+                continue;
+            }
+
+            if ($priorPath === $relativePath) {
+                continue;
+            }
+
+            $priorStat = @stat($projectRoot . '/' . $priorPath);
+            if ($priorStat !== false && $priorStat['ino'] === $stat['ino'] && $priorStat['dev'] === $stat['dev']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 0.14.0: reconcile-on-sync orphan reap. Delete boost-owned files recorded
+     * in the PRIOR manifest that this sync no longer intends to emit — covering
+     * two instances of one shape:
+     *  - a dormant FileEmitter's output (category `file`, provenance
+     *    `emitter:<fqcn>`): reaped unless the producing emitter was DISABLED or
+     *    errored this sync (preserve — disabling means "stop regenerating", not
+     *    "delete"), or the path is wrapper-claimed;
+     *  - a de-selected agent's guidance file (category `guidance`, engine
+     *    provenance): reaped IFF still boost-owned (on-disk sha == recorded sha;
+     *    a divergence means the operator hand-edited it → preserve, never-lossy).
+     *
+     * Manifest-GATED by construction (codex P3): the delete predicate consults
+     * the prior manifest's ownership, not raw gitignore membership. Only called
+     * on a successful, real (non-check) sync, after non-destructive writes.
+     *
+     * @param  array<string, true>  $intendedEmitterPaths  emitter paths emitted this sync (kept)
+     * @param  array<string, true>  $preservedEmitterFqcns  FQCNs DISABLED/errored this sync (files preserved)
+     * @param  list<string>  $ownedGuidancePaths  guidance files boost owns this sync (kept)
+     * @param  array<string, string>  $wrapperPaths  wrapper-claimed paths (never reaped here)
+     * @return array{writes: list<WrittenFile>, retained: list<string>}  `retained` = orphans whose delete FAILED — ownership is kept so the next sync retries (codex medium)
+     */
+    private function reapManifestOrphans(
+        string $projectRoot,
+        SyncManifest $priorManifest,
+        array $intendedEmitterPaths,
+        array $preservedEmitterFqcns,
+        array $ownedGuidancePaths,
+        array $wrapperPaths,
+    ): array {
+        $intendedGuidance = array_fill_keys($ownedGuidancePaths, true);
+
+        /** @var list<string> $reaps */
+        $reaps = [];
+        foreach ($priorManifest->entries as $relativePath => $entry) {
+            if ($this->isReapableOrphan($projectRoot, $priorManifest, $relativePath, $entry, $intendedEmitterPaths, $preservedEmitterFqcns, $intendedGuidance, $wrapperPaths)) {
+                $reaps[] = $relativePath;
+            }
+        }
+
+        // 0.14.0 (codex high): identify files boost wrote/kept LIVE this sync by
+        // INODE. On a case-insensitive filesystem an emitter that renames its
+        // output by CASE only (`.Dummy/output.txt` → `.dummy/output.txt`) leaves
+        // a prior manifest entry under the old spelling that string-matches as an
+        // orphan — but it is the SAME on-disk file (inode) as the just-written
+        // live output. Inode is the reliable alias test (macOS `realpath()`
+        // preserves the queried casing, so it does NOT collapse case): same
+        // dev:ino ⇒ same file ⇒ never unlink it; distinct inodes (case-sensitive
+        // FS) ⇒ a genuine orphan ⇒ reap (no leak). Where PHP can't read inodes
+        // (`ino === 0`, some Windows volumes) fall back to a case-folded path
+        // match — preserve rather than risk deleting an aliased live file.
+        $liveInodes = [];
+        $liveLowerPaths = [];
+        foreach ([...array_keys($intendedEmitterPaths), ...$ownedGuidancePaths] as $livePath) {
+            $liveAbsolute = $projectRoot . '/' . $livePath;
+            $stat = @stat($liveAbsolute);
+            if ($stat !== false && $stat['ino'] > 0) {
+                $liveInodes[$stat['dev'] . ':' . $stat['ino']] = true;
+            } else {
+                $liveLowerPaths[strtolower($liveAbsolute)] = true;
+            }
+        }
+
+        $writes = [];
+        /** @var list<string> $retained */
+        $retained = [];
+        foreach ($reaps as $relativePath) {
+            $absolute = $projectRoot . '/' . $relativePath;
+            // Reap ONLY a regular file (codex high): boost's guidance/emitter
+            // outputs are always plain files. If the operator has since
+            // replaced the path with a directory tree or a symlink, that is
+            // THEIR content — never recurse into it or unlink it, and drop
+            // ownership (don't retain). (is_link first — is_file() follows
+            // symlinks.)
+            if (is_link($absolute)) {
+                continue;
+            }
+
+            if (! is_file($absolute)) {
+                continue;
+            }
+
+            // Never unlink a path that aliases a live output (codex high).
+            $stat = @stat($absolute);
+            if ($stat !== false && $stat['ino'] > 0) {
+                if (isset($liveInodes[$stat['dev'] . ':' . $stat['ino']])) {
+                    continue;
+                }
+            } elseif (isset($liveLowerPaths[strtolower($absolute)])) {
+                continue;
+            }
+
+            if (@unlink($absolute)) {
+                $this->removeEmptyParentDirs($projectRoot, $absolute);
+                $writes[] = new WrittenFile($relativePath, $absolute, WriteAction::DELETED);
+
+                continue;
+            }
+
+            // Delete FAILED (codex medium): a transient permission/filesystem
+            // error must NOT silently drop the ownership record — that would
+            // leak the stale file forever (the next sync wouldn't know to retry).
+            // Retain it so writeSyncManifest carries the entry forward.
+            $retained[] = $relativePath;
+        }
+
+        return ['writes' => $writes, 'retained' => $retained];
+    }
+
+    /**
+     * Decide whether a single prior-manifest entry is a reapable orphan
+     * (extracted from reapManifestOrphans for cognitive-complexity).
+     *  - emitter `file`: orphan unless still emitted, wrapper-claimed, or its
+     *    producing emitter was DISABLED/errored this sync (preserved); reaped
+     *    only when the on-disk sha still matches the recorded sha (operator
+     *    hand-edited → preserve, never-lossy);
+     *  - engine `guidance`: orphan unless still scheduled; reap only when the
+     *    on-disk sha still matches (operator-edited → preserve, never-lossy).
+     *
+     * @param  array{sha256: string, category: string, provenance: string, scope: string}  $entry
+     * @param  array<string, true>  $intendedEmitterPaths
+     * @param  array<string, true>  $preservedEmitterFqcns
+     * @param  array<string, true>  $intendedGuidance
+     * @param  array<string, string>  $wrapperPaths
+     */
+    private function isReapableOrphan(
+        string $projectRoot,
+        SyncManifest $priorManifest,
+        string $relativePath,
+        array $entry,
+        array $intendedEmitterPaths,
+        array $preservedEmitterFqcns,
+        array $intendedGuidance,
+        array $wrapperPaths,
+    ): bool {
+        $category = $entry['category'];
+        $provenance = $entry['provenance'];
+
+        if ($category === SyncManifest::CATEGORY_FILE && str_starts_with($provenance, SyncManifest::PROVENANCE_EMITTER_PREFIX)) {
+            // Wrapper preservation must be PREFIX-aware (codex high): a wrapper
+            // DIRECTORY claim (`.agents/skills/foo`) owns its whole subtree, so
+            // a path under it is never reaped here — mirrors the prefix logic
+            // cleanupStaleManagedFiles already uses (exact-match would leak a
+            // delete on descendants).
+            if (isset($intendedEmitterPaths[$relativePath]) || $this->isUnderWrapperClaim($this->canonicalizeWrapperPath($relativePath), $wrapperPaths)) {
+                return false;
+            }
+
+            $fqcn = substr($provenance, strlen(SyncManifest::PROVENANCE_EMITTER_PREFIX));
+            if (isset($preservedEmitterFqcns[$fqcn])) {
+                return false;
+            }
+
+            // sha-revalidation (codex high — never-lossy): an emitter output the
+            // operator hand-edited after boost wrote it (e.g. a tweaked
+            // `.mcp.json`) must NOT be deleted on dormancy. Reap ONLY when the
+            // on-disk content still matches what boost recorded — a divergence
+            // means the operator took it over → preserve. Mirrors the guidance
+            // ownership gate; emitter outputs are operator-editable too.
+            $currentSha = $this->fileSha($projectRoot, $relativePath);
+
+            return $currentSha !== null && $currentSha === $entry['sha256'];
+        }
+
+        if ($category === SyncManifest::CATEGORY_GUIDANCE && $provenance === SyncManifest::PROVENANCE_ENGINE) {
+            if (isset($intendedGuidance[$relativePath])) {
+                return false;
+            }
+
+            $currentSha = $this->fileSha($projectRoot, $relativePath);
+
+            return $currentSha !== null && $priorManifest->ownsGuidance($relativePath, $currentSha);
+        }
+
+        return false;
+    }
+
+    /**
      * 0.12.0: write the agent-guidance files (CLAUDE.md / AGENTS.md /
      * GEMINI.md) wholesale + markerless. Consolidates the former per-target
      * guideline write + the marker-based conventions write into ONE wholesale
@@ -1357,19 +1793,68 @@ final readonly class SyncEngine
      * writes emission targets, and SyncManifest::withEntry() rejects source
      * prefixes defensively (the dual-role-publisher invariant).
      *
+     * 0.14.0: record LIVE FileEmitter outputs (category `file`, provenance
+     * `emitter:<fqcn>`) so a later sync can reap them when the emitter goes
+     * dormant — and attribute a dormant vs DISABLED/errored emitter via the FQCN
+     * in provenance. Records ONLY WROTE/UNCHANGED results that boost is allowed
+     * to OWN — `$ownableEmitterPaths`, computed in runOneEmitter as "created
+     * fresh OR already owned" (codex high). A first-time takeover of a
+     * pre-existing non-owned file, and a coincidentally-identical pre-existing
+     * file, are both absent from that set → never recorded → never reaped.
+     *
+     * @param  list<EmitterResult>  $emitterResults
+     * @param  array<string, true>  $ownableEmitterPaths
+     */
+    private function recordEmitterOutputs(SyncManifest $manifest, string $projectRoot, array $emitterResults, array $ownableEmitterPaths): SyncManifest
+    {
+        foreach ($emitterResults as $emitterResult) {
+            if ($emitterResult->relativePath === null) {
+                continue;
+            }
+
+            if (! in_array($emitterResult->action, [EmitterAction::WROTE, EmitterAction::UNCHANGED], true)) {
+                continue;
+            }
+
+            if (! isset($ownableEmitterPaths[$emitterResult->relativePath])) {
+                continue;
+            }
+
+            $sha = $this->fileSha($projectRoot, $emitterResult->relativePath);
+            if ($sha === null) {
+                continue;
+            }
+
+            $manifest = $manifest->withEntry(
+                $emitterResult->relativePath,
+                $sha,
+                SyncManifest::CATEGORY_FILE,
+                SyncManifest::PROVENANCE_EMITTER_PREFIX . $emitterResult->fqcn,
+            );
+        }
+
+        return $manifest;
+    }
+
+    /**
      * @param  list<string>  $ownedGuidancePaths  relative paths from writeGuidanceFiles
      * @param  array<string, string>  $wrapperPaths  wrapper-claimed emit path => owning package
+     * @param  list<EmitterResult>  $emitterResults  FileEmitter outcomes this sync
+     * @param  list<string>  $retainedOrphans  reap targets whose delete FAILED — carry their PRIOR ownership forward so a later sync retries (codex medium)
+     * @param  array<string, true>  $ownableEmitterPaths  emitter outputs boost may own (codex high)
      */
-    private function writeSyncManifest(string $projectRoot, array $ownedGuidancePaths, array $wrapperPaths): void
+    private function writeSyncManifest(string $projectRoot, array $ownedGuidancePaths, array $wrapperPaths, array $emitterResults, SyncManifest $priorManifest, array $retainedOrphans = [], array $ownableEmitterPaths = []): void
     {
         $manifest = SyncManifest::empty();
 
         foreach ($ownedGuidancePaths as $relativePath) {
             $sha = $this->fileSha($projectRoot, $relativePath);
             if ($sha !== null) {
-                $manifest = $manifest->withEntry($relativePath, $sha, 'guidance', SyncManifest::PROVENANCE_ENGINE);
+                $manifest = $manifest->withEntry($relativePath, $sha, SyncManifest::CATEGORY_GUIDANCE, SyncManifest::PROVENANCE_ENGINE);
             }
         }
+
+        $manifest = $this->recordEmitterOutputs($manifest, $projectRoot, $emitterResults, $ownableEmitterPaths);
 
         // Skill / command emission targets currently on disk. readPriorGitignore
         // here reads the JUST-WRITTEN managed block (this is the success path,
@@ -1396,6 +1881,20 @@ final readonly class SyncEngine
                 ? 'wrapper:' . $wrapperPaths[$relativePath]
                 : SyncManifest::PROVENANCE_ENGINE;
             $manifest = $manifest->withEntry($relativePath, $sha, $category, $provenance);
+        }
+
+        // 0.14.0 (codex medium): carry forward the PRIOR ownership of any orphan
+        // whose reap delete failed this run. Without this the entry would simply
+        // be absent from the new manifest, dropping ownership of a file that is
+        // still on disk — the next sync wouldn't know to retry. Re-add verbatim
+        // from the prior manifest so the retry path stays alive.
+        foreach ($retainedOrphans as $relativePath) {
+            $entry = $priorManifest->entries[$relativePath] ?? null;
+            if ($entry === null) {
+                continue;
+            }
+
+            $manifest = $manifest->withEntry($relativePath, $entry['sha256'], $entry['category'], $entry['provenance'], $entry['scope']);
         }
 
         // Don't materialize `.boost/` for a project boost emits nothing into —
@@ -1594,6 +2093,18 @@ final readonly class SyncEngine
         foreach ($wrapperClaimedPaths as $wrapperPath) {
             $normalized = ltrim($wrapperPath, '/');
             if ($this->isGuidelineFilePath($normalized)) {
+                continue;
+            }
+
+            // 0.14.0: dedup against dir-level patterns. The agent-target globs
+            // above (e.g. `.claude/skills/`) already ignore everything beneath
+            // them, so a per-file wrapper entry like
+            // `.claude/skills/foo/SKILL.md` is pure bloat that re-grows the
+            // managed block on every sync (one line per injected skill × every
+            // shared+dedicated root). Skip any path a dir-level pattern already
+            // covers — keep the compact dir-level shape. (Field report:
+            // project-boost-laravel had 26 redundant per-file lines.)
+            if ($this->isCoveredByDirPattern($normalized, $patterns)) {
                 continue;
             }
 
@@ -1933,8 +2444,22 @@ final readonly class SyncEngine
     /**
      * @return list<EmitterResult>
      */
-    private function runEmitters(string $projectRoot, BoostConfig $config, SyncContext $context, bool $checkOnly): array
-    {
+    /**
+     * @param  array{exact: array<string, true>, prefixes: list<string>}  $reservedPaths
+     * @param  list<Diagnostic>  $emitterDiagnostics  collected by-ref (reserved-path rejections + first-adoption warnings)
+     * @param  array<string, true>  $ownableEmitterPaths  collected by-ref: emitter outputs boost may OWN (fresh writes or already-owned) — only these become manifest-recorded + reapable (codex high)
+     * @return list<EmitterResult>
+     */
+    private function runEmitters(
+        string $projectRoot,
+        BoostConfig $config,
+        SyncContext $context,
+        bool $checkOnly,
+        SyncManifest $priorManifest,
+        array $reservedPaths,
+        array &$emitterDiagnostics,
+        array &$ownableEmitterPaths,
+    ): array {
         $allowedVendors = $config->allowedVendors;
         $discovered = $this->emitterDiscovery->discover($allowedVendors);
 
@@ -1956,7 +2481,7 @@ final readonly class SyncEngine
                 continue;
             }
 
-            $results[] = $this->runOneEmitter($emitter, $context, $projectRoot, $checkOnly, $claimedPaths);
+            $results[] = $this->runOneEmitter($emitter, $context, $projectRoot, $checkOnly, $claimedPaths, $priorManifest, $reservedPaths, $emitterDiagnostics, $ownableEmitterPaths);
         }
 
         return $results;
@@ -1964,6 +2489,9 @@ final readonly class SyncEngine
 
     /**
      * @param  array<string, string>  $claimedPaths
+     * @param  array{exact: array<string, true>, prefixes: list<string>}  $reservedPaths
+     * @param  list<Diagnostic>  $emitterDiagnostics
+     * @param  array<string, true>  $ownableEmitterPaths
      */
     private function runOneEmitter(
         DiscoveredEmitter $emitter,
@@ -1971,6 +2499,10 @@ final readonly class SyncEngine
         string $projectRoot,
         bool $checkOnly,
         array &$claimedPaths,
+        SyncManifest $priorManifest,
+        array $reservedPaths,
+        array &$emitterDiagnostics,
+        array &$ownableEmitterPaths,
     ): EmitterResult {
         try {
             $emitted = $emitter->emitter->emit($context);
@@ -1994,26 +2526,76 @@ final readonly class SyncEngine
             );
         }
 
-        if (isset($claimedPaths[$emitted->relativePath])) {
+        // 0.14.0 (codex high): canonicalize the emitter path ONCE before every
+        // downstream use — reserved-path check, collision tracking, manifest
+        // recording, orphan matching. FileWriter resolves `./CLAUDE.md` and
+        // `foo/./bar.md` to the same on-disk file, so without this an emitter
+        // could (a) dodge the reserved-path denylist with a `.`-segment
+        // spelling, and (b) make a later spelling change (`./foo.txt` →
+        // `foo.txt`) look like a dormant orphan and reap the just-written live
+        // file. Collapsing `.`/empty segments + normalizing separators here
+        // makes the string boost stores and the string boost matches identical.
+        $relativePath = $this->canonicalizeWrapperPath($emitted->relativePath);
+        if ($relativePath === '') {
+            return new EmitterResult(
+                fqcn: $emitter->fqcn,
+                vendor: $emitter->vendor,
+                action: EmitterAction::SKIPPED,
+                relativePath: $emitted->relativePath,
+                reason: 'emit() returned an empty/invalid path; write skipped.',
+            );
+        }
+
+        // 0.14.0: reserved-path denylist (codex P1). An emitter must emit only
+        // to a path it alone owns — never a guidance file, .gitignore, .boost/,
+        // a source dir, an agent skill/command root, or a wrapper-claimed path.
+        // Reject (skip the write) + surface a diagnostic; do NOT trip
+        // $hasAnyError (a misbehaving emitter must not block the whole sync's
+        // reap/manifest), and never track/reap the path.
+        if ($this->isReservedEmitterPath($relativePath, $reservedPaths)) {
+            $emitterDiagnostics[] = Diagnostic::warning(
+                null,
+                sprintf(
+                    'Emitter %s returned reserved path "%s" (owned by boost-core or the operator); the write was skipped. Emit to a path unique to your package.',
+                    $emitter->fqcn,
+                    $emitted->relativePath,
+                ),
+            );
+
+            return new EmitterResult(
+                fqcn: $emitter->fqcn,
+                vendor: $emitter->vendor,
+                action: EmitterAction::SKIPPED,
+                relativePath: $relativePath,
+                reason: 'Reserved path — owned by boost-core or the operator; write skipped.',
+            );
+        }
+
+        if (isset($claimedPaths[$relativePath])) {
             return new EmitterResult(
                 fqcn: $emitter->fqcn,
                 vendor: $emitter->vendor,
                 action: EmitterAction::ERRORED,
-                relativePath: $emitted->relativePath,
+                relativePath: $relativePath,
                 reason: sprintf(
                     'Path "%s" already claimed by emitter %s.',
-                    $emitted->relativePath,
-                    $claimedPaths[$emitted->relativePath],
+                    $relativePath,
+                    $claimedPaths[$relativePath],
                 ),
             );
         }
 
-        $claimedPaths[$emitted->relativePath] = $emitter->fqcn;
+        $claimedPaths[$relativePath] = $emitter->fqcn;
+
+        // 0.14.0 first-adoption warn (codex P1): capture pre-existence BEFORE
+        // the write so a takeover of an operator file boost has no ownership
+        // record of is surfaced (never silently adopted-then-later-reaped).
+        $preExisted = is_file($projectRoot . '/' . $relativePath);
 
         try {
             $write = $this->writer->write(
                 $projectRoot,
-                new PendingWrite($emitted->relativePath, $emitted->content),
+                new PendingWrite($relativePath, $emitted->content),
                 $checkOnly,
             );
         } catch (Throwable $throwable) {
@@ -2021,8 +2603,34 @@ final readonly class SyncEngine
                 fqcn: $emitter->fqcn,
                 vendor: $emitter->vendor,
                 action: EmitterAction::ERRORED,
-                relativePath: $emitted->relativePath,
+                relativePath: $relativePath,
                 reason: $throwable->getMessage(),
+            );
+        }
+
+        // 0.14.0 ownership gate (codex high): boost may OWN — and therefore later
+        // REAP — an emitter output ONLY when it created the file fresh
+        // (`! $preExisted`) or already owned it (in the prior manifest). A
+        // first-time takeover of a pre-existing file boost has no record of is
+        // NOT claimed: the emitter overwrote it this run (its prior content is in
+        // git), but boost will never reap it on dormancy — that would delete an
+        // operator file the emitter merely clobbered once. Only ownable paths are
+        // recorded in the manifest (see recordEmitterOutputs).
+        $ownsOutput = ! $preExisted
+            || $priorManifest->has($relativePath)
+            || $this->priorOwnsSameInode($priorManifest, $projectRoot, $relativePath);
+        if ($ownsOutput && in_array($write->action, [WriteAction::WROTE, WriteAction::UNCHANGED], true)) {
+            $ownableEmitterPaths[$relativePath] = true;
+        }
+
+        if ($write->action === WriteAction::WROTE && $preExisted && ! $priorManifest->has($relativePath)) {
+            $emitterDiagnostics[] = Diagnostic::warning(
+                null,
+                sprintf(
+                    'Emitter %s wrote over pre-existing file "%s" that boost-core has no ownership record of. The prior content is in git. boost-core will NOT manage or reap it — no ownership is claimed on a first-time takeover. To have boost own it, remove the pre-existing file before the emitter first runs.',
+                    $emitter->fqcn,
+                    $relativePath,
+                ),
             );
         }
 

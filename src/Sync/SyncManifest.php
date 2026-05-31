@@ -46,6 +46,22 @@ final readonly class SyncManifest
 
     public const PROVENANCE_ENGINE = 'engine';
 
+    /**
+     * 0.14.0: provenance prefix for FileEmitter outputs — `emitter:<fqcn>`.
+     * Parallels `wrapper:<vendor/package>`. Lets the reconcile-on-sync reap
+     * attribute a prior-recorded emitter output back to its producing emitter,
+     * so a DISABLED / errored emitter's file is preserved (not reaped) while a
+     * genuinely dormant emitter's file is reaped. Engine-family for prune
+     * purposes (the engine runs emitters during sync, so bare-CLI reproduces
+     * the set — unlike wrapper paths).
+     */
+    public const PROVENANCE_EMITTER_PREFIX = 'emitter:';
+
+    /** 0.14.0: FileEmitter output — fully generated, owned IFF listed. */
+    public const CATEGORY_FILE = 'file';
+
+    public const CATEGORY_GUIDANCE = 'guidance';
+
     private const SOURCE_PREFIXES = ['.ai/', 'resources/boost/'];
 
     /**

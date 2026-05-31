@@ -20,11 +20,9 @@ use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
-use SanderMuller\BoostCore\Conventions\ConventionsInliner;
 use SanderMuller\BoostCore\Conventions\ConventionsPass;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\GuidanceComposer;
-use SanderMuller\BoostCore\Conventions\LeakHit;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
@@ -521,26 +519,19 @@ final readonly class SyncEngine
         // needs the rendered `## Project Conventions` block (a legacy `$.slot`
         // ref or an unresolved/errored token), and token errors are render-class
         // (fail --check, keep the block — D7/§2).
+        // 0.15.0/0.16.0: inline conventions tokens into skill bodies + the
+        // per-skill self-check, owned by ConventionsPass. $conventionsErrors are
+        // render-class token errors (fail --check); the gate later reads
+        // $conventionsRequiresRuntime / $conventionsInlinedAny.
         $conventionsPass = ConventionsPass::build($this->installedPackages, $config);
+        $skillInline = $conventionsPass->inlineSkills($resolvedSkills);
+        $resolvedSkills = $skillInline['skills'];
         /** @var list<Diagnostic> $conventionsDiagnostics */
-        $conventionsDiagnostics = $conventionsPass->diagnostics();
+        $conventionsDiagnostics = [...$conventionsPass->diagnostics(), ...$skillInline['selfCheck']];
         /** @var list<string> $conventionsErrors */
-        $conventionsErrors = [];
-        $conventionsRequiresRuntime = false;
-        $conventionsInlinedAny = false;
-        $resolvedSkills = $this->inlineSkillBodies($resolvedSkills, $conventionsPass->inliner(), $conventionsRequiresRuntime, $conventionsErrors, $conventionsInlinedAny);
-
-        // 0.16.0 self-check leg: scan each rendered skill body for tokens left
-        // raw (a fresh mode-B leak — born here, made positional). Warnings only:
-        // the authoritative gate is $conventionsErrors (fails --check); these add
-        // the file:line the bare error lacks. The guidance half runs in
-        // inlineGuidanceAndGate (where the assembled body lives).
-        foreach ($resolvedSkills as $skill) {
-            $conventionsDiagnostics = [
-                ...$conventionsDiagnostics,
-                ...$this->conventionsSelfCheck($conventionsPass->inliner(), 'skill: ' . $skill->name, $skill->body),
-            ];
-        }
+        $conventionsErrors = $skillInline['errors'];
+        $conventionsRequiresRuntime = $skillInline['requiresRuntime'];
+        $conventionsInlinedAny = $skillInline['inlinedAny'];
 
         $context = new SyncContext(
             projectRoot: $projectRoot,
@@ -677,8 +668,7 @@ final readonly class SyncEngine
             $checkOnly,
             $guidelineRenderErrors !== [],
             $priorManifest,
-            $conventionsPass->section(),
-            $conventionsPass->inliner(),
+            $conventionsPass,
             $conventionsRequiresRuntime,
             $conventionsInlinedAny,
         );
@@ -1675,174 +1665,14 @@ final readonly class SyncEngine
      *   When it proves boost owns a markerless guidance file (listed + sha-match),
      *   the empty-assembly guard CLEARS it (converge); otherwise the file is
      *   preserved (the 0.12 never-lossy default for operator / unproven files).
-     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>, ownedGuidancePaths: list<string>}
+     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>, ownedGuidancePaths: list<string>, conventionsErrors: list<string>}
      *   `ownedGuidancePaths` = relative paths boost wrote with NON-empty content
      *   this sync (boost-owned guidance), for recording in the new manifest so a
      *   later empty sync can prove ownership + converge. Excludes preserved
-     *   operator files and empty/cleared files.
+     *   operator files and empty/cleared files. `conventionsErrors` = guidance-side
+     *   render-class token errors (fail --check), from the ConventionsPass gate.
      */
-    /**
-     * 0.15.0: inline convention slot tokens into each skill body (vendor AND
-     * host) before fan-out. Returns the rewritten skills; sets $requiresRuntime
-     * true if ANY skill still needs the rendered block (legacy `$.slot` ref or
-     * an unresolved/errored token), and accumulates render-class token errors.
-     *
-     * 0.16.0 self-check: warning-level diagnostics for any conventions token left
-     * RAW in a freshly-rendered body (a mode-B leak born this sync), made
-     * positional with a `<label>:<line>` locator the bare $conventionsErrors
-     * string lacks. Reuses {@see ConventionsInliner::scanLeaks()} so the
-     * sync-time, doctor, and validate legs classify identically. Warnings only —
-     * the authoritative gate stays $conventionsErrors (which fails `--check`);
-     * these just say WHERE. On a healthy sync (every token resolves) it emits
-     * nothing.
-     *
-     * @return list<Diagnostic>
-     */
-    private function conventionsSelfCheck(ConventionsInliner $inliner, string $label, string $body): array
-    {
-        $out = [];
-        foreach ($inliner->scanLeaks($body) as $hit) {
-            $where = $label . ':' . $hit->line;
-            $out[] = Diagnostic::warning($hit->path, $hit->kind === LeakHit::KIND_FENCE_OPENER
-                ? sprintf('unprocessed `boost:conv` fence at %s', $where)
-                : sprintf('conventions token%s left raw at %s', $hit->path !== null ? sprintf(' "%s"', $hit->path) : '', $where));
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param  list<Skill>  $skills
-     * @param  list<string>  $errors
-     * @return list<Skill>
-     */
-    private function inlineSkillBodies(array $skills, ConventionsInliner $inliner, bool &$requiresRuntime, array &$errors, bool &$anyInlined): array
-    {
-        $out = [];
-        foreach ($skills as $skill) {
-            $result = $inliner->inline($skill->body);
-            if ($result->requiresRuntimeConventions) {
-                $requiresRuntime = true;
-            }
-
-            if ($result->inlinedAny) {
-                $anyInlined = true;
-            }
-
-            $errors = [...$errors, ...$result->errors];
-            $out[] = $skill->withBody($result->body);
-        }
-
-        return $out;
-    }
-
-    /**
-     * Remove boost's OWN rendered `## Project Conventions` block (heading + the
-     * following ```yaml fence) from content, so the drop-gate's existing-content
-     * scan doesn't treat boost's own prior render as a dependency (codex round-3
-     * — that would make the block undroppable). Operator prose pointers ("the
-     * conventions section above") and residual refs/tokens elsewhere survive.
-     */
-    private function withoutRenderedConventionsBlock(string $content): string
-    {
-        return (string) preg_replace('/##\s+Project Conventions\s*\R+```yaml\R.*?\R```[ \t]*\R?/su', '', $content);
-    }
-
-    /**
-     * The portion of an existing guidance file that will SURVIVE this sync —
-     * the only content the drop gate should scan for a conventions dependency
-     * (codex round-5). Keys on OWNERSHIP, not just marker presence:
-     *  - boost does NOT own the file (operator-authored / sha-diverged) → it is
-     *    preserved wholesale → scan all of it (minus boost's own rendered block);
-     *  - boost OWNS it (regenerated wholesale): a markerless owned file's prior
-     *    body does NOT survive → scan nothing; a legacy marker-bearing owned file
-     *    keeps only its OUT-OF-MARKER residual → scan that.
-     * This drops the over-keep stickiness for owned-markerless guidance without
-     * the wrong-drop codex's blanket "markerless → skip" would cause for an
-     * operator-owned file that still carries a live conventions dependency.
-     */
-    private function survivingGuidanceForGate(string $content, bool $boostOwns): string
-    {
-        if (! $boostOwns) {
-            return $this->withoutRenderedConventionsBlock($content);
-        }
-
-        if (! str_contains($content, '<!-- boost-core:')) {
-            return '';
-        }
-
-        $residual = (string) preg_replace('/<!-- boost-core:[a-z]+:start -->.*?<!-- boost-core:[a-z]+:end -->/su', '', $content);
-
-        return $this->withoutRenderedConventionsBlock($residual);
-    }
-
-    /**
-     * 0.15.0: inline slot tokens into each guidance body + decide the conventions
-     * block drop gate (§2). The block is KEPT when ANY live artifact still needs
-     * it: a skill (skillRequiresRuntime), a guidance body with a legacy `$.slot`
-     * ref / unresolved token, or a guidance body that still POINTS at the section
-     * ("Project Conventions" heading-relative prose — §3b, conservative keep).
-     * Only when everything is provably token-only does the block drop
-     * (effectiveSection = null).
-     *
-     * @param  array<string, array{body: string, isClaude: bool}>  $guidanceFiles
-     * @param  list<string>  $conventionsErrors
-     * @return array{files: array<string, array{body: string, isClaude: bool}>, section: ?string, selfCheck: list<Diagnostic>}
-     */
-    private function inlineGuidanceAndGate(string $projectRoot, array $guidanceFiles, ConventionsInliner $inliner, bool $skillRequiresRuntime, bool $skillInlinedAny, ?string $conventionsSection, array &$conventionsErrors, SyncManifest $priorManifest): array
-    {
-        $guidanceRequiresRuntime = false;
-        $anyInlined = $skillInlinedAny;
-        /** @var list<Diagnostic> $selfCheck */
-        $selfCheck = [];
-        foreach ($guidanceFiles as $file => $info) {
-            $result = $inliner->inline($info['body']);
-            $guidanceFiles[$file]['body'] = $result->body;
-            $conventionsErrors = [...$conventionsErrors, ...$result->errors];
-            $selfCheck = [...$selfCheck, ...$this->conventionsSelfCheck($inliner, $file, $result->body)];
-            if ($result->inlinedAny) {
-                $anyInlined = true;
-            }
-
-            // KEEP the block if the emitted body needs runtime resolution OR
-            // depends on the section by prose pointer (codex P1.2 — broad
-            // heading-relative match, not an exact string) OR the EXISTING
-            // on-disk content (which migrate() may preserve as residual) carries
-            // a legacy ref / pointer (codex P1.1 — gate must see post-migration
-            // content). Fail toward keep.
-            // Scan only the content that will SURVIVE this sync (codex round-5):
-            // a file boost owns is regenerated (scan its surviving residual, or
-            // nothing for owned-markerless); a file boost doesn't own is
-            // preserved wholesale (scan it). Strips boost's own rendered block
-            // either way (codex round-3 — its heading must not self-perpetuate).
-            $existing = is_file($projectRoot . '/' . $file) ? (string) @file_get_contents($projectRoot . '/' . $file) : '';
-            $boostOwns = $existing !== '' && $priorManifest->ownsGuidance($file, hash('sha256', $existing));
-            $existingResidual = $this->survivingGuidanceForGate($existing, $boostOwns);
-            if ($result->requiresRuntimeConventions
-                || $inliner->dependsOnConventions($result->body)
-                || $inliner->dependsOnConventions($existingResidual)
-            ) {
-                $guidanceRequiresRuntime = true;
-            }
-        }
-
-        // Drop the block ONLY on positive proof of full migration: conventions
-        // are declared (section non-null), at least one token was actually
-        // inlined this sync, nothing still needs the runtime block, and no token
-        // errored. Otherwise KEEP it — a pure-conventions project with no token
-        // skills (nothing inlined) renders the block exactly as pre-0.15
-        // (backward-safe), and any uncertainty fails toward keep.
-        $fullyMigrated = $anyInlined && ! $skillRequiresRuntime && ! $guidanceRequiresRuntime && $conventionsErrors === [];
-        $effectiveSection = ($conventionsSection !== null && ! $fullyMigrated) ? $conventionsSection : null;
-
-        return ['files' => $guidanceFiles, 'section' => $effectiveSection, 'selfCheck' => $selfCheck];
-    }
-
-    /**
-     * @param  list<Guideline>  $resolvedGuidelines
-     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>, ownedGuidancePaths: list<string>, conventionsErrors: list<string>}
-     */
-    private function writeGuidanceFiles(string $projectRoot, BoostConfig $config, array $resolvedGuidelines, bool $checkOnly, bool $skipGuidelineWrites, SyncManifest $priorManifest, ?string $conventionsSection, ConventionsInliner $inliner, bool $skillRequiresRuntime, bool $skillInlinedAny): array
+    private function writeGuidanceFiles(string $projectRoot, BoostConfig $config, array $resolvedGuidelines, bool $checkOnly, bool $skipGuidelineWrites, SyncManifest $priorManifest, ConventionsPass $conventionsPass, bool $skillRequiresRuntime, bool $skillInlinedAny): array
     {
         /** @var list<WrittenFile> $writes */
         $writes = [];
@@ -1855,9 +1685,9 @@ final readonly class SyncEngine
 
         $composer = new GuidanceComposer();
 
-        // Conventions discovery + the inliner are built once in sync()
-        // (conventionsContext()) and passed in: $conventionsSection is the
-        // prebuilt rendered block, $inliner is shared with the skill pass.
+        // The ConventionsPass (built once in sync()) owns the inliner + the
+        // rendered section + the inline/drop-gate logic; this method just wires
+        // its guidance pass into the wholesale markerless write.
 
         if ($skipGuidelineWrites) {
             // A guideline render failed. Conventions + guidelines now assemble
@@ -1877,18 +1707,15 @@ final readonly class SyncEngine
             return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => [], 'conventionsErrors' => $conventionsErrors];
         }
 
-        $guidanceFiles = $this->collectGuidanceFiles($config, $resolvedGuidelines, $conventionsSection);
+        $guidanceFiles = $this->collectGuidanceFiles($config, $resolvedGuidelines, $conventionsPass->section());
 
         // 0.15.0: inline slot tokens into each guidance body + decide the drop
-        // gate (extracted to keep this method under the complexity budget).
-        ['files' => $guidanceFiles, 'section' => $effectiveSection, 'selfCheck' => $guidanceSelfCheck] = $this->inlineGuidanceAndGate(
+        // gate — owned by ConventionsPass.
+        ['files' => $guidanceFiles, 'section' => $effectiveSection, 'errors' => $conventionsErrors, 'selfCheck' => $guidanceSelfCheck] = $conventionsPass->inlineGuidanceAndGate(
             $projectRoot,
             $guidanceFiles,
-            $inliner,
             $skillRequiresRuntime,
             $skillInlinedAny,
-            $conventionsSection,
-            $conventionsErrors,
             $priorManifest,
         );
         $diagnostics = [...$diagnostics, ...$guidanceSelfCheck];

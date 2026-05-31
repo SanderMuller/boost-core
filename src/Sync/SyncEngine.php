@@ -21,12 +21,10 @@ use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\ConventionsInliner;
-use SanderMuller\BoostCore\Conventions\ConventionsSchema;
+use SanderMuller\BoostCore\Conventions\ConventionsPass;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\GuidanceComposer;
 use SanderMuller\BoostCore\Conventions\LeakHit;
-use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
-use SanderMuller\BoostCore\Conventions\SlotResolver;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
@@ -523,14 +521,14 @@ final readonly class SyncEngine
         // needs the rendered `## Project Conventions` block (a legacy `$.slot`
         // ref or an unresolved/errored token), and token errors are render-class
         // (fail --check, keep the block — D7/§2).
-        $conventionsCtx = $this->conventionsContext($config);
+        $conventionsPass = ConventionsPass::build($this->installedPackages, $config);
         /** @var list<Diagnostic> $conventionsDiagnostics */
-        $conventionsDiagnostics = $conventionsCtx['diagnostics'];
+        $conventionsDiagnostics = $conventionsPass->diagnostics();
         /** @var list<string> $conventionsErrors */
         $conventionsErrors = [];
         $conventionsRequiresRuntime = false;
         $conventionsInlinedAny = false;
-        $resolvedSkills = $this->inlineSkillBodies($resolvedSkills, $conventionsCtx['inliner'], $conventionsRequiresRuntime, $conventionsErrors, $conventionsInlinedAny);
+        $resolvedSkills = $this->inlineSkillBodies($resolvedSkills, $conventionsPass->inliner(), $conventionsRequiresRuntime, $conventionsErrors, $conventionsInlinedAny);
 
         // 0.16.0 self-check leg: scan each rendered skill body for tokens left
         // raw (a fresh mode-B leak — born here, made positional). Warnings only:
@@ -540,7 +538,7 @@ final readonly class SyncEngine
         foreach ($resolvedSkills as $skill) {
             $conventionsDiagnostics = [
                 ...$conventionsDiagnostics,
-                ...$this->conventionsSelfCheck($conventionsCtx['inliner'], 'skill: ' . $skill->name, $skill->body),
+                ...$this->conventionsSelfCheck($conventionsPass->inliner(), 'skill: ' . $skill->name, $skill->body),
             ];
         }
 
@@ -679,8 +677,8 @@ final readonly class SyncEngine
             $checkOnly,
             $guidelineRenderErrors !== [],
             $priorManifest,
-            $conventionsCtx['section'],
-            $conventionsCtx['inliner'],
+            $conventionsPass->section(),
+            $conventionsPass->inliner(),
             $conventionsRequiresRuntime,
             $conventionsInlinedAny,
         );
@@ -1736,56 +1734,6 @@ final readonly class SyncEngine
         }
 
         return $out;
-    }
-
-    /**
-     * 0.15.0: discover the conventions schema ONCE and build the slot inliner +
-     * the (gated) rendered conventions section. Shared between the skill-inlining
-     * pass (sync(), before fan-out) and the guidance-inlining pass
-     * (writeGuidanceFiles) so the same resolver runs over vendor + host skills
-     * AND assembled guidance. `section` is the rendered `## Project Conventions`
-     * block (null when no vendor ships a schema); the drop gate (§2) decides
-     * whether it's actually written based on the live-set runtime dependency.
-     *
-     * @return array{section: ?string, inliner: ConventionsInliner, diagnostics: list<Diagnostic>}
-     */
-    private function conventionsContext(BoostConfig $config): array
-    {
-        /** @var list<Diagnostic> $diagnostics */
-        $diagnostics = [];
-
-        $discovery = new SchemaDiscovery($this->installedPackages);
-        ['sources' => $sources, 'diagnostics' => $convDiagnostics] = $discovery->discover(
-            $config->allowedVendors,
-            conventionsDeclared: $config->conventions !== [],
-        );
-        $diagnostics = [...$diagnostics, ...$convDiagnostics];
-
-        /** @var array<string, mixed> $composed */
-        $composed = [];
-        $section = null;
-        if ($sources !== []) {
-            $schema = new ConventionsSchema($sources);
-            $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
-            $composed = $schema->compose();
-            $seed = (new ConventionsBlockEmitter())->scaffoldSeed($sources);
-            $section = (new GuidanceComposer())->renderConventionsSection($config->conventions, $seed);
-        }
-
-        /** @var list<string> $slotRoots */
-        $slotRoots = [];
-        $properties = $composed['properties'] ?? null;
-        if (is_array($properties)) {
-            foreach (array_keys($properties) as $root) {
-                if (is_string($root) && $root !== 'schema-version') {
-                    $slotRoots[] = $root;
-                }
-            }
-        }
-
-        $inliner = new ConventionsInliner(new SlotResolver($config->conventions, $composed), $slotRoots);
-
-        return ['section' => $section, 'inliner' => $inliner, 'diagnostics' => $diagnostics];
     }
 
     /**

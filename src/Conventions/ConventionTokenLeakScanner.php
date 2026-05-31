@@ -4,7 +4,6 @@ namespace SanderMuller\BoostCore\Conventions;
 
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
-use SanderMuller\BoostCore\Sync\SyncEngine;
 
 /**
  * Classifies conventions-token leaks in emitted content (0.16.0 conventions-token
@@ -37,33 +36,12 @@ final readonly class ConventionTokenLeakScanner
 
     /**
      * Build a scanner with the SAME resolver + inliner sync uses, from the
-     * installed packages + config. Mirrors {@see SyncEngine::conventionsContext()}'s
-     * resolver/inliner construction (schema discovery → compose → slot roots);
-     * keep the two in lockstep if that build changes.
+     * installed packages + config. Delegates to {@see ConventionsPass::build()},
+     * the single conventions-build authority, so the build is defined once.
      */
     public static function fromConfig(InstalledPackages $packages, BoostConfig $config): self
     {
-        ['sources' => $sources] = (new SchemaDiscovery($packages))->discover(
-            $config->allowedVendors,
-            conventionsDeclared: $config->conventions !== [],
-        );
-
-        $composed = $sources === [] ? [] : (new ConventionsSchema($sources))->compose();
-
-        /** @var list<string> $slotRoots */
-        $slotRoots = [];
-        $properties = $composed['properties'] ?? null;
-        if (is_array($properties)) {
-            foreach (array_keys($properties) as $root) {
-                if (is_string($root) && $root !== 'schema-version') {
-                    $slotRoots[] = $root;
-                }
-            }
-        }
-
-        $resolver = new SlotResolver($config->conventions, $composed);
-
-        return new self(new ConventionsInliner($resolver, $slotRoots), $resolver);
+        return ConventionsPass::build($packages, $config)->leakScanner();
     }
 
     /**

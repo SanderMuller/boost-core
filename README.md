@@ -8,6 +8,8 @@
 
 > AI agent configuration sync for any PHP project. Write skills, guidelines, and commands once in `.ai/`; boost-core publishes them to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). No framework dependency.
 
+![overview image](overview.png)
+
 Tag filtering, remote skill sources, vendor allowlist, `boost doctor`, `boost where` origin tracing, and `.ai/commands/` argument-transpiling fanout. Coexists with [`laravel/boost`](https://github.com/laravel/boost) in Laravel projects via [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel).
 
 ## Install

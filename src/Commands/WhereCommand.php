@@ -86,7 +86,7 @@ final class WhereCommand extends BoostBaseCommand
 
         $diffSkill = $input->getOption('diff');
         if (is_string($diffSkill) && $diffSkill !== '') {
-            return $this->executeDiff($io, $projectRoot, $diffSkill);
+            return $this->executeDiff($io, $projectRoot, $diffSkill, $configOverride);
         }
 
         // Surface which config is live (root vs .config/boost.php). Best-effort —
@@ -405,10 +405,10 @@ final class WhereCommand extends BoostBaseCommand
         return (string) json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
-    private function executeDiff(SymfonyStyle $io, string $projectRoot, string $name): int
+    private function executeDiff(SymfonyStyle $io, string $projectRoot, string $name, ?string $configOverride = null): int
     {
         try {
-            $engine = SyncEngine::default($this->injectedPackages);
+            $engine = SyncEngine::default($this->injectedPackages, $configOverride);
             $paths = $engine->resolveSkillShadowPaths($projectRoot, $name);
             $noun = 'skill';
             if ($paths === null) {

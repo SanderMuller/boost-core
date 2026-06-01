@@ -767,7 +767,10 @@ it('doctor: --config loads an explicit config path, overriding auto-discovery (#
         $display = $tester->getDisplay();
         expect($exit)->toBe(0)
             ->and($display)->toContain('custom/my-boost.php')
-            ->and($display)->toContain('parses cleanly');
+            ->and($display)->toContain('parses cleanly')
+            // The drift section must use the SAME override, not fall back to
+            // auto-discovery (which would fail — there is no root/.config config).
+            ->and($display)->not->toContain('Could not check drift');
     } finally {
         doctorCleanup($dir);
     }

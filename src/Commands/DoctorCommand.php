@@ -106,7 +106,7 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportRemoteSkills($io, $config);
         $this->reportTags($io, $config);
         $this->reportExcludeKeys($io, $config);
-        $driftResult = $this->reportDrift($io, $projectRoot);
+        $driftResult = $this->reportDrift($io, $projectRoot, $configOverride);
         $this->reportShadows($io, $driftResult);
         $this->reportConventionTokenLeaks($io, $projectRoot, $config);
         if ($input->getOption('check-versions') === true) {
@@ -662,12 +662,12 @@ final class DoctorCommand extends BoostBaseCommand
         return $out;
     }
 
-    private function reportDrift(SymfonyStyle $io, string $projectRoot): ?SyncResult
+    private function reportDrift(SymfonyStyle $io, string $projectRoot, ?string $configOverride): ?SyncResult
     {
         $io->section('Drift');
 
         try {
-            $result = SyncEngine::default()->sync($projectRoot, checkOnly: true);
+            $result = SyncEngine::default(configFile: $configOverride)->sync($projectRoot, checkOnly: true);
         } catch (Throwable $throwable) {
             $io->warning('Could not check drift: ' . $throwable->getMessage());
 

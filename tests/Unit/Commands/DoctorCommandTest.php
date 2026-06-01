@@ -738,9 +738,12 @@ it('doctor: resolves and names a .config/boost.php config (#89)', function (): v
 
     try {
         $result = runDoctor($dir);
+        // Exit 0 means the config loaded + every section ran; the `Config:` line
+        // (writeln, not wrapped) names the resolved path. Avoid asserting the
+        // success()-block "parses cleanly" text — SymfonyStyle word-wraps it at
+        // width 80, so a long temp path can split the substring across a newline.
         expect($result['exit'])->toBe(0)
-            ->and($result['display'])->toContain('.config/boost.php')
-            ->and($result['display'])->toContain('parses cleanly');
+            ->and($result['display'])->toContain('.config/boost.php');
     } finally {
         doctorCleanup($dir);
     }
@@ -765,9 +768,12 @@ it('doctor: --config loads an explicit config path, overriding auto-discovery (#
     try {
         $exit = $tester->execute(['--working-dir' => $dir, '--config' => 'custom/my-boost.php']);
         $display = $tester->getDisplay();
+        // Exit 0 proves the explicit config loaded + all sections ran; the
+        // `Config:` line (writeln) names it. Don't assert the success()-block
+        // "parses cleanly" — it word-wraps at width 80 and a long temp path
+        // splits the substring across a newline (green locally, red on CI).
         expect($exit)->toBe(0)
             ->and($display)->toContain('custom/my-boost.php')
-            ->and($display)->toContain('parses cleanly')
             // The drift section must use the SAME override, not fall back to
             // auto-discovery (which would fail — there is no root/.config config).
             ->and($display)->not->toContain('Could not check drift');

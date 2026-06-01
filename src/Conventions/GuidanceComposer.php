@@ -7,15 +7,15 @@ use Symfony\Component\Yaml\Yaml;
 /**
  * Assembles the wholesale, markerless content of an agent-guidance file
  * (CLAUDE.md / AGENTS.md / GEMINI.md) and migrates legacy marker-bounded
- * files (0.12.0).
+ * files.
  *
  * **Why markerless.** Agent-guidance files are boost-emitted category-3
- * paths (0.9.6 path-ownership reframe): operators influence them through
+ * paths: operators influence them through
  * `.ai/` sources + `boost.php`, not by hand-editing the emission target. The
  * `boost-core:guidelines:*` / `boost-core:conventions:*` marker pairs that
  * preserved operator content inside the file are therefore a vestige —
  * removing them eliminates the marker verbosity and makes the file wholesale-
- * regenerated each sync. See spec 0.12.0-markerless-agent-guidance.
+ * regenerated each sync.
  *
  * **Composition order** (§Q3): optional Project Conventions section
  * (CLAUDE.md only, when conventions are declared) then the guidelines body.
@@ -111,8 +111,8 @@ final readonly class GuidanceComposer
      *
      *  - **Markers present (one-time migration sync).** Strip the guidelines
      *    region + unwrap the conventions region, drop any block that
-     *    duplicates the boost output (a stale inline copy — the collectiq #79
-     *    case), and PRESERVE any genuine remaining non-boost content below the
+     *    duplicates the boost output (a stale inline copy),
+     *    and PRESERVE any genuine remaining non-boost content below the
      *    generated body for ONE sync, returning it as `residual` so the caller
      *    can warn (pointing it at `.ai/guidelines/` / convert-conventions).
      *
@@ -158,9 +158,9 @@ final readonly class GuidanceComposer
     private function reduceToResidual(string $existing): string
     {
         // Normalize CRLF → LF first so marker stripping + the guidelines-region
-        // strip are line-ending-agnostic (codex-review pin: Windows / CRLF
+        // strip are line-ending-agnostic: Windows / CRLF
         // checkouts otherwise keep the conventions markers + explainer in the
-        // residual, so the first 0.12 sync never converges to markerless).
+        // residual, so the first sync never converges to markerless.
         $reduced = str_replace("\r\n", "\n", $existing);
 
         // Remove the guidelines region wholesale (body regenerated).

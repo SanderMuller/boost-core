@@ -3,7 +3,7 @@
 namespace SanderMuller\BoostCore\Conventions;
 
 /**
- * The on-request convention audit surface (0.15.0, spec D5). With inlining the
+ * The on-request convention audit surface. With inlining the
  * always-loaded `## Project Conventions` block is dropped once a project is
  * fully migrated, so this replaces "read the block in CLAUDE.md" — it reports
  * the EFFECTIVE resolved value of every slot the composed schema defines, with

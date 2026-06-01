@@ -22,8 +22,7 @@ use function Laravel\Prompts\multiselect;
  * BoostConfigWriter (AST modification of boost.php).
  *
  * If boost.php doesn't exist yet, generates a starter file first, then
- * proceeds straight into the interactive picker — replaces the
- * pre-0.3 `boost:init` + `boost:install` two-step.
+ * proceeds straight into the interactive picker.
  *
  * First-party packages (matching FirstPartyPrefixes) are pre-checked.
  */

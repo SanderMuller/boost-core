@@ -116,8 +116,8 @@ final class DoctorCommand extends BoostBaseCommand
      *
      * Read-only by contract: sync owns the cleanup (deletes on next run when
      * Copilot is active); doctor lists registry-tracked paths still present
-     * on disk for legacy-migration triage. Operators upgrading across the
-     * 0.9.0 / 0.9.1 retirement boundaries can see at a glance what next sync
+     * on disk for legacy-migration triage. Operators upgrading across
+     * retirement boundaries can see at a glance what next sync
      * would delete without running sync.
      *
      * Gated on Copilot in active agents, matching sync's gate exactly:
@@ -229,11 +229,11 @@ final class DoctorCommand extends BoostBaseCommand
     }
 
     /**
-     * 0.16.0 conventions-token observability: scan EMITTED agent files (guidance +
+     * Conventions-token observability: scan EMITTED agent files (guidance +
      * per-agent SKILL.md, active agents only, incl. gitignored copies) for raw /
      * unresolved `boost:conv` tokens that leaked instead of resolving. Dominant
-     * cause: a token-bearing skill synced by a pre-0.15 engine (which copies the
-     * token verbatim, no error). Advisory — doctor never fails the build; `boost
+     * cause: a token-bearing skill synced by an engine that copies the token
+     * verbatim (no error). Advisory — doctor never fails the build; `boost
      * validate` is the enforcing gate. Quiet on clean, matching sibling checks.
      */
     private function reportConventionTokenLeaks(SymfonyStyle $io, string $projectRoot, BoostConfig $config): void
@@ -525,12 +525,12 @@ final class DoctorCommand extends BoostBaseCommand
     }
 
     /**
-     * 0.12.0: surface `withExcludedSkills([...])` / `withExcludedGuidelines([...])`
+     * Surface `withExcludedSkills([...])` / `withExcludedGuidelines([...])`
      * entries that silently no-op because the key doesn't address a real
      * skill/guideline. The deny-list key is `vendor/package:name` —
      * `withExcludedSkills(['pre-release'])` (a bare name) matches nothing and
      * leaves the skill installed with no error. Doctor names the mismatch so
-     * the operator can correct the key (mirrors the 0.10.0 tag-typo split).
+     * the operator can correct the key (mirrors the tag-typo split).
      */
     private function reportExcludeKeys(SymfonyStyle $io, BoostConfig $config): void
     {
@@ -621,17 +621,17 @@ final class DoctorCommand extends BoostBaseCommand
 
     /**
      * Surface host→vendor shadows (skills AND guidelines) so `boost doctor`
-     * agrees with `boost where` on the shadow story (0.13.0 — guideline shadows
-     * reach parity with skills). A host `.ai/` file overriding an allowlisted-
-     * vendor copy of the same name is silent by design; this makes it visible
-     * in the triage surface. Guideline shadows respect the active tag filter
+     * agrees with `boost where` on the shadow story. A host `.ai/` file
+     * overriding an allowlisted-vendor copy of the same name is silent by
+     * design; this makes it visible in the triage surface.
+     * Guideline shadows respect the active tag filter
      * (a tag-filtered-out vendor guideline isn't shadowed), inherited from
      * `SyncResult::hostGuidelineShadows`.
      */
     private function reportShadows(SymfonyStyle $io, ?SyncResult $result): void
     {
-        // Reuse the drift section's check-only sync result — no second full sync
-        // (codex-review P3). Null means the drift sync failed; stay quiet here
+        // Reuse the drift section's check-only sync result — no second full sync.
+        // Null means the drift sync failed; stay quiet here
         // (the drift section already surfaced it).
         if (! $result instanceof SyncResult) {
             return;
@@ -664,13 +664,13 @@ final class DoctorCommand extends BoostBaseCommand
         ['sources' => $sources, 'diagnostics' => $discoveryDiagnostics] = $discovery->discover($config->allowedVendors);
 
         if ($sources === []) {
-            // 0.10.1: split malformed-declaration diagnostics (warning/error)
+            // Split malformed-declaration diagnostics (warning/error)
             // from the noise-collapse summary INFO. SchemaDiscovery's summary
             // INFO populates the diagnostics list even in the legitimately-
-            // empty case ("no allowlisted vendor publishes a schema yet"),
-            // so the pre-0.10.1 "any diagnostic → all malformed" branch was
-            // false-positive: a clean no-schemas-published project triaged
-            // as if every vendor shipped broken JSON. Filter by level.
+            // empty case ("no allowlisted vendor publishes a schema yet"), so
+            // treating any diagnostic as malformed would false-positive: a clean
+            // no-schemas-published project would triage as if every vendor
+            // shipped broken JSON. Filter by level.
             $malformed = array_values(array_filter(
                 $discoveryDiagnostics,
                 static fn (Diagnostic $d): bool => $d->level !== 'info',
@@ -694,7 +694,7 @@ final class DoctorCommand extends BoostBaseCommand
             return;
         }
 
-        // 0.9.0: source of truth is BoostConfig::$conventions, not CLAUDE.md.
+        // Source of truth is BoostConfig::$conventions, not CLAUDE.md.
         $values = $config->conventions;
         $schema = new ConventionsSchema($sources);
         $diagnostics = [

@@ -9,8 +9,7 @@ use Symfony\Component\Yaml\Yaml;
  * Parses YAML frontmatter from markdown content.
  *
  * Loose v1 schema — every field is optional, unknown keys pass through.
- * The architecture plan defers schema validation to the first real vendor
- * conflict; this parser just extracts what's there.
+ * This parser just extracts what's there; no schema validation.
  *
  * Format:
  *

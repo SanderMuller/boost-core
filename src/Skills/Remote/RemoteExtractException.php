@@ -10,9 +10,7 @@ use Throwable;
  *
  * `$reason` is one of the public constants — callers (the cache layer)
  * branch on it to surface the failure as `malformed` source state and
- * skip + warn. Aligns with the failure-modes table in
- * `internal/specs/remote-skill-sources.md` §11 and the security posture
- * mandates in §9.
+ * skip + warn.
  */
 final class RemoteExtractException extends RuntimeException
 {

@@ -45,7 +45,7 @@ final class ValidateCommand extends BoostBaseCommand
         $strict = (bool) $input->getOption('strict');
         $verboseInfo = $output->isVerbose();
 
-        // 0.16.0 conventions-token observability: on-disk leak scan over the
+        // Conventions-token observability: on-disk leak scan over the
         // EMITTED set (guidance + per-agent SKILL.md, incl. gitignored copies).
         // Runs regardless of declared schemas — a surviving `boost:conv` fence
         // opener is a leak with or without a live schema, and prose tokens still
@@ -79,7 +79,7 @@ final class ValidateCommand extends BoostBaseCommand
         /** @var list<Diagnostic> $diagnostics */
         $diagnostics = $discoveryDiagnostics;
 
-        // 0.9.0: source of truth is BoostConfig::$conventions, not CLAUDE.md.
+        // Source of truth is BoostConfig::$conventions, not CLAUDE.md.
         $schema = new ConventionsSchema($sources);
         $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions), ...$leakDiagnostics];
 
@@ -87,7 +87,7 @@ final class ValidateCommand extends BoostBaseCommand
     }
 
     /**
-     * On-disk conventions-token leak scan → error-level diagnostics (0.16.0).
+     * On-disk conventions-token leak scan → error-level diagnostics.
      * One diagnostic per leaked token, slotted by the leaked path, with the
      * classified cause (resolves-but-unrendered → re-sync; resolver error → its
      * message; surviving fence opener → unprocessed-fence remedy).

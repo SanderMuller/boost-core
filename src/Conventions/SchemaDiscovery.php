@@ -46,7 +46,7 @@ final readonly class SchemaDiscovery
         $sources = [];
         /** @var list<Diagnostic> $diagnostics */
         $diagnostics = [];
-        /** @var list<string> $noSchemaVendors Accumulated for the 0.10.1 noise-collapse summary diagnostic */
+        /** @var list<string> $noSchemaVendors Accumulated for the noise-collapse summary diagnostic */
         $noSchemaVendors = [];
         /** @var int $allowedCount Vendors actually inspected (excludes self-referential + uninstalled) */
         $allowedCount = 0;
@@ -75,9 +75,9 @@ final readonly class SchemaDiscovery
             $installPath = $this->packages->path($vendorName);
             $schemaPath = $installPath . '/' . self::SCHEMA_REL_PATH;
             if (! is_file($schemaPath)) {
-                // 0.10.1 noise collapse: accumulate vendor names instead of
-                // emitting one INFO per vendor. The N-vendor sync noise that
-                // adoption dogfood flagged was inverting the signal/noise
+                // Accumulate vendor names instead of
+                // emitting one INFO per vendor. The N-vendor sync noise
+                // inverts the signal/noise
                 // ratio when most allowlisted vendors don't ship a schema
                 // (the common case — conventions-schema is a niche feature).
                 $noSchemaVendors[] = $vendorName;
@@ -127,16 +127,13 @@ final readonly class SchemaDiscovery
             );
         }
 
-        // 0.10.1 noise-collapse: emit ONE summary INFO instead of N per-vendor
+        // Emit ONE summary INFO instead of N per-vendor
         // INFOs. The schema-discovery pass is informational; per-vendor detail
         // is surfaced via `boost doctor` (the vendor allowlist section already
         // lists every allowlisted vendor) when operators need it for triage.
         //
         // Wording is stateless w.r.t. whether OTHER allowlisted vendors did
-        // ship a schema. A 0.10.1-draft regression (caught by codex-review)
-        // claimed "the conventions-schema layer is dormant until at least
-        // one vendor publishes one" — false in the mixed-allowlist case where
-        // some vendors loaded schemas. Stating only "N of M ship no schema"
+        // ship a schema. Stating only "N of M ship no schema"
         // + the triage pointer is correct regardless of whether $sources is
         // empty or populated.
         // Dormancy gate: suppress the summary INFO when the conventions
@@ -148,7 +145,7 @@ final readonly class SchemaDiscovery
         // a missing schema is actionable) or when at least one vendor shipped a
         // schema FILE — loaded OR broken (the "these others don't" context is
         // then meaningful, and a malformed schema still proves the subsystem is
-        // in play even though it never reached $sources). codex-review P2.
+        // in play even though it never reached $sources).
         if ($noSchemaVendors !== [] && ($conventionsDeclared || $schemaFileSeen)) {
             $diagnostics[] = Diagnostic::info(
                 null,

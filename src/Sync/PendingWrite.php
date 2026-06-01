@@ -14,7 +14,7 @@ use SanderMuller\BoostCore\Conventions\ManagedRegion;
  * `ManagedRegion::render()`, and writes the merged result — preserving any
  * operator-authored content OUTSIDE the markers. This is how `CLAUDE.md`,
  * `AGENTS.md`, etc. coexist with operator-added sections like the Project
- * Conventions block (boost-core 0.8.2+).
+ * Conventions block.
  */
 final readonly class PendingWrite
 {

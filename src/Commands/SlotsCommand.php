@@ -73,7 +73,7 @@ final class SlotsCommand extends BoostBaseCommand
             return self::SUCCESS;
         }
 
-        // 0.9.0: source of truth is BoostConfig::$conventions, not CLAUDE.md.
+        // Source of truth is BoostConfig::$conventions, not CLAUDE.md.
         $slots = $this->collectSlots($sources, $vendorFilter, $config->conventions, $missing, $filled);
 
         if ($json) {

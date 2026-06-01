@@ -8,8 +8,8 @@ use InvalidArgumentException;
  * Structured diagnostic produced by conventions schema discovery / composition
  * / validation. Severity-bearing — carries `error` / `warning` / `info`.
  *
- * Routes through SyncResult::diagnostics (NEW in 0.8.0), never through the
- * legacy SyncResult::errors fatal channel. Default rendering is per command
+ * Routes through SyncResult::diagnostics, never through the
+ * SyncResult::errors fatal channel. Default rendering is per command
  * (✓/✗/⚠/ℹ). JSON envelope carries `level` explicitly.
  */
 final readonly class Diagnostic

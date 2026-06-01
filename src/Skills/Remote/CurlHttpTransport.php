@@ -9,7 +9,7 @@ use CurlHandle;
  *
  * Auto-follows redirects with cURL's default `Authorization`-on-cross-host
  * stripping (CVE mitigation, default since 7.58). The fetcher post-checks
- * the effective-URL host against the allow-list (§9), so a redirect chain
+ * the effective-URL host against the allow-list, so a redirect chain
  * that lands outside the GitHub host family is rejected after the fact
  * rather than during cURL's redirect dance. Streams to disk when a
  * destination path is provided — tarballs and `.skill` assets can be

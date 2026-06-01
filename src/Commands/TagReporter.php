@@ -43,12 +43,11 @@ final readonly class TagReporter
         if ($skills === [] && $guidelines === []) {
             $io->writeln('<info>No allowlisted vendor skills or guidelines installed.</info>');
 
-            // 0.10.0 case-3 entry-point hint at the no-skills-loaded gate.
-            // mijntp's bare-CLI repro produced exactly this output — zero
-            // skills surfaced because bare-CLI bypasses the wrapper's
-            // skill-injection pipeline. The diagnostic surfaces the most
-            // likely root cause + the artisan fix path before the operator
-            // assumes "no allowlisted vendors == legitimately empty."
+            // Entry-point hint at the no-skills-loaded gate. Bare-CLI bypasses
+            // the wrapper's skill-injection pipeline, producing zero skills.
+            // The diagnostic surfaces the most likely root cause + the artisan
+            // fix path before the operator assumes "no allowlisted vendors ==
+            // legitimately empty."
             $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
             if ($packages->has('sandermuller/project-boost-laravel')) {
                 $io->writeln('<comment>project-boost-laravel detected. '
@@ -171,7 +170,7 @@ final readonly class TagReporter
 
         $declaredButUnused = $this->diagnostics->declaredButUnusedTags($config, $tagUnion);
         if ($declaredButUnused !== []) {
-            // Three-case split (0.10.0) for declared-but-unused tags. Same
+            // Three-case split for declared-but-unused tags. Same
             // raw observation, different probable root causes + different
             // operator fix paths. Detection ordering: typo (cheapest) →
             // bare-CLI-without-wrapper-injection (Laravel context) →

@@ -9,9 +9,8 @@ use SplFileInfo;
 
 /**
  * Filesystem helpers used by {@see RemoteSkillCache} during slot population
- * and integrity checks. Extracted from the cache class to keep its cognitive
- * complexity below the project's per-class budget — every method here is a
- * pure-static utility with no shared state.
+ * and integrity checks. Every method here is a pure-static utility with no
+ * shared state.
  */
 final class RemoteSkillCacheFilesystem
 {
@@ -78,7 +77,7 @@ final class RemoteSkillCacheFilesystem
 
     /**
      * Mirror a tree from `$sourceDir` to `$destDir`, skipping any entry whose
-     * relative path matches the §7 file-inclusion blocklist (VCS dirs, IDE
+     * relative path matches the file-inclusion blocklist (VCS dirs, IDE
      * files, lockfiles, project-metadata files at the top level).
      */
     public static function copyTreeFiltered(string $sourceDir, string $destDir): void
@@ -125,7 +124,7 @@ final class RemoteSkillCacheFilesystem
     }
 
     /**
-     * §7 file-inclusion rule: blocklist project-metadata + VCS/IDE/OS noise.
+     * File-inclusion rule: blocklist project-metadata + VCS/IDE/OS noise.
      */
     public static function isBlockedEntry(string $relPath): bool
     {

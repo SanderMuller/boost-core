@@ -5,14 +5,14 @@ namespace SanderMuller\BoostCore\Sync;
 use JsonException;
 
 /**
- * The sync ownership manifest (0.13.0) — an external record of every file
+ * The sync ownership manifest — an external record of every file
  * boost-core EMITTED, written to `.boost/manifest.json` (gitignored). It gives
  * the engine the ownership state it otherwise lacks: with a manifest, boost
  * KNOWS which on-disk files it wrote, so it can safely clear/prune its own
  * output while NEVER touching operator-authored content — replacing
  * "guess from content" with "consult the manifest".
  *
- * Ownership rules (see spec 0.13.0-dx-bundle §Feature 4):
+ * Ownership rules:
  *  - **guidance** (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`): owned IFF listed AND the
  *    on-disk sha matches the recorded sha (unchanged since boost wrote it). A
  *    sha mismatch means the operator hand-edited it → treat as operator-owned
@@ -31,8 +31,8 @@ use JsonException;
  * under `resources/boost/`.
  *
  * Backward-safety: an absent OR corrupt manifest decodes to {@see empty()} — no
- * ownership is asserted, so the engine falls back to exact pre-0.13 behavior
- * (no new clearing/pruning).
+ * ownership is asserted, so the engine falls back to the conservative behavior
+ * (no clearing/pruning).
  *
  * @phpstan-type ManifestEntry array{sha256: string, category: string, provenance: string, scope: string}
  */
@@ -47,7 +47,7 @@ final readonly class SyncManifest
     public const PROVENANCE_ENGINE = 'engine';
 
     /**
-     * 0.14.0: provenance prefix for FileEmitter outputs — `emitter:<fqcn>`.
+     * Provenance prefix for FileEmitter outputs — `emitter:<fqcn>`.
      * Parallels `wrapper:<vendor/package>`. Lets the reconcile-on-sync reap
      * attribute a prior-recorded emitter output back to its producing emitter,
      * so a DISABLED / errored emitter's file is preserved (not reaped) while a
@@ -57,7 +57,7 @@ final readonly class SyncManifest
      */
     public const PROVENANCE_EMITTER_PREFIX = 'emitter:';
 
-    /** 0.14.0: FileEmitter output — fully generated, owned IFF listed. */
+    /** FileEmitter output — fully generated, owned IFF listed. */
     public const CATEGORY_FILE = 'file';
 
     public const CATEGORY_GUIDANCE = 'guidance';

@@ -71,15 +71,15 @@ final readonly class SyncEngine
      * decision; the registry is the audit surface for "what cleanup
      * contract does sync enforce."
      *
-     * Public so `boost doctor --check-stale-paths` (0.10.1) can surface
+     * Public so `boost doctor --check-stale-paths` can surface
      * registry-tracked paths read-only without duplicating the list. Sync
      * owns deletion, doctor owns read-only reporting.
      *
      * @var list<string>
      */
     public const RETIRED_COPILOT_PATHS = [
-        '.github/copilot-instructions.md', // retired 0.9.0 — Copilot reads root AGENTS.md
-        '.github/skills',                  // retired 0.9.1 — Copilot reads .agents/skills via shared pool
+        '.github/copilot-instructions.md', // Copilot reads root AGENTS.md
+        '.github/skills',                  // Copilot reads .agents/skills via shared pool
     ];
 
     private InstalledPackages $installedPackages;
@@ -157,9 +157,9 @@ final readonly class SyncEngine
      * The canonical FULL catalog of every supported agent target. Used both by
      * default() and by the emitter reserved-path denylist — the latter must
      * reserve EVERY agent's emission roots regardless of the instance's fan-out
-     * subset (codex high: a subset-constructed engine, e.g.
+     * subset: a subset-constructed engine, e.g.
      * `new SyncEngine([new ClaudeCodeTarget()])`, must still reserve
-     * `.cursor/…`, `.agents/skills/`, etc. against emitter writes).
+     * `.cursor/…`, `.agents/skills/`, etc. against emitter writes.
      *
      * @return list<AgentTarget>
      */
@@ -265,9 +265,7 @@ final readonly class SyncEngine
 
     /**
      * User-scope sync EVERY installed package that ships
-     * `resources/boost/skills/` — the explicit-command form of what the
-     * retired Composer plugin's `runGlobalSync` did automatically on a
-     * `composer global` operation. Surfaced as `boost sync --scope=user
+     * `resources/boost/skills/`. Surfaced as `boost sync --scope=user
      * --all`, run once after a `composer global require`.
      *
      * The per-package loop lives in {@see UserScopeBulkSync} — extracted
@@ -447,12 +445,10 @@ final readonly class SyncEngine
     }
 
     /**
-     * Back-compat thin wrapper around `resolveForInspection()`. Kept so
-     * 0.7.1/0.7.2 external callers (none documented; internal-facing
-     * inspection API) keep working. New callers should use the broader
-     * method directly.
+     * Back-compat thin wrapper around `resolveForInspection()`. New callers
+     * should use the broader method directly.
      *
-     * Preserves the 0.7.2 `scannedVendorKeys` shape — the union of every
+     * Preserves the `scannedVendorKeys` shape — the union of every
      * allowlisted vendor that publishes anything, regardless of category.
      *
      * @return array{skills: list<Skill>, remoteSourceKeys: list<string>, scannedVendorKeys: list<string>}
@@ -510,17 +506,14 @@ final readonly class SyncEngine
         $remoteErrors = array_merge($skillResolution['remoteErrors'], $guidelineRenderErrors);
         $resolvedCommands = $this->resolveCommands($config);
 
-        // 0.15.0 conventions inlining: build the slot inliner once + inline
-        // resolved skills (vendor AND host) before fan-out. Each skill's body
-        // gets its `<!--boost:conv …-->` tokens resolved to inlined values;
+        // Conventions inlining: build the slot inliner once + inline resolved
+        // skills (vendor AND host) before fan-out. Each skill's body gets its
+        // `<!--boost:conv …-->` tokens resolved to inlined values, plus the
+        // per-skill self-check, owned by ConventionsPass.
         // $conventionsRequiresRuntime aggregates whether ANY live skill still
         // needs the rendered `## Project Conventions` block (a legacy `$.slot`
-        // ref or an unresolved/errored token), and token errors are render-class
-        // (fail --check, keep the block — D7/§2).
-        // 0.15.0/0.16.0: inline conventions tokens into skill bodies + the
-        // per-skill self-check, owned by ConventionsPass. $conventionsErrors are
-        // render-class token errors (fail --check); the gate later reads
-        // $conventionsRequiresRuntime / $conventionsInlinedAny.
+        // ref or an unresolved/errored token); $conventionsErrors are
+        // render-class token errors (fail --check, keep the block).
         $conventionsPass = ConventionsPass::build($this->installedPackages, $config);
         $skillInline = $conventionsPass->inlineSkills($resolvedSkills);
         $resolvedSkills = $skillInline['skills'];
@@ -539,33 +532,33 @@ final readonly class SyncEngine
 
         $gitignoreManaged = $config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false;
 
-        // 0.13.0: load the PRIOR ownership manifest (state at sync start).
-        // All destructive decisions (empty-guard clear, 0.14.0 orphan reap) read
-        // this prior snapshot; the NEW manifest is written only after a
-        // successful sync. Absent/corrupt → empty → exact pre-0.13 behavior.
+        // Load the PRIOR ownership manifest (state at sync start). All
+        // destructive decisions (empty-guard clear, orphan reap) read this
+        // prior snapshot; the NEW manifest is written only after a successful
+        // sync. Absent/corrupt → empty → no ownership asserted.
         //
         // Gated on gitignore management: when it's disabled the manifest is no
         // longer UPDATED (see the write gate below), so reading a now-stale one
         // could blank/reap a file on ownership data that no longer tracks
         // reality. Disabling the READ too degrades ownership-based actions
-        // cleanly to the 0.12 preserve behavior in that mode (codex-review P1).
+        // cleanly to the markerless preserve behavior in that mode.
         //
-        // Read BEFORE runEmitters (0.14.0): the emitter first-adoption warn
-        // consults it to detect taking over a not-yet-owned file.
+        // Read BEFORE runEmitters: the emitter first-adoption warn consults it
+        // to detect taking over a not-yet-owned file.
         $priorManifest = $gitignoreManaged
             ? SyncManifest::fromProjectRoot($projectRoot)
             : SyncManifest::empty();
 
-        // 0.11.0: discover wrapper-claimed paths up-front — fed to the managed
+        // Discover wrapper-claimed paths up-front — fed to the managed
         // gitignore block, the stale-cleanup exclusion, the manifest writer, and
-        // (0.14.0) the emitter reserved-path denylist so an emitter can't claim a
+        // the emitter reserved-path denylist so an emitter can't claim a
         // wrapper-owned path.
         $activeAgents = array_map(static fn (Agent $agent): string => $agent->value, $config->agents);
         $wrapperEmits = (new WrapperEmitDiscovery($this->installedPackages))->discover($projectRoot, $activeAgents);
 
-        // 0.14.0: an emitter must never write to a path boost-core or the
-        // operator owns (codex P1 — arbitrary emitter paths could overwrite then
-        // later reap operator/core files). Build the denylist before runEmitters.
+        // An emitter must never write to a path boost-core or the operator owns
+        // (arbitrary emitter paths could overwrite then later reap operator/core
+        // files). Build the denylist before runEmitters.
         $reservedEmitterPaths = $this->reservedEmitterPaths(array_keys($wrapperEmits['paths']));
 
         /** @var list<Diagnostic> $emitterDiagnostics */
@@ -583,7 +576,7 @@ final readonly class SyncEngine
             $ownableEmitterPaths,
         );
 
-        // 0.14.0: derive the reap sets once — paths emitted this sync (kept),
+        // Derive the reap sets once — paths emitted this sync (kept),
         // FQCNs DISABLED/errored this sync (their files preserved), and whether
         // any live emitter output exists (a manifest entry → needs `.boost/`
         // gitignored even in an emitter-only project).
@@ -618,26 +611,21 @@ final readonly class SyncEngine
         $priorManagedPatterns = $this->readPriorGitignorePatterns($projectRoot);
         $priorManagedFiles = $this->enumerateManagedFiles($projectRoot, $priorManagedPatterns);
 
-        // ($priorManifest, $wrapperEmits, $gitignoreManaged, $activeAgents are
-        // computed up-front before runEmitters — see the top of sync().)
-
         // Will this sync write a `.boost/manifest.json`? (Manifest is non-empty
         // when boost emits guidance/skills/commands, or there's a prior to
         // refresh.) If so, `.boost/` must be in the managed .gitignore so the
-        // regenerable manifest never dirties the working tree (codex-review:
-        // an unignored manifest breaks clean-tree / CI checks). Computed here —
+        // regenerable manifest never dirties the working tree. Computed here —
         // guidance + skills are already resolved — and passed to updateGitignore
         // so the ignore lands in the SAME write, gated to avoid adding `.boost/`
         // to an otherwise-empty project's gitignore. conventions is included
         // because it renders into CLAUDE.md (→ a manifest entry) even without
-        // host guidelines.
+        // host guidelines. An unignored manifest breaks clean-tree / CI checks.
         // Skills/guidelines/commands only EMIT (→ manifest entries) when there
         // are active agents to receive them; with no agents nothing is written
         // regardless of what resolved. Conventions render into CLAUDE.md even
         // without the Claude agent, so they count on their own. A prior manifest
-        // is refreshed regardless.
-        // 0.14.0: a live FileEmitter output is also a manifest entry
-        // ($hasLiveEmitterOutput, derived above), so it must trigger the
+        // is refreshed regardless. A live FileEmitter output is also a manifest
+        // entry ($hasLiveEmitterOutput, derived above), so it must trigger the
         // `.boost/` gitignore line on its own — an emitter-only project (no
         // agents/conventions) still needs the manifest ignored.
         $willWriteManifest = $gitignoreManaged && (
@@ -656,9 +644,8 @@ final readonly class SyncEngine
             $writes[] = $gitignoreWrite;
         }
 
-        // 0.12.0: agent-guidance files (CLAUDE.md/AGENTS.md/GEMINI.md) are
-        // written wholesale + markerless here, replacing the former per-target
-        // marker-bounded guideline write + the marker-based conventions write.
+        // Agent-guidance files (CLAUDE.md/AGENTS.md/GEMINI.md) are written
+        // wholesale + markerless here.
         $guidanceResult = (new GuidanceWriter($this->writer, $this->agentTargets))->write(
             $projectRoot,
             $config,
@@ -678,7 +665,7 @@ final readonly class SyncEngine
         $cleanupResult = $this->cleanupStalePaths($projectRoot, $config, $checkOnly);
         $writes = [...$writes, ...$cleanupResult['writes']];
 
-        // Generic stale-file cleanup — 0.9.1 clean-slate model. Any file that
+        // Generic stale-file cleanup — clean-slate model. Any file that
         // was inside a boost-managed gitignore pattern BEFORE this sync but
         // wasn't rewritten by this sync is stale. Delete it. Catches any
         // emission boost-core stopped making (vendor drops a skill, allowlist
@@ -707,7 +694,7 @@ final readonly class SyncEngine
         /** @var list<Diagnostic> $reapDiagnostics */
         $reapDiagnostics = [];
 
-        // 0.11.0 drift-comparison wrapper-injection awareness: when a wrapper
+        // Drift-comparison wrapper-injection awareness: when a wrapper
         // package (e.g., project-boost-laravel) injects skills/guidelines via
         // `injectedVendorSkills`/`injectedVendorGuidelines`, bare-CLI sync
         // would otherwise flag previously-emitted-from-injection files as
@@ -727,32 +714,31 @@ final readonly class SyncEngine
             );
         }
 
-        // 0.13.0: write the NEW ownership manifest LAST — only on a successful,
+        // Write the NEW ownership manifest LAST — only on a successful,
         // real (non-check) sync, AFTER all non-destructive writes + cleanup
-        // succeeded (codex round-2 P2 ordering; codex P1.3 — never rewrite from
-        // a partial/failed sync, so the prior manifest stays last-known-good).
-        // Gated on gitignore management: without it nothing adds `.boost/` to
-        // the ignore list, so writing the manifest would leave an untracked file
-        // behind and break clean-working-tree / CI flows (codex-review P2). When
-        // gitignore is unmanaged the manifest simply isn't written → ownership
-        // features degrade to exact 0.12 behavior (backward-safe).
+        // succeeded. Never rewrite from a partial/failed sync, so the prior
+        // manifest stays last-known-good. Gated on gitignore management:
+        // without it nothing adds `.boost/` to the ignore list, so writing the
+        // manifest would leave an untracked file behind and break
+        // clean-working-tree / CI flows. When gitignore is unmanaged the
+        // manifest simply isn't written → ownership features degrade to the
+        // markerless preserve behavior (backward-safe).
         //
         // Also skip on a guideline render failure: writeGuidanceFiles() then
         // preserves the existing guidance files + returns no ownedGuidancePaths,
         // so rewriting the manifest would DROP guidance ownership and a later
         // empty sync could no longer converge previously-owned files. Leaving
-        // the prior manifest untouched keeps it last-known-good (codex-review).
+        // the prior manifest untouched keeps it last-known-good.
         if (! $checkOnly && ! $hasAnyError && $gitignoreManaged && $guidelineRenderErrors === []) {
-            // 0.14.0: reconcile-on-sync orphan reap — delete boost-owned files
-            // recorded in the PRIOR manifest that this sync no longer intends to
-            // emit (a dormant FileEmitter, a de-selected agent's guidance file).
-            // Manifest-GATED (codex P3): the delete predicate consults the prior
-            // manifest's ownership, NOT raw gitignore membership. Runs after all
+            // Reconcile-on-sync orphan reap — delete boost-owned files recorded
+            // in the PRIOR manifest that this sync no longer intends to emit (a
+            // dormant FileEmitter, a de-selected agent's guidance file).
+            // Manifest-GATED: the delete predicate consults the prior manifest's
+            // ownership, NOT raw gitignore membership. Runs after all
             // non-destructive writes + cleanup succeeded, before the new manifest
             // is written. The reap's targets are absent from the
             // ownedGuidancePaths / live-emitter sets, so the new manifest below
-            // never re-records them. ($intendedEmitterPaths /
-            // $preservedEmitterFqcns derived once via emitterReapSets above.)
+            // never re-records them.
             $reap = OrphanReaper::reapManifestOrphans(
                 $projectRoot,
                 $priorManifest,
@@ -763,8 +749,8 @@ final readonly class SyncEngine
             );
             $writes = [...$writes, ...$reap['writes']];
 
-            // A failed orphan delete keeps its ownership (codex medium): surface
-            // it and carry the entry forward so the next sync retries.
+            // A failed orphan delete keeps its ownership: surface it and carry
+            // the entry forward so the next sync retries.
             foreach ($reap['retained'] as $retainedPath) {
                 $reapDiagnostics[] = Diagnostic::warning(
                     null,
@@ -778,10 +764,9 @@ final readonly class SyncEngine
             $this->writeSyncManifest($projectRoot, $guidanceResult['ownedGuidancePaths'], $wrapperEmits['paths'], $emitterResults, $priorManifest, $reap['retained'], $ownableEmitterPaths);
         }
 
-        // Diagnostic surface for the render-fail-then-write safety gate
-        // (0.9.3): operator-visible signal that guideline writes were
-        // skipped, naming each failed source so they know which renderer
-        // / file to investigate.
+        // Diagnostic surface for the render-fail-then-write safety gate:
+        // operator-visible signal that guideline writes were skipped, naming
+        // each failed source so they know which renderer / file to investigate.
         $renderFailDiagnostics = [];
         foreach ($guidelineRenderErrors as $errorMessage) {
             $renderFailDiagnostics[] = Diagnostic::warning(
@@ -816,27 +801,15 @@ final readonly class SyncEngine
     }
 
     /**
-     * Remove paths boost-core retired entirely — the 0.9.6 path-ownership
-     * reframe (per design clarification 2026-05-29): boost-core IS the
-     * owner of category-3 AI-agent paths (`.github/copilot-instructions.md`,
+     * Remove paths boost-core retired entirely. boost-core IS the owner of
+     * category-3 AI-agent paths (`.github/copilot-instructions.md`,
      * `.github/skills/`, agent-spec files, etc.). Operator-side influence
      * runs through `.ai/` sources, allowlisted vendor packages, remote
      * skills, and `boost.php` config — NOT through hand-editing emission
      * targets. When boost-core retires an emission path, the file is
      * boost-emitted output that no longer has a refresh path; delete it.
      *
-     * Replaces 0.9.1-0.9.5's marker-presence guard (`<!-- boost-core:
-     * guidelines:start -->`) which conflated two distinct ownership
-     * questions: "what content inside the file to preserve" (ManagedRegion
-     * handles correctly via the marker, still load-bearing for active
-     * guideline files) vs. "whether the file should exist at all" (path-
-     * ownership; this method). The marker is right for the former scope,
-     * wrong for the latter — pre-0.8.2 wholesale-sync output has no
-     * markers and would silently survive the marker guard despite being
-     * unambiguously boost-emitted.
-     *
-     * Trigger conditions named explicitly per the auto-X-must-name-trigger
-     * rule (codified across the 0.9.x cycle):
+     * Trigger conditions named explicitly:
      *  1. The agent owning the path is in the active agent set (e.g.,
      *     `.github/*` cleanup requires `Agent::COPILOT` — a project that
      *     never had Copilot active has no boost-emitted content at those
@@ -873,12 +846,8 @@ final readonly class SyncEngine
             $failures = [];
             $write = $this->cleanupPath($absolute, $relativePath, $checkOnly, $failures);
 
-            // 0.10.2 observability: when @-suppressed fs operations leave
-            // residual paths (permission denied, open file descriptor, race
-            // with re-emission), the cleanup diagnostic previously claimed
-            // success regardless. Operators saw "removed retired path X"
-            // while `boost sync --check` immediately re-flagged drift on X,
-            // with no signal what failed.
+            // When @-suppressed fs operations leave residual paths (permission
+            // denied, open file descriptor, race with re-emission), surface it.
             //
             // On failure, do NOT mark this path as DELETED in $writes (would
             // poison SyncResult::hasDrift() + the "deleted=" summary count
@@ -936,7 +905,7 @@ final readonly class SyncEngine
         $verb = $checkOnly ? 'would remove' : 'removed';
 
         return sprintf(
-            'Cleanup: %s retired boost-core path `%s`. Per the path-ownership contract (0.9.6+): boost-core owns category-3 AI-agent paths end-to-end. When an emitter retires, boost-emitted output at that path no longer has a refresh path and is cleaned automatically. Operator influence runs through `.ai/` sources, allowlisted vendor packages (`withAllowedVendors`), remote skills (`withRemoteSkills`), and `boost.php` config — never via hand-editing emission targets. If you intentionally authored content at this path outside boost-core, recover from git history before next sync. 0.9.x routes Copilot to shared `.agents/skills/` + `AGENTS.md` surfaces (per GitHub Changelog 2025-08-28 for instructions and 2025-12-18 for skills).',
+            'Cleanup: %s retired boost-core path `%s`. boost-core generates this file, so once no emitter still produces it, sync removes it. Do not edit these files by hand; boost rewrites them on every sync. To change what gets emitted, edit your `.ai/` sources, allowlisted vendors (`withAllowedVendors`), remote skills (`withRemoteSkills`), or `boost.php`. If you wrote content here yourself, recover it from git before the next sync.',
             $verb,
             $relativePath,
         );
@@ -967,7 +936,7 @@ final readonly class SyncEngine
                 continue;
             }
 
-            // 0.13.0: the sync manifest dir is engine-internal state owned by
+            // The sync manifest dir is engine-internal state owned by
             // SyncManifest itself — never a stale-cleanup target. Skip it so the
             // cleanup pass doesn't delete the manifest it's about to rely on.
             if (rtrim($pattern, '/') === SyncManifest::DIR) {
@@ -1033,7 +1002,7 @@ final readonly class SyncEngine
      *
      * @param  list<string>  $priorManagedFiles
      * @param  list<WrittenFile>  $writes
-     * @param  array<string, string>  $wrapperExcludedPaths  0.11.0: paths
+     * @param  array<string, string>  $wrapperExcludedPaths  paths
      *   declared by `BoostWrapper` classes from installed wrapper packages —
      *   excluded from "stale-to-delete" classification so bare-CLI doesn't
      *   false-positive-flag wrapper-injected files for deletion.
@@ -1051,14 +1020,13 @@ final readonly class SyncEngine
                 continue;
             }
 
-            // 0.11.0: wrapper-claimed paths get preserved. Wrapper-driven
-            // sync rewrites them on next invocation; bare-CLI must NOT delete.
-            // Both exact-file and directory-prefix match: a wrapper claim of
-            // `.agents/skills/foo` (directory) should preserve every file
-            // under it. Codex-review P2 pin — without prefix-match, wrapper
-            // dir claims would only preserve the dir entry itself (which
-            // wouldn't be in priorManagedFiles anyway) while children get
-            // false-positive-deleted.
+            // Wrapper-claimed paths get preserved. Wrapper-driven sync rewrites
+            // them on next invocation; bare-CLI must NOT delete. Both exact-file
+            // and directory-prefix match: a wrapper claim of `.agents/skills/foo`
+            // (directory) should preserve every file under it. Without
+            // prefix-match, wrapper dir claims would only preserve the dir entry
+            // itself (which wouldn't be in priorManagedFiles anyway) while
+            // children get false-positive-deleted.
             $canonicalRelative = ManagedFileOps::canonicalizeWrapperPath($relativePath);
             if (ManagedFileOps::isUnderWrapperClaim($canonicalRelative, $wrapperExcludedPaths)) {
                 continue;
@@ -1151,10 +1119,9 @@ final readonly class SyncEngine
         // is_link() must be checked BEFORE is_dir() — PHP's is_dir() follows
         // symlinks and reports a symlink-to-directory as a directory, which
         // would route us into @rmdir($path). rmdir requires a real directory
-        // and fails on a symlink, leaving residual drift. Pre-0.9.6 boost-
-        // core emitted symlinks for vendor-shipped skills (laravel/mcp's
-        // .github/skills/<name> → vendor/laravel/mcp/.../skills/<name>); the
-        // engine encounters them when cleaning the retired registry path.
+        // and fails on a symlink, leaving residual drift. The engine can
+        // encounter such symlinks (e.g. a skills dir symlinked into vendor
+        // content) when cleaning a retired registry path.
         if (is_link($path)) {
             if (! @unlink($path)) {
                 $failures[] = $path;
@@ -1206,22 +1173,22 @@ final readonly class SyncEngine
     }
 
     /**
-     * 0.14.0: build the reserved-path denylist for FileEmitter outputs. An
-     * emitter must emit only to a path it alone owns; returning any of these is
-     * a contract violation (codex P1 — arbitrary emitter paths could otherwise
-     * overwrite then later reap core/operator files). Exact matches: guidance
-     * basenames + `.gitignore`; per-sync wrapper-claimed paths. Prefix matches:
-     * source dirs + `.boost/` + EVERY agent's skill/command roots (codex high:
-     * reserved regardless of which agents are active — an emitter must not write
-     * into `.claude/skills/…` even when Claude is inactive, since that surface
-     * may already hold tracked content and would otherwise be claimed + reaped).
+     * Build the reserved-path denylist for FileEmitter outputs. An emitter must
+     * emit only to a path it alone owns; returning any of these is a contract
+     * violation (arbitrary emitter paths could otherwise overwrite then later
+     * reap core/operator files). Exact matches: guidance basenames +
+     * `.gitignore`; per-sync wrapper-claimed paths. Prefix matches: source dirs
+     * + `.boost/` + EVERY agent's skill/command roots — reserved regardless of
+     * which agents are active, since an emitter must not write into
+     * `.claude/skills/…` even when Claude is inactive (that surface may already
+     * hold tracked content and would otherwise be claimed + reaped).
      *
      * @param  list<string>  $wrapperClaimedPaths
      * @return array{exact: array<string, true>, prefixes: list<string>}
      */
     private function reservedEmitterPaths(array $wrapperClaimedPaths): array
     {
-        // Keys stored LOWERCASED (codex high): on a case-insensitive filesystem
+        // Keys stored LOWERCASED: on a case-insensitive filesystem
         // (default macOS) `claude.md` resolves to the same on-disk file as
         // `CLAUDE.md`, so a case-sensitive compare would let an emitter dodge
         // the denylist with a case variant. Fold case unconditionally — an
@@ -1236,8 +1203,8 @@ final readonly class SyncEngine
         $prefixes = ['.ai/', 'resources/boost/', strtolower(SyncManifest::DIR) . '/'];
         foreach ($wrapperClaimedPaths as $wrapperPath) {
             $canonical = strtolower(ManagedFileOps::canonicalizeWrapperPath($wrapperPath));
-            // Exact match (file claim) AND a descendant prefix (codex high): a
-            // wrapper DIRECTORY claim like `.agents/skills/foo` owns its whole
+            // Exact match (file claim) AND a descendant prefix: a wrapper
+            // DIRECTORY claim like `.agents/skills/foo` owns its whole
             // subtree, so `.agents/skills/foo/SKILL.md` must also be reserved —
             // an emitter must not write into a wrapper-owned directory. Mirrors
             // the prefix-aware preservation in the reap path.
@@ -1247,7 +1214,7 @@ final readonly class SyncEngine
 
         // EVERY agent's roots, from the FULL static catalog — NOT $this->
         // agentTargets (which may be a subset under non-default construction)
-        // and NOT gated on active agents (codex high ×2).
+        // and NOT gated on active agents.
         foreach (self::allAgentTargets() as $target) {
             foreach ($target->gitignorePatterns() as $pattern) {
                 $prefixes[] = strtolower($pattern);
@@ -1279,7 +1246,7 @@ final readonly class SyncEngine
      */
     private function isReservedEmitterPath(string $relativePath, array $reserved): bool
     {
-        // Case-fold the comparison (codex high — case-insensitive filesystems).
+        // Case-fold the comparison for case-insensitive filesystems.
         $normalized = strtolower(ltrim($relativePath, '/'));
         if (isset($reserved['exact'][$normalized])) {
             return true;
@@ -1295,7 +1262,7 @@ final readonly class SyncEngine
     }
 
     /**
-     * 0.14.0 (codex high): does the prior manifest own a `file` entry that is
+     * Does the prior manifest own a `file` entry that is
      * the SAME physical file (inode) as $relativePath under a different path
      * spelling? On a case-insensitive filesystem an emitter that renames its
      * output by CASE only (`.Dummy/output.txt` → `.dummy/output.txt`) writes the
@@ -1335,7 +1302,7 @@ final readonly class SyncEngine
     }
 
     /**
-     * Write the 0.13.0 ownership manifest to `.boost/manifest.json`. Records
+     * Write the ownership manifest to `.boost/manifest.json`. Records
      * every emission target boost owns after this sync:
      *  - GUIDANCE files boost wrote with non-empty content (sha-gated ownership
      *    — a later sync proves ownership only if the on-disk sha still matches);
@@ -1346,12 +1313,12 @@ final readonly class SyncEngine
      * writes emission targets, and SyncManifest::withEntry() rejects source
      * prefixes defensively (the dual-role-publisher invariant).
      *
-     * 0.14.0: record LIVE FileEmitter outputs (category `file`, provenance
+     * Record LIVE FileEmitter outputs (category `file`, provenance
      * `emitter:<fqcn>`) so a later sync can reap them when the emitter goes
      * dormant — and attribute a dormant vs DISABLED/errored emitter via the FQCN
      * in provenance. Records ONLY WROTE/UNCHANGED results that boost is allowed
      * to OWN — `$ownableEmitterPaths`, computed in runOneEmitter as "created
-     * fresh OR already owned" (codex high). A first-time takeover of a
+     * fresh OR already owned". A first-time takeover of a
      * pre-existing non-owned file, and a coincidentally-identical pre-existing
      * file, are both absent from that set → never recorded → never reaped.
      *
@@ -1393,8 +1360,8 @@ final readonly class SyncEngine
      * @param  list<string>  $ownedGuidancePaths  relative paths from writeGuidanceFiles
      * @param  array<string, string>  $wrapperPaths  wrapper-claimed emit path => owning package
      * @param  list<EmitterResult>  $emitterResults  FileEmitter outcomes this sync
-     * @param  list<string>  $retainedOrphans  reap targets whose delete FAILED — carry their PRIOR ownership forward so a later sync retries (codex medium)
-     * @param  array<string, true>  $ownableEmitterPaths  emitter outputs boost may own (codex high)
+     * @param  list<string>  $retainedOrphans  reap targets whose delete FAILED — carry their PRIOR ownership forward so a later sync retries
+     * @param  array<string, true>  $ownableEmitterPaths  emitter outputs boost may own
      */
     private function writeSyncManifest(string $projectRoot, array $ownedGuidancePaths, array $wrapperPaths, array $emitterResults, SyncManifest $priorManifest, array $retainedOrphans = [], array $ownableEmitterPaths = []): void
     {
@@ -1436,8 +1403,8 @@ final readonly class SyncEngine
             $manifest = $manifest->withEntry($relativePath, $sha, $category, $provenance);
         }
 
-        // 0.14.0 (codex medium): carry forward the PRIOR ownership of any orphan
-        // whose reap delete failed this run. Without this the entry would simply
+        // Carry forward the PRIOR ownership of any orphan whose reap delete
+        // failed this run. Without this the entry would simply
         // be absent from the new manifest, dropping ownership of a file that is
         // still on disk — the next sync wouldn't know to retry. Re-add verbatim
         // from the prior manifest so the retry path stays alive.
@@ -1471,7 +1438,7 @@ final readonly class SyncEngine
     }
 
     /**
-     * @param  list<string>  $wrapperClaimedPaths  0.11.0: paths declared by
+     * @param  list<string>  $wrapperClaimedPaths  paths declared by
      *   `BoostWrapper` classes from installed wrapper packages — included in
      *   the managed `.gitignore` block so bare-CLI sync doesn't drop wrapper-
      *   emitted files from gitignore tracking (which would leak them into
@@ -1497,7 +1464,7 @@ final readonly class SyncEngine
             $patterns[] = '/' . RemoteOrphanPruner::MANIFEST_FILE;
         }
 
-        // 0.13.0: ignore the sync ownership manifest dir. Added ONLY when this
+        // Ignore the sync ownership manifest dir. Added ONLY when this
         // sync will actually write a manifest ($includeManifestDir) — so an
         // otherwise-empty project never gets a `.boost/` line for a dir that
         // won't exist. enumerateManagedFiles() skips this dir so the stale-
@@ -1506,37 +1473,35 @@ final readonly class SyncEngine
             $patterns[] = SyncManifest::DIR . '/';
         }
 
-        // 0.11.0: wrapper-claimed paths land in the managed block so bare-CLI
-        // sync doesn't silently drop them. Pattern format matches what agent
-        // targets emit (no leading slash) so subsequent reads via
+        // Wrapper-claimed paths land in the managed block so bare-CLI sync
+        // doesn't silently drop them. Pattern format matches what agent targets
+        // emit (no leading slash) so subsequent reads via
         // readPriorGitignorePatterns + enumerateManagedFiles produce the
         // same key form as `WrittenFile::$relativePath`. Without the form
         // match, cleanup-pass's `$writtenPaths` check misses files just
-        // written by sync and falsely classifies them stale (codex-review
-        // pin).
+        // written by sync and falsely classifies them stale.
         //
         // Filter known guideline-file basenames (CLAUDE.md / AGENTS.md /
         // GEMINI.md): those use ManagedRegion + are operator-tracked, never
         // wholesale-replaced. Adding them to the gitignore-managed manifest
         // would route them through cleanupStaleManagedFiles, which deletes
         // the WHOLE file when stale — destroying operator-authored content
-        // outside boost-core's managed markers (codex-review P1 pin). The
-        // wrapper contract is for files that need stale-cleanup-exclusion;
-        // guideline files don't fit that surface.
+        // outside boost-core's managed markers. The wrapper contract is for
+        // files that need stale-cleanup-exclusion; guideline files don't fit
+        // that surface.
         foreach ($wrapperClaimedPaths as $wrapperPath) {
             $normalized = ltrim($wrapperPath, '/');
             if ($this->isGuidelineFilePath($normalized)) {
                 continue;
             }
 
-            // 0.14.0: dedup against dir-level patterns. The agent-target globs
-            // above (e.g. `.claude/skills/`) already ignore everything beneath
-            // them, so a per-file wrapper entry like
-            // `.claude/skills/foo/SKILL.md` is pure bloat that re-grows the
-            // managed block on every sync (one line per injected skill × every
-            // shared+dedicated root). Skip any path a dir-level pattern already
-            // covers — keep the compact dir-level shape. (Field report:
-            // project-boost-laravel had 26 redundant per-file lines.)
+            // Dedup against dir-level patterns. The agent-target globs above
+            // (e.g. `.claude/skills/`) already ignore everything beneath them,
+            // so a per-file wrapper entry like `.claude/skills/foo/SKILL.md` is
+            // pure bloat that re-grows the managed block on every sync (one line
+            // per injected skill × every shared+dedicated root). Skip any path a
+            // dir-level pattern already covers — keep the compact dir-level
+            // shape.
             if ($this->isCoveredByDirPattern($normalized, $patterns)) {
                 continue;
             }
@@ -1653,7 +1618,7 @@ final readonly class SyncEngine
     }
 
     /**
-     * Guideline analogue of {@see resolveSkillShadowPaths()} (0.13.0). For a
+     * Guideline analogue of {@see resolveSkillShadowPaths()}. For a
      * host guideline that shadows a TAG-ELIGIBLE allowlisted-vendor guideline of
      * the same name, return both source-file paths so `boost where --diff` can
      * diff the override against the upstream copy. Returns null when no host
@@ -1667,8 +1632,8 @@ final readonly class SyncEngine
      *
      * Returns ALL tag-eligible vendor matches (a host guideline can shadow the
      * same-named guideline from MULTIPLE allowlisted vendors) so the caller can
-     * detect ambiguity — `--diff` can't pick one when more than one matches
-     * (codex-review). Empty list = not shadowing.
+     * detect ambiguity — `--diff` can't pick one when more than one matches.
+     * Empty list = not shadowing.
      *
      * @return list<array{hostPath: string, vendorPath: string, vendor: string}>
      */
@@ -1739,7 +1704,7 @@ final readonly class SyncEngine
     {
         // Per-sync renderer dispatcher — built from the just-loaded config.
         // Cannot live as a ctor field on SyncEngine because BoostConfig is
-        // only known inside sync(). See spec §5.1 (lifecycle constraint).
+        // only known inside sync() (lifecycle constraint).
         $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
 
         /** @var list<string> $renderErrors */
@@ -1859,9 +1824,8 @@ final readonly class SyncEngine
     }
 
     /**
-     * Load host commands from `.ai/commands/`. Phase 1 of the agent-commands
-     * spec is host-only — vendor commands, tag-filtering, and collision
-     * resolution are Phase 4.
+     * Load host commands from `.ai/commands/`. Host-only — vendor commands,
+     * tag-filtering, and collision resolution are not yet supported.
      *
      * @return list<Command>
      */
@@ -1880,7 +1844,7 @@ final readonly class SyncEngine
     /**
      * @param  array{exact: array<string, true>, prefixes: list<string>}  $reservedPaths
      * @param  list<Diagnostic>  $emitterDiagnostics  collected by-ref (reserved-path rejections + first-adoption warnings)
-     * @param  array<string, true>  $ownableEmitterPaths  collected by-ref: emitter outputs boost may OWN (fresh writes or already-owned) — only these become manifest-recorded + reapable (codex high)
+     * @param  array<string, true>  $ownableEmitterPaths  collected by-ref: emitter outputs boost may OWN (fresh writes or already-owned) — only these become manifest-recorded + reapable
      * @return list<EmitterResult>
      */
     private function runEmitters(
@@ -1959,8 +1923,8 @@ final readonly class SyncEngine
             );
         }
 
-        // 0.14.0 (codex high): canonicalize the emitter path ONCE before every
-        // downstream use — reserved-path check, collision tracking, manifest
+        // Canonicalize the emitter path ONCE before every downstream use —
+        // reserved-path check, collision tracking, manifest
         // recording, orphan matching. FileWriter resolves `./CLAUDE.md` and
         // `foo/./bar.md` to the same on-disk file, so without this an emitter
         // could (a) dodge the reserved-path denylist with a `.`-segment
@@ -1979,12 +1943,12 @@ final readonly class SyncEngine
             );
         }
 
-        // 0.14.0: reserved-path denylist (codex P1). An emitter must emit only
-        // to a path it alone owns — never a guidance file, .gitignore, .boost/,
-        // a source dir, an agent skill/command root, or a wrapper-claimed path.
-        // Reject (skip the write) + surface a diagnostic; do NOT trip
-        // $hasAnyError (a misbehaving emitter must not block the whole sync's
-        // reap/manifest), and never track/reap the path.
+        // Reserved-path denylist. An emitter must emit only to a path it alone
+        // owns — never a guidance file, .gitignore, .boost/, a source dir, an
+        // agent skill/command root, or a wrapper-claimed path. Reject (skip the
+        // write) + surface a diagnostic; do NOT trip $hasAnyError (a misbehaving
+        // emitter must not block the whole sync's reap/manifest), and never
+        // track/reap the path.
         if ($this->isReservedEmitterPath($relativePath, $reservedPaths)) {
             $emitterDiagnostics[] = Diagnostic::warning(
                 null,
@@ -2020,9 +1984,9 @@ final readonly class SyncEngine
 
         $claimedPaths[$relativePath] = $emitter->fqcn;
 
-        // 0.14.0 first-adoption warn (codex P1): capture pre-existence BEFORE
-        // the write so a takeover of an operator file boost has no ownership
-        // record of is surfaced (never silently adopted-then-later-reaped).
+        // First-adoption warn: capture pre-existence BEFORE the write so a
+        // takeover of an operator file boost has no ownership record of is
+        // surfaced (never silently adopted-then-later-reaped).
         $preExisted = is_file($projectRoot . '/' . $relativePath);
 
         try {
@@ -2041,7 +2005,7 @@ final readonly class SyncEngine
             );
         }
 
-        // 0.14.0 ownership gate (codex high): boost may OWN — and therefore later
+        // Ownership gate: boost may OWN — and therefore later
         // REAP — an emitter output ONLY when it created the file fresh
         // (`! $preExisted`) or already owned it (in the prior manifest). A
         // first-time takeover of a pre-existing file boost has no record of is
@@ -2182,9 +2146,8 @@ final readonly class SyncEngine
      * Migrations that remove a previously-installed vendor (e.g. swapping
      * `sandermuller/package-boost` for the renamed `package-boost-php`)
      * leave behind dangling symlinks under `.{agent}/skills/<old-pkg>/`
-     * that point into the now-absent `vendor/<old-pkg>/`. Earlier sync
-     * runs stumbled over them; this prune treats dead links in managed
-     * dirs as stale state that sync owns and cleans up.
+     * that point into the now-absent `vendor/<old-pkg>/`. This prune treats
+     * dead links in managed dirs as stale state that sync owns and cleans up.
      *
      * Live symlinks (target exists) are left alone and not recursed into,
      * so the prune is safe against link loops and against legitimate
@@ -2228,7 +2191,7 @@ final readonly class SyncEngine
 
     /**
      * Write one PendingWrite and, on success, best-effort delete the obsolete
-     * flat sibling left behind by a pre-0.2 boost-core run.
+     * flat sibling left behind by an older boost-core run.
      *
      * @param  list<WrittenFile>  $writes  Mutated in place with the WrittenFile on success.
      * @param  list<string>  $errors  Mutated in place with a formatted message on failure.
@@ -2258,7 +2221,7 @@ final readonly class SyncEngine
 
     /**
      * For a path ending in `/SKILL.md`, delete the obsolete flat sibling at
-     * `<same-stem>.md` left behind by pre-0.2 boost-core runs. The structural
+     * `<same-stem>.md` left behind by older boost-core runs. The structural
      * guard (`str_ends_with /SKILL.md`) is what limits scope — a guideline
      * file or non-skill output never matches, so unrelated `.md` siblings
      * are never touched.

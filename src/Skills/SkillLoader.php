@@ -24,8 +24,7 @@ use Throwable;
  *    `blade.php` lets `SKILL.blade.php` files load with their template
  *    output as the skill body.
  *  - Files whose extension no registered renderer claims are silently
- *    skipped — boost-core's default registry is passthrough-only, so an
- *    unmodified install behaves identically to pre-renderer boost-core.
+ *    skipped — boost-core's default registry is passthrough-only.
  *
  * Hidden files (`.`-prefixed) are skipped.
  *

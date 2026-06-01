@@ -3,7 +3,7 @@
 namespace SanderMuller\BoostCore\Conventions;
 
 /**
- * Outcome of resolving ONE convention slot token (0.15.0 conventions inlining).
+ * Outcome of resolving ONE convention slot token.
  *
  * A token resolves to either:
  *  - success: `$output` is the rendered text to splice in place of the token;

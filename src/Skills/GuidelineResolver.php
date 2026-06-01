@@ -13,8 +13,7 @@ final class GuidelineResolver
      *   shadow tag-eligibility rule by construction.
      * @param  list<array{guideline: string, shadowedVendor: string}>  $shadows
      *   Out-param: each host-vs-vendor shadow event, so callers can surface the
-     *   silent override in `boost where` / `boost sync` output. Mirrors
-     *   `SkillResolver::resolve()`.
+     *   silent override in `boost where` / `boost sync` output.
      * @return list<Guideline>
      *
      * @throws CollidingSkillsException
@@ -54,7 +53,7 @@ final class GuidelineResolver
             }
         }
 
-        // #86: impose a deterministic order on the OUTPUT so emitted guidance is
+        // Impose a deterministic order on the OUTPUT so emitted guidance is
         // byte-identical across platforms (the vendor-scan + injected-merge order is
         // otherwise filesystem-derived — APFS vs ext4 — driving CI auto-fix loops).
         // Output-only: the resolution loop above (which picks the --force winner +
@@ -64,7 +63,7 @@ final class GuidelineResolver
         // Host-authored guidelines come FIRST and keep their existing order — they
         // already arrive in the loader's deterministic sortByName order, so this
         // sort must NOT re-key them (sorting host by sourcePath would diverge from
-        // the loader's filename order under nested dirs — codex P2). PHP 8 usort is
+        // the loader's filename order under nested dirs). PHP 8 usort is
         // stable, so returning 0 for any host pair preserves that loader order; only
         // the VENDOR/injected portion (the actual non-determinism) is sorted, by
         // (sourceVendor, sourcePath) — both stable, not FS-derived; this also

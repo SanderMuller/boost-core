@@ -10,8 +10,7 @@ use Throwable;
  *
  * `$reason` is one of the public constants — callers branch on it to decide
  * how to surface the failure (warn + skip, fall back to cache, escalate to
- * abort under `BOOST_REMOTE_STRICT`). Aligns with the failure-modes table
- * in `internal/specs/remote-skill-sources.md` §11.
+ * abort under `BOOST_REMOTE_STRICT`).
  */
 final class RemoteFetchException extends RuntimeException
 {

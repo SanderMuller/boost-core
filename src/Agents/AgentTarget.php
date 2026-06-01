@@ -25,7 +25,7 @@ abstract class AgentTarget
     /**
      * Canonical filename inside each `<name>/` skill directory. Centralised
      * so the same literal isn't hard-coded in both the writer (this class)
-     * and the legacy-prune logic in SyncEngine.
+     * and the prune logic in SyncEngine.
      */
     public const string SKILL_FILE = 'SKILL.md';
 
@@ -69,10 +69,10 @@ abstract class AgentTarget
      * Skill + command directories ARE listed — 100% generated from `.ai/`.
      * The guideline file (CLAUDE.md, AGENTS.md, GEMINI.md) is NOT listed:
      * operators keep these files in version control to see what the agent
-     * reads. As of 0.12.0 the guidance file is wholesale boost-owned
-     * (markerless); operator custom content lives in `.ai/guidelines/`, not
-     * in the emission target. Keeping the file tracked (not gitignored)
-     * preserves the operator's ability to review boost's output in diffs.
+     * reads. The guidance file is wholesale boost-owned (markerless);
+     * operator custom content lives in `.ai/guidelines/`, not in the
+     * emission target. Keeping the file tracked (not gitignored) preserves
+     * the operator's ability to review boost's output in diffs.
      *
      * @return list<string>
      */
@@ -92,11 +92,10 @@ abstract class AgentTarget
      * Produce the per-skill writes for this agent. The guideline file is NOT
      * planned here.
      *
-     * 0.12.0: the agent-guidance file (CLAUDE.md / AGENTS.md / GEMINI.md) is
-     * written wholesale + markerless centrally by SyncEngine, which reads
-     * `guidelinesFileRelative()` + `formatGuidelinesContent()` directly and
-     * runs the markerless migration. `$guidelines` is accepted for signature
-     * stability but unused here.
+     * The agent-guidance file (CLAUDE.md / AGENTS.md / GEMINI.md) is written
+     * wholesale + markerless centrally by SyncEngine, which reads
+     * `guidelinesFileRelative()` + `formatGuidelinesContent()` directly.
+     * `$guidelines` is accepted for signature stability but unused here.
      *
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines

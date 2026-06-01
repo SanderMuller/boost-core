@@ -9,10 +9,8 @@ use Throwable;
  * Drives `boost sync --scope=user --all`: user-scope sync every installed
  * package that ships `resources/boost/skills/`.
  *
- * Extracted from {@see SyncEngine} so the per-package loop + collision
- * guard do not load the engine's class cognitive-complexity budget. The
- * explicit-command form of what the retired Composer plugin's
- * `runGlobalSync` did automatically on a `composer global` operation.
+ * Lives outside {@see SyncEngine} so the per-package loop + collision
+ * guard do not load the engine's class cognitive-complexity budget.
  *
  * One package failing — or losing a user-scope-path collision — does not
  * abort the rest; each yields its own {@see UserScopeResult}.

@@ -25,9 +25,6 @@ use Throwable;
  * against the declared `RemoteSkillRef::name`. Mismatch → recorded as an
  * error; the mismatched skill does not enter the pipeline; sibling skills
  * proceed.
- *
- * Spec: `internal/specs/remote-skill-sources.md` §3 (name-match rule),
- * §5 (resolve pipeline), §11 (failure isolation), Phase 5.
  */
 final readonly class RemoteSkillIngester
 {
@@ -39,7 +36,7 @@ final readonly class RemoteSkillIngester
 
     /**
      * @param  list<RemoteSkillSource>  $sources
-     * @param  SkillRendererDispatcher|null  $renderers  Per-sync dispatcher built from `BoostConfig::skillRenderers`. Caller passes null in user-scope sync (no project config). Default = passthrough-only, matching pre-renderer boost-core behavior. See spec §5.1 (lifecycle constraint).
+     * @param  SkillRendererDispatcher|null  $renderers  Per-sync dispatcher built from `BoostConfig::skillRenderers`. Caller passes null in user-scope sync (no project config). Default = passthrough-only.
      * @return array{skills: array<string, list<Skill>>, errors: list<string>}
      */
     /**
@@ -54,7 +51,7 @@ final readonly class RemoteSkillIngester
 
     /**
      * @param  list<RemoteSkillSource>  $sources
-     * @param  SkillRendererDispatcher|null  $renderers  Per-sync dispatcher built from `BoostConfig::skillRenderers`. Caller passes null in user-scope sync (no project config). Default = passthrough-only, matching pre-renderer boost-core behavior. See spec §5.1 (lifecycle constraint).
+     * @param  SkillRendererDispatcher|null  $renderers  Per-sync dispatcher built from `BoostConfig::skillRenderers`. Caller passes null in user-scope sync (no project config). Default = passthrough-only.
      * @return array{skills: array<string, list<Skill>>, errors: list<string>}
      */
     public function ingest(array $sources, ?SkillRendererDispatcher $renderers = null): array
@@ -146,8 +143,7 @@ final readonly class RemoteSkillIngester
      * File discovery uses the dispatcher's registered extensions, falling
      * back to `SKILL.md` for backward compat. Renderer exceptions are
      * caught and converted to error strings here so the outer `ingest()`
-     * loop honors `BOOST_RENDER_STRICT` analogously to `BOOST_REMOTE_STRICT`
-     * — see spec §7.2.
+     * loop honors `BOOST_RENDER_STRICT` analogously to `BOOST_REMOTE_STRICT`.
      */
     private function loadOne(RemoteSkillSource $source, CachedSource $cached, RemoteSkillRef $ref, SkillRendererDispatcher $dispatcher): Skill|string
     {

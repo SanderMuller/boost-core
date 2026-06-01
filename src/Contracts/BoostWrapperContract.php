@@ -65,8 +65,7 @@ namespace SanderMuller\BoostCore\Contracts;
  * **Failure modes (engine handling).**
  *
  * - Class absent across all PSR-4 prefixes: silent fallback to strict-drift
- *   behavior. No diagnostic. (See 0.11.0 spec §4 + Resolved warning
- *   behavior section for the rationale.)
+ *   behavior. No diagnostic.
  * - Class exists but doesn't implement this contract: contract-violation
  *   warning per-package, pinned wording.
  * - `injectedEmitPaths()` throws: exception-safe fallback + warning naming

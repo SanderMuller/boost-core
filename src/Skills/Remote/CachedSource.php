@@ -5,8 +5,8 @@ namespace SanderMuller\BoostCore\Skills\Remote;
 /**
  * Result of {@see RemoteSkillCache::ensureCached()} — the local cache slot
  * directory and the concrete identifier the source resolved to. Callers
- * (notably `SyncEngine`'s remote-source ingest in Phase 5) compose per-skill
- * paths via `$cached->skillPath($ref)`.
+ * (notably `SyncEngine`'s remote-source ingest) compose per-skill paths via
+ * `$cached->skillPath($ref)`.
  */
 final readonly class CachedSource
 {

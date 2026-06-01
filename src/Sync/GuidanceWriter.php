@@ -12,14 +12,13 @@ use SanderMuller\BoostCore\Skills\Guideline;
 
 /**
  * Writes the per-agent guidance files (CLAUDE.md / AGENTS.md / GEMINI.md)
- * wholesale + markerless, extracted from SyncEngine (maintenance cycle 2026-05).
+ * wholesale + markerless.
  *
- * 0.12.0 consolidated the former per-target guideline write + the marker-based
- * conventions write into ONE wholesale path per file. Conventions render
- * markerless into CLAUDE.md (from `boost.php`'s `->withConventions([...])`, via the
- * passed {@see ConventionsPass}); guidelines render markerless into each guidance
- * file. {@see GuidanceComposer} migrates legacy marker-bounded files, and the
- * never-lossy empty-assembly guard (0.12.0 / manifest-aware 0.13.0) ensures a
+ * Conventions + guidelines assemble into ONE wholesale path per file.
+ * Conventions render markerless into CLAUDE.md (from `boost.php`'s
+ * `->withConventions([...])`, via the passed {@see ConventionsPass}); guidelines
+ * render markerless into each guidance file. {@see GuidanceComposer} migrates
+ * legacy marker-bounded files, and the never-lossy empty-assembly guard ensures a
  * non-empty file is never blanked unless boost provably owns it.
  */
 final readonly class GuidanceWriter
@@ -74,7 +73,7 @@ final readonly class GuidanceWriter
 
         $guidanceFiles = $this->collectGuidanceFiles($config, $resolvedGuidelines, $conventionsPass->section());
 
-        // 0.15.0: inline slot tokens into each guidance body + decide the drop
+        // Inline slot tokens into each guidance body + decide the drop
         // gate — owned by ConventionsPass.
         ['files' => $guidanceFiles, 'section' => $effectiveSection, 'errors' => $conventionsErrors, 'selfCheck' => $guidanceSelfCheck] = $conventionsPass->inlineGuidanceAndGate(
             $projectRoot,
@@ -91,7 +90,7 @@ final readonly class GuidanceWriter
             $existing = is_file($absolute) ? @file_get_contents($absolute) : null;
             $existing = $existing === false ? null : $existing;
 
-            // Empty-assembly guard (0.12.0): boost produced NO guidance content
+            // Empty-assembly guard: boost produced NO guidance content
             // this sync (no resolved guidelines + no conventions). The
             // markerless model is stateless — for a MARKERLESS file it cannot
             // tell a boost-owned file that should now go empty from a NEW
@@ -108,21 +107,18 @@ final readonly class GuidanceWriter
             // which strips the markers (converging it to markerless) and
             // preserves any genuine out-of-marker residual — never a wipe. That
             // keeps the legacy-marker upgrade path converging even when the
-            // resolved guidance set is empty (codex-review: stale instructions
-            // must not linger in a boost-owned file).
+            // resolved guidance set is empty (stale instructions must not linger
+            // in a boost-owned file).
             //
-            // 0.13.0 — the manifest resolves the 0.12 trade-off. A marker file
-            // is exempt (markers prove authorship → falls through to migrate()).
             // For a MARKERLESS non-empty file under empty assembly, consult the
             // PRIOR manifest: if it proves boost owns this exact file (listed +
             // sha-match — i.e. unchanged since boost wrote it), CLEAR it
-            // (converge — the "synced then removed all guidance" case now
-            // converges correctly). Otherwise PRESERVE: operator-authored, or
-            // sha-diverged (operator hand-edited), or no manifest yet (cold
-            // start / pre-0.13) — the never-lossy default. The clear is gated
-            // on the prior manifest only; the new manifest is written after a
-            // successful sync, so the first 0.13 sync can never promote a
-            // pre-existing file to owned mid-run and wipe it (codex P1.1).
+            // (converge — the "synced then removed all guidance" case). Otherwise
+            // PRESERVE: operator-authored, sha-diverged (operator hand-edited),
+            // or no manifest yet (cold start) — the never-lossy default. The
+            // clear is gated on the PRIOR manifest only; the new manifest is
+            // written after a successful sync, so a sync can never promote a
+            // pre-existing file to owned mid-run and wipe it.
             if ($assembled === '' && ! ($existing !== null && $composer->hasManagedMarkers($existing))) {
                 $ownedByManifest = $existing !== null
                     && trim($existing) !== ''
@@ -158,13 +154,13 @@ final readonly class GuidanceWriter
             // (sha-match — genuine steady-state boost output).
             //
             // Crucially, an UNCHANGED file is re-claimed ONLY on a sha-match, not
-            // mere presence (codex-review): a file boost once owned but the
+            // mere presence: a file boost once owned but the
             // operator later hand-edited has a DIVERGED prior sha; if a later
             // assembly happens to coincide with the operator's edit byte-for-
             // byte, `has()` alone would wrongly re-claim it → a subsequent empty
             // sync could blank an operator-edited file. Empty content is never
-            // owned. (A NOT-listed UNCHANGED file is the first-sync coincidence
-            // case — also not claimed.)
+            // owned. A NOT-listed UNCHANGED file is the first-sync coincidence
+            // case — also not claimed.
             $boostProvesOwnership = $written->action !== WriteAction::UNCHANGED
                 || $priorManifest->ownsGuidance($file, hash('sha256', $migration['content']));
             if (trim($migration['content']) !== '' && $boostProvesOwnership) {
@@ -249,7 +245,7 @@ final readonly class GuidanceWriter
     }
 
     /**
-     * WARNING fired on the 0.12.0 marker→markerless transition when genuine
+     * WARNING fired on the marker→markerless transition when genuine
      * out-of-marker content was preserved below boost's wholesale body. Names the
      * conventions path only when the residual looks like the legacy conventions
      * YAML (convert-conventions no longer applies — markers are gone).

@@ -3,8 +3,7 @@
 namespace SanderMuller\BoostCore\Conventions;
 
 /**
- * Outcome of inlining convention tokens into one skill/guidance body
- * (0.15.0 conventions inlining).
+ * Outcome of inlining convention tokens into one skill/guidance body.
  *
  *  - `$body` — the body with resolved tokens spliced in (errored/skipped tokens
  *    left as-is).

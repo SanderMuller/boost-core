@@ -24,10 +24,6 @@ final class CopilotTarget extends AgentTarget
      * with Copilot + Codex active don't duplicate skill files across two
      * directories. Copilot-only configs still get skills via this pool —
      * CopilotTarget's own emission keeps `.agents/skills` populated.
-     *
-     * Replaces 0.8.x's `.github/skills` emission. 0.9.1 sync cleanup
-     * removes any stale `.github/skills/` left over from prior versions
-     * (see SyncEngine::cleanupStalePaths()).
      */
     public function skillsDirectoryRelative(): string
     {
@@ -42,10 +38,6 @@ final class CopilotTarget extends AgentTarget
      * {@see KiroTarget}, {@see OpenCodeTarget}, {@see AmpTarget} — multiple
      * agents reading the same file is the established pattern and
      * `FileWriter`'s ManagedRegion merge handles concurrent writes safely.
-     *
-     * Replaces 0.8.x's `.github/copilot-instructions.md` emission, which
-     * duplicated content also present in `AGENTS.md` when both Copilot and
-     * Codex were active. Single source for Copilot too, no duplication.
      *
      * Skill + command surfaces (`.github/skills/`, `.github/prompts/`)
      * stay Copilot-specific; those have no equivalent on other targets.

@@ -250,7 +250,7 @@ final readonly class ConventionsBlockEmitter
      * the rendered region merged into place via ManagedRegion (preserving
      * everything outside the markers).
      *
-     * Used by `SyncEngine::syncConventions()` in 0.9.0 — the source of truth
+     * Used by `SyncEngine::syncConventions()` — the source of truth
      * is `BoostConfig::$conventions`, not the marker body in CLAUDE.md.
      *
      * @param  list<VendorSchemaSource>  $sources

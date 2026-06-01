@@ -18,7 +18,7 @@ use InvalidArgumentException;
  *
  * `name` is a flat identifier (kebab/snake-case) that MUST equal the source
  * `SKILL.md`'s frontmatter `name`. Mismatch is a config error caught at
- * sync time (§3 of `internal/specs/remote-skill-sources.md`).
+ * sync time.
  */
 final readonly class RemoteSkillRef
 {

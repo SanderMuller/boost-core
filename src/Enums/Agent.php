@@ -5,9 +5,8 @@ namespace SanderMuller\BoostCore\Enums;
 /**
  * The nine AI agents boost-core fans out to.
  *
- * Per the architecture plan's "all 9 from day one" decision. Per-agent
- * transformation details (directory layout, naming, frontmatter quirks)
- * live with each AgentTarget implementation.
+ * Per-agent transformation details (directory layout, naming, frontmatter
+ * quirks) live with each AgentTarget implementation.
  */
 enum Agent: string
 {

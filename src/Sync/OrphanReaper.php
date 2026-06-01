@@ -3,9 +3,8 @@
 namespace SanderMuller\BoostCore\Sync;
 
 /**
- * 0.14.0 reconcile-on-sync orphan reap, extracted from SyncEngine (maintenance
- * cycle 2026-05). Deletes boost-owned files recorded in the PRIOR ownership
- * manifest that this sync no longer intends to emit — a dormant FileEmitter's
+ * Reconcile-on-sync orphan reap. Deletes boost-owned files recorded in the
+ * PRIOR ownership manifest that this sync no longer intends to emit — a dormant FileEmitter's
  * output, or a de-selected agent's guidance file — manifest-gated and never-lossy
  * (a hand-edited file whose sha diverged is preserved).
  *
@@ -84,7 +83,7 @@ final class OrphanReaper
             }
         }
 
-        // 0.14.0 (codex high): identify files boost wrote/kept LIVE this sync by
+        // Identify files boost wrote/kept LIVE this sync by
         // INODE. On a case-insensitive filesystem an emitter that renames its
         // output by CASE only (`.Dummy/output.txt` → `.dummy/output.txt`) leaves
         // a prior manifest entry under the old spelling that string-matches as an
@@ -112,7 +111,7 @@ final class OrphanReaper
         $retained = [];
         foreach ($reaps as $relativePath) {
             $absolute = $projectRoot . '/' . $relativePath;
-            // Reap ONLY a regular file (codex high): boost's guidance/emitter
+            // Reap ONLY a regular file: boost's guidance/emitter
             // outputs are always plain files. If the operator has since replaced
             // the path with a directory tree or a symlink, that is THEIR content —
             // never recurse into it or unlink it, and drop ownership (don't
@@ -125,7 +124,7 @@ final class OrphanReaper
                 continue;
             }
 
-            // Never unlink a path that aliases a live output (codex high).
+            // Never unlink a path that aliases a live output.
             $stat = @stat($absolute);
             if ($stat !== false && $stat['ino'] > 0) {
                 if (isset($liveInodes[$stat['dev'] . ':' . $stat['ino']])) {
@@ -142,7 +141,7 @@ final class OrphanReaper
                 continue;
             }
 
-            // Delete FAILED (codex medium): a transient permission/filesystem
+            // Delete FAILED: a transient permission/filesystem
             // error must NOT silently drop the ownership record — that would leak
             // the stale file forever (the next sync wouldn't know to retry).
             // Retain it so writeSyncManifest carries the entry forward.
@@ -181,7 +180,7 @@ final class OrphanReaper
         $provenance = $entry['provenance'];
 
         if ($category === SyncManifest::CATEGORY_FILE && str_starts_with($provenance, SyncManifest::PROVENANCE_EMITTER_PREFIX)) {
-            // Wrapper preservation must be PREFIX-aware (codex high): a wrapper
+            // Wrapper preservation must be PREFIX-aware: a wrapper
             // DIRECTORY claim (`.agents/skills/foo`) owns its whole subtree, so a
             // path under it is never reaped here (exact-match would leak a delete
             // on descendants).
@@ -194,7 +193,7 @@ final class OrphanReaper
                 return false;
             }
 
-            // sha-revalidation (codex high — never-lossy): an emitter output the
+            // sha-revalidation (never-lossy): an emitter output the
             // operator hand-edited after boost wrote it (e.g. a tweaked
             // `.mcp.json`) must NOT be deleted on dormancy. Reap ONLY when the
             // on-disk content still matches what boost recorded — a divergence

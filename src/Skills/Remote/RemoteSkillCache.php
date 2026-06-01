@@ -19,10 +19,8 @@ use Throwable;
  *
  * Public entry point is {@see ensureCached()}: takes a {@see RemoteSkillSource},
  * returns a {@see CachedSource} pointing at the slot. Resolves the ref (with
- * a 24h TTL for moving refs — spec OQ1), fetches + extracts on miss, and
- * verifies SHA-256 tree hashes on hit (spec OQ3).
- *
- * Spec: `internal/specs/remote-skill-sources.md` §5, §6, §10.
+ * a 24h TTL for moving refs), fetches + extracts on miss, and verifies
+ * SHA-256 tree hashes on hit.
  */
 final readonly class RemoteSkillCache
 {
@@ -99,7 +97,6 @@ final readonly class RemoteSkillCache
 
         $cached = $this->readResolutionCache($source->source);
         $key = $source->version . ':' . $source->mode();
-        // Use time() not Carbon — boost-core ships no nesbot/carbon dep.
         $now = time();
 
         if (isset($cached[$key])
@@ -224,7 +221,7 @@ final readonly class RemoteSkillCache
         // extract to the slot's tempDir so the wrapper lands as
         // `<temp>/<skill-name>/` and `skillPath()` resolves naturally.
         // (Wrapper-name vs declared `RemoteSkillRef::name` mismatch is
-        // caught at ingest time in Phase 5 via frontmatter `name` check.)
+        // caught at ingest time via the frontmatter `name` check.)
         foreach ($source->skills as $ref) {
             $assetName = (string) $ref->asset;
             $assetPath = $tempDir . '/.dl-' . $ref->name . '.skill';

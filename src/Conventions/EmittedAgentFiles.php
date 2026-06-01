@@ -16,8 +16,7 @@ use SanderMuller\BoostCore\Config\BoostConfig;
 use Symfony\Component\Finder\Finder;
 
 /**
- * Enumerates the EMITTED files a conventions-token leak scan should inspect
- * (0.16.0 conventions-token observability).
+ * Enumerates the EMITTED files a conventions-token leak scan should inspect.
  *
  * Scope = the surfaces the inliner writes tokens INTO: per-agent guidance files
  * (CLAUDE.md / AGENTS.md / GEMINI.md) + per-agent emitted skill files

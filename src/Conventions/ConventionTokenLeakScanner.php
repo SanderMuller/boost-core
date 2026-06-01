@@ -6,8 +6,7 @@ use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 
 /**
- * Classifies conventions-token leaks in emitted content (0.16.0 conventions-token
- * observability — spec internal/specs/conventions-token-observability.md).
+ * Classifies conventions-token leaks in emitted content.
  *
  * Wraps {@see ConventionsInliner::scanLeaks()} (which finds raw tokens / surviving
  * opt-in fences) and attaches a human-actionable cause to each, using the live

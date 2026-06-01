@@ -9,7 +9,7 @@ namespace SanderMuller\BoostCore\Discovery;
  * Pre-checking is UX only — does NOT bypass the allowlist. Users can
  * uncheck them and they won't be allowlisted.
  *
- * Per the architecture plan, the canonical list as of 2026-05-17:
+ * The canonical list:
  * - `sandermuller/boost-*` (boost-core and any sibling foundation packages)
  * - `sandermuller/package-boost-*` (-php, -laravel variants)
  * - `sandermuller/project-boost` (exact, for the app-dev bundle)

@@ -15,8 +15,6 @@ use InvalidArgumentException;
  *
  * Raw construction is available for the rare non-default asset-name case;
  * the factories cover the 99% path with less boilerplate.
- *
- * Spec: `internal/specs/remote-skill-sources.md` §3, §4.
  */
 final readonly class RemoteSkillSource
 {

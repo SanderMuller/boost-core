@@ -7,7 +7,7 @@ use ZipArchive;
 
 /**
  * Extracts a `.skill` ZIP bundle into a destination directory with
- * mandatory sanitization (§9).
+ * mandatory sanitization.
  *
  * Iterate-then-whitelist pattern: open the archive, walk every entry
  * checking name (no `..`, no absolute paths), type (no symlinks), and
@@ -15,7 +15,7 @@ use ZipArchive;
  * extraction never starts. On a clean pass, `ZipArchive::extractTo()`
  * runs once over the whole archive.
  *
- * Caps (§9):
+ * Caps:
  *  - 10,000 entries per archive (zip-bomb defense)
  *  - 50MB per file
  *  - 200MB total uncompressed size

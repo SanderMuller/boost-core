@@ -22,16 +22,15 @@ final readonly class SyncResult
      *         version actually shipped.
      * @param  list<array{guideline: string, shadowedVendor: string}>  $hostGuidelineShadows
      *         Host `.ai/guidelines/<name>.md` shadowing a TAG-ELIGIBLE allowlisted-vendor
-     *         guideline of the same name (0.13.0). Vendor guidelines are tag-filtered
+     *         guideline of the same name. Vendor guidelines are tag-filtered
      *         before resolution, so a tag-filtered-out vendor copy is never recorded as
      *         shadowed (no false positives). Surfaced in `boost where` / `boost sync` for
      *         parity with `$hostShadows` (skills).
      * @param  list<Diagnostic>  $diagnostics
-     *         NEW in 0.8.0 — lenient diagnostics from the conventions-schema
+     *         Lenient diagnostics from the conventions-schema
      *         layer (schema parse failures, validation diagnostics, scaffold
-     *         warnings). Never triggers sync/where exit FAILURE; the legacy
-     *         `errors` channel is preserved for fatal-failure semantics. See
-     *         spec §14.
+     *         warnings). Never triggers sync/where exit FAILURE; the
+     *         `errors` channel carries fatal-failure semantics.
      */
     public function __construct(
         public array $writes,

@@ -27,7 +27,7 @@ final readonly class Skill
     }
 
     /**
-     * Return a copy with a replaced body — used by the 0.15.0 conventions
+     * Return a copy with a replaced body — used by the conventions
      * inliner to splice resolved slot values into the skill before fan-out.
      */
     public function withBody(string $body): self

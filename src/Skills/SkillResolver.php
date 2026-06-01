@@ -5,7 +5,7 @@ namespace SanderMuller\BoostCore\Skills;
 /**
  * Resolves a set of skills from multiple sources into a deduplicated list.
  *
- * Collision precedence (per architecture plan):
+ * Collision precedence:
  *
  * 1. Host `.ai/` always wins. Vendor skills sharing a name are silently
  *    overridden — this is the canonical override mechanism.

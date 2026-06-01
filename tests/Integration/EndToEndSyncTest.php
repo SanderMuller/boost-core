@@ -3012,7 +3012,7 @@ it('0.9.6 path-ownership: mixed-content at `.github/copilot-instructions.md` (op
         // sources for boost-core to track it going forward).
         $infoMessages = array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics);
         $combined = implode("\n", $infoMessages);
-        expect($combined)->toContain('recover from git history');
+        expect($combined)->toContain('recover it from git');
     } finally {
         rmTreeE2E($root);
     }

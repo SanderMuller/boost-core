@@ -175,11 +175,10 @@ final class SyncCommand extends BoostBaseCommand
     private function report(SymfonyStyle $io, SyncResult $result, bool $checkOnly): int
     {
         // Render diagnostics BEFORE the error short-circuit. Render-fail
-        // warnings (0.9.3) and other safety-gate diagnostics carry
+        // warnings and other safety-gate diagnostics carry
         // operator-facing reassurance ("prior content preserved") that
         // must reach the operator even when SyncResult also carries
-        // top-level errors. The 0.8.x render-only-on-success path hid
-        // these signals at exactly the moment they were most needed.
+        // top-level errors.
         $this->renderConventionsDiagnostics($io, $result);
 
         if ($result->hasErrors()) {
@@ -251,13 +250,12 @@ final class SyncCommand extends BoostBaseCommand
     }
 
     /**
-     * Renders the SyncResult::diagnostics list. The section was named "Project
-     * Conventions" in 0.8.x when conventions-schema was the only diagnostic
-     * source. As of 0.9.1+, the list carries multiple kinds — conventions
-     * warn/error, clean-slate stale-removal info, copilot-instructions strip
-     * info, render-fail safety warnings (0.9.3). Renamed to "Diagnostics" to
-     * cover all of those without misleading operators who'd otherwise scroll
-     * past expecting only conventions content.
+     * Renders the SyncResult::diagnostics list. The list carries multiple
+     * kinds — conventions warn/error, clean-slate stale-removal info,
+     * copilot-instructions strip info, render-fail safety warnings. The
+     * section is named "Diagnostics" to cover all of those without
+     * misleading operators who'd otherwise scroll past expecting only
+     * conventions content.
      */
     private function renderConventionsDiagnostics(SymfonyStyle $io, SyncResult $result): void
     {
@@ -297,14 +295,6 @@ final class SyncCommand extends BoostBaseCommand
     }
 
     /**
-     * Surface destructive deletes inline. Previously delete events showed
-     * only in `--check` output; an unexpected delete on live sync (e.g.
-     * a previously-installed agent-dir skill pruned because its source
-     * skill is no longer tag-eligible after a `withTags()` change) went
-     * out with only a count in the success summary. Now we list each
-     * deleted path so the operator can audit.
-     */
-    /**
      * Log every host-vs-vendor shadow event. Silent override is the
      * documented behavior, but operators using `withAllowedVendors` +
      * symlinked host overrides have no way to tell which version
@@ -325,7 +315,7 @@ final class SyncCommand extends BoostBaseCommand
 
         if ($result->hostGuidelineShadows !== []) {
             // Count UNIQUE host guidelines, not shadow events (one guideline can
-            // shadow the same name across multiple vendors) — codex-review.
+            // shadow the same name across multiple vendors).
             $uniqueGuidelines = count(array_unique(array_column($result->hostGuidelineShadows, 'guideline')));
             $io->note(sprintf(
                 '%d host guideline(s) shadowed allowlisted-vendor copies:',

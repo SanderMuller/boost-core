@@ -3,8 +3,7 @@
 namespace SanderMuller\BoostCore\Conventions;
 
 /**
- * A classified conventions-token leak in an emitted file (0.16.0
- * conventions-token observability). Pairs a {@see LeakHit} location with a
+ * A classified conventions-token leak in an emitted file. Pairs a {@see LeakHit} location with a
  * resolved, human-actionable `cause` — produced by
  * {@see ConventionTokenLeakScanner::scan()}.
  */

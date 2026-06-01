@@ -5,8 +5,7 @@ namespace SanderMuller\BoostCore\Skills;
 use Symfony\Component\Finder\Finder;
 
 /**
- * Loads `.ai/commands/*.md` (and, from spec Phase 4, vendor
- * `resources/boost/commands/`) into {@see Command} value objects.
+ * Loads `.ai/commands/*.md` into {@see Command} value objects.
  * Mirrors {@see GuidelineLoader}.
  */
 final readonly class CommandLoader

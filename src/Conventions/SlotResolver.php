@@ -5,8 +5,7 @@ namespace SanderMuller\BoostCore\Conventions;
 use Symfony\Component\Yaml\Yaml;
 
 /**
- * Resolves a convention slot reference to inlined text at sync/render time
- * (0.15.0 conventions inlining — spec internal/specs/conventions-inlining.md).
+ * Resolves a convention slot reference to inlined text at sync/render time.
  *
  * Given a slot `path` (dot-notation, e.g. `jira.project_key`), a render `mode`,
  * and an optional inline `fallback`, produces the text to splice in place of a
@@ -66,7 +65,7 @@ final readonly class SlotResolver
         }
 
         // 2. schema default — the leaf's own `default`, OR an ancestor open-vocab
-        // map's `default` indexed by the sub-key (e.g. `mcp.jira`), 0.16.0.
+        // map's `default` indexed by the sub-key (e.g. `mcp.jira`).
         $default = $this->schemaDefault($path);
         if ($default->found) {
             return $this->render($default->value, $mode, $path, SlotResolution::PROVENANCE_SCHEMA_DEFAULT);
@@ -200,8 +199,8 @@ final readonly class SlotResolver
     /**
      * Look up a slot's leaf schema by dot-path. Navigates nested `properties`;
      * for a segment with no matching property, descends into an open-vocab map's
-     * `additionalProperties` schema (0.16.0 — so a dynamic map sub-key like
-     * `mcp.jira` is an addressable, type-classifiable leaf, not an "unknown slot").
+     * `additionalProperties` schema — so a dynamic map sub-key like
+     * `mcp.jira` is an addressable, type-classifiable leaf, not an "unknown slot".
      * Returns null when the path is defined by neither.
      *
      * @return array<mixed, mixed>|null
@@ -231,7 +230,7 @@ final readonly class SlotResolver
     }
 
     /**
-     * The effective schema default for a slot path, by PATH-EXISTENCE (0.16.0).
+     * The effective schema default for a slot path, by PATH-EXISTENCE.
      * Walks the schema along the path; the deepest node carrying a `default` wins,
      * with the segments BELOW that node indexed into the default value. This
      * resolves both a normal leaf default (`github.default_base_branch` → the

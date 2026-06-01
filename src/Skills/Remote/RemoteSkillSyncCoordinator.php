@@ -8,14 +8,11 @@ use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
 use SanderMuller\BoostCore\Sync\SkillSourceCollisionException;
-use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\WrittenFile;
 
 /**
  * Coordinates the remote-skill side of a sync — fetching + tag-filtering +
- * orphan-pruning. Extracted from {@see SyncEngine}
- * so the engine's cognitive-complexity budget stays under the per-class cap
- * as the remote-skill surface grows.
+ * orphan-pruning.
  */
 final readonly class RemoteSkillSyncCoordinator
 {

@@ -4,7 +4,7 @@ namespace SanderMuller\BoostCore\Conventions;
 
 /**
  * Resolves `<!--boost:conv …-->` tokens in a skill/guidance BODY into inlined
- * convention values at sync time (0.15.0 conventions inlining).
+ * convention values at sync time.
  *
  * Token: `<!--boost:conv path="jira.project_key" mode="inline" fallback="ask the user"-->`
  *  - `path` (required) — dot-notation slot path;
@@ -12,8 +12,8 @@ namespace SanderMuller\BoostCore\Conventions;
  *  - `fallback` (optional) — prose emitted when the slot is unset AND has no
  *    schema default (required only for no-default slots — D9).
  *
- * Scope (D1, codex P2.5): tokens resolve in PROSE and in OPT-IN fenced code
- * blocks (info-string contains `boost:conv` — 3ncrxzev-A). They are LEFT LITERAL
+ * Scope: tokens resolve in PROSE and in OPT-IN fenced code
+ * blocks (info-string contains `boost:conv`). They are LEFT LITERAL
  * inside plain fenced code blocks and inline-code spans (so authoring docs can
  * show the token verbatim). An ESCAPE — `<!--\boost:conv …-->` — renders the
  * literal token text in prose. (Callers keep tokens out of FRONTMATTER; this
@@ -23,9 +23,9 @@ namespace SanderMuller\BoostCore\Conventions;
  * `boost sync --check` fails and the conventions block is kept.
  *
  * The line scanner is shared between {@see inline()} (which resolves) and
- * {@see scanLeaks()} (which detects leaks in EMITTED output, 0.16.0) via
+ * {@see scanLeaks()} (which detects leaks in EMITTED output) via
  * {@see walkLines()}, so the two never drift in how they classify prose vs.
- * fence vs. inline-code (codex P2a/P2b).
+ * fence vs. inline-code.
  */
 final readonly class ConventionsInliner
 {
@@ -67,11 +67,11 @@ final readonly class ConventionsInliner
 
         // An OPT-IN fence is BUFFERED: its opener is emitted only on close, once
         // we know whether the body resolved cleanly. On a clean fence the
-        // `boost:conv` info-string is stripped (` ```yaml boost:conv ` → ` ```yaml `,
-        // unchanged from 0.15). On a fence whose body ERRORED, the info-string is
+        // `boost:conv` info-string is stripped (` ```yaml boost:conv ` → ` ```yaml `).
+        // On a fence whose body ERRORED, the info-string is
         // KEPT, so the unresolved token stays detectable on disk by the same
-        // surviving-info-string signal that catches a pre-0.15 emit (0.16.0 P1 —
-        // closes the fenced-mode-B on-disk gap). Plain fences + prose stream
+        // surviving-info-string signal that catches an emit that never processed
+        // the fence. Plain fences + prose stream
         // through unchanged.
         //
         // @var array{open: string, body: list<string>, errorsBefore: int}|null $fence
@@ -142,19 +142,18 @@ final readonly class ConventionsInliner
     }
 
     /**
-     * Detect raw, unresolved `boost:conv` tokens in EMITTED output (0.16.0
-     * conventions-token observability — spec
-     * internal/specs/conventions-token-observability.md). Read-only; never
+     * Detect raw, unresolved `boost:conv` tokens in EMITTED output.
+     * Read-only; never
      * resolves. Two leak signals, both decided by the SAME stateful walker
      * `inline()` uses, so classification can't drift:
      *
      *  - a `<!--boost:conv …-->` token in PROSE context (outside any fence /
      *    inline-code span) → {@see LeakHit::KIND_PROSE_TOKEN};
      *  - a surviving ` ```boost:conv ` opt-in fence OPENER → {@see
-     *    LeakHit::KIND_FENCE_OPENER}. A 0.15+ engine strips the info-string when
+     *    LeakHit::KIND_FENCE_OPENER}. The engine strips the info-string when
      *    it processes the fence, so a surviving one is a definitive leak. Decided
      *    by the walker's active-fence state (NOT a flat grep): a `boost:conv` line
-     *    nested inside ANOTHER fence is fence content, not an opener (codex P2b).
+     *    nested inside ANOTHER fence is fence content, not an opener.
      *
      * Tokens inside plain fences / inline-code spans are intentional literals and
      * are NOT reported. A token left raw inside a PROCESSED opt-in fence (mode B,
@@ -249,8 +248,8 @@ final readonly class ConventionsInliner
 
     /**
      * Mask inline-code spans (`` `…` ``) with placeholders so tokens inside
-     * backticks are never seen as tokens. Matches a balanced run of N backticks
-     * (codex P2): `…`, ``…``, ```…``` all protect a literal token example. The
+     * backticks are never seen as tokens. Matches a balanced run of N backticks:
+     * `…`, ``…``, ```…``` all protect a literal token example. The
      * `$spans` map (placeholder → original) is filled for restoration / lookup.
      *
      * @param  array<string, string>  $spans
@@ -376,8 +375,8 @@ final readonly class ConventionsInliner
      * signal)? Either a legacy `$.<root>` runtime reference, OR heading-relative
      * prose that points at the section. Used by the gate on both the emitted
      * guidance body AND the EXISTING on-disk content that migrate() may preserve
-     * as residual (codex P1.1), and as a broader replacement for the brittle
-     * exact-string "Project Conventions" check (codex P1.2 — real prose varies).
+     * as residual, and as a broader replacement for the brittle
+     * exact-string "Project Conventions" check (real prose varies).
      */
     public function dependsOnConventions(string $text): bool
     {

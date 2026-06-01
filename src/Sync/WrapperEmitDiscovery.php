@@ -9,7 +9,7 @@ use SanderMuller\BoostCore\Conventions\Diagnostic;
 use Throwable;
 
 /**
- * Discovers wrapper packages declaring `BoostWrapper` classes (0.11.0). For
+ * Discovers wrapper packages declaring `BoostWrapper` classes. For
  * each package in `InstalledPackages`, probes the PSR-4 prefixes declared in
  * the package's `composer.json` for a `BoostWrapper` class implementing
  * `BoostWrapperContract`, and unions the returned `injectedEmitPaths()`
@@ -20,7 +20,7 @@ use Throwable;
  * emitted output to delete" classification — fixes the bare-CLI false-
  * positive drift behavior on wrapper-installed projects.
  *
- * Failure-mode handling (per 0.11.0 spec Resolved warning-behavior section):
+ * Failure-mode handling:
  *  - Class absent across all PSR-4 prefixes: silent — no diagnostic.
  *  - Class exists but does NOT implement `BoostWrapperContract`: per-package
  *    contract-violation warning, pinned wording.
@@ -148,7 +148,7 @@ final readonly class WrapperEmitDiscovery
      * Prefer a contract-implementing candidate over a violating one. Verify
      * the resolved class file lives under the package's installPath so a
      * foreign class occupying the same FQN (prefix collision) is not
-     * misattributed to this package (codex-review pin).
+     * misattributed to this package.
      *
      * Identical-FQN collisions across two installed wrappers (same non-empty
      * prefix + same `BoostWrapper` class name) are unrepresentable in PHP
@@ -157,7 +157,7 @@ final readonly class WrapperEmitDiscovery
      * and the colliding package is treated as wrapper-less. This is the only
      * PHP-representable behavior; documented as a limitation.
      *
-     * Failure modes (per spec Resolved warning-behavior section):
+     * Failure modes:
      *  - class absent across all prefixes → silent (no diagnostic)
      *  - autoload (parse error / top-level throw) → autoload-failure warning,
      *    surfaced only if no valid candidate found under a later prefix
@@ -218,8 +218,6 @@ final readonly class WrapperEmitDiscovery
         // diagnostic: contract-violation (class present, wrong shape) is more
         // specific than a load failure.
         if ($nonImplementingCandidate !== null) {
-            // Pinned wording — wording-revert-as-regression-test pattern.
-            // See 0.11.0 spec Resolved warning-behavior section.
             return [
                 'class' => null,
                 'diagnostic' => Diagnostic::warning(
@@ -381,7 +379,7 @@ final readonly class WrapperEmitDiscovery
         // A leading-only strip would leave mid-path `.` segments intact,
         // and the cleanup-pass comparison uses canonical on-disk paths —
         // so a non-collapsed claim would never match and the file would be
-        // falsely flagged stale (codex-review pin). `..` anywhere is
+        // falsely flagged stale. `..` anywhere is
         // rejected (wrappers MUST stay inside project root).
         $out = [];
         foreach (explode('/', $normalized) as $segment) {

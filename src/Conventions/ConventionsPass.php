@@ -8,8 +8,7 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncManifest;
 
 /**
- * The conventions build for one sync transaction (0.15.0 inlining / 0.16.0
- * observability), extracted from SyncEngine (maintenance cycle 2026-05).
+ * The conventions build for one sync transaction.
  *
  * Discovers the conventions schema ONCE and builds the collaborators the sync
  * needs: the slot {@see ConventionsInliner} (run over vendor + host skills AND
@@ -18,8 +17,7 @@ use SanderMuller\BoostCore\Sync\SyncManifest;
  * actually written), discovery `diagnostics`, and the {@see ConventionTokenLeakScanner}.
  *
  * This is the single conventions-build authority — `ConventionTokenLeakScanner::
- * fromConfig()` delegates here, so the build is defined once (previously this
- * logic was duplicated between SyncEngine::conventionsContext and that factory).
+ * fromConfig()` delegates here, so the build is defined once.
  */
 final readonly class ConventionsPass
 {
@@ -99,7 +97,7 @@ final readonly class ConventionsPass
     }
 
     /**
-     * Inline conventions tokens into each skill body, plus the 0.16.0 per-skill
+     * Inline conventions tokens into each skill body, plus the per-skill
      * self-check (positional warnings for a token left raw). `requiresRuntime` is
      * true if ANY skill still needs the rendered block; `errors` are render-class
      * token errors (fail --check); `inlinedAny` is positive proof of migration.
@@ -165,13 +163,13 @@ final readonly class ConventionsPass
             }
 
             // KEEP the block if the emitted body needs runtime resolution OR
-            // depends on the section by prose pointer (codex P1.2) OR the EXISTING
+            // depends on the section by prose pointer OR the EXISTING
             // on-disk content (which migrate() may preserve as residual) carries a
-            // legacy ref / pointer (codex P1.1). Fail toward keep. Scan only the
-            // content that will SURVIVE this sync (codex round-5): a file boost
+            // legacy ref / pointer. Fail toward keep. Scan only the
+            // content that will SURVIVE this sync: a file boost
             // owns is regenerated (scan its surviving residual, or nothing for
             // owned-markerless); a file boost doesn't own is preserved wholesale
-            // (scan it). Strips boost's own rendered block either way (round-3).
+            // (scan it). Strips boost's own rendered block either way.
             $existing = is_file($projectRoot . '/' . $file) ? (string) @file_get_contents($projectRoot . '/' . $file) : '';
             $boostOwns = $existing !== '' && $priorManifest->ownsGuidance($file, hash('sha256', $existing));
             $existingResidual = $this->survivingGuidanceForGate($existing, $boostOwns);
@@ -184,8 +182,8 @@ final readonly class ConventionsPass
         }
 
         // Drop ONLY on positive proof of full migration; otherwise KEEP (a
-        // pure-conventions project with no token skills renders the block exactly
-        // as pre-0.15, backward-safe; any uncertainty fails toward keep).
+        // pure-conventions project with no token skills renders the block as-is,
+        // backward-safe; any uncertainty fails toward keep).
         $fullyMigrated = $anyInlined && ! $skillRequiresRuntime && ! $guidanceRequiresRuntime && $errors === [];
         $effectiveSection = ($this->section !== null && ! $fullyMigrated) ? $this->section : null;
 
@@ -193,7 +191,7 @@ final readonly class ConventionsPass
     }
 
     /**
-     * 0.16.0 self-check: warning-level diagnostics for a token left RAW in a
+     * Self-check: warning-level diagnostics for a token left RAW in a
      * freshly-rendered body, made positional with a `<label>:<line>` locator.
      * Reuses {@see ConventionsInliner::scanLeaks()} so sync-time, doctor, and
      * validate classify identically. Warnings only — the gate stays the recorded
@@ -217,8 +215,8 @@ final readonly class ConventionsPass
     /**
      * Remove boost's OWN rendered `## Project Conventions` block (heading + the
      * following ```yaml fence) from content, so the drop-gate's existing-content
-     * scan doesn't treat boost's own prior render as a dependency (codex round-3 —
-     * that would make the block undroppable). Operator prose pointers and residual
+     * scan doesn't treat boost's own prior render as a dependency (that would make
+     * the block undroppable). Operator prose pointers and residual
      * refs/tokens elsewhere survive.
      */
     private function withoutRenderedConventionsBlock(string $content): string
@@ -228,8 +226,8 @@ final readonly class ConventionsPass
 
     /**
      * The portion of an existing guidance file that will SURVIVE this sync — the
-     * only content the drop gate should scan for a conventions dependency (codex
-     * round-5). Keys on OWNERSHIP, not just marker presence:
+     * only content the drop gate should scan for a conventions dependency.
+     * Keys on OWNERSHIP, not just marker presence:
      *  - boost does NOT own the file → preserved wholesale → scan all of it (minus
      *    boost's own rendered block);
      *  - boost OWNS it (regenerated wholesale): a markerless owned file's prior

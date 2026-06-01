@@ -142,7 +142,7 @@ final class WhereCommand extends BoostBaseCommand
         if ($result->hostGuidelineShadows !== []) {
             // Count UNIQUE host guidelines, not shadow events — one host
             // guideline can shadow the same name across multiple vendors
-            // (codex-review: don't overstate the total).
+            // (don't overstate the total).
             $uniqueGuidelines = count(array_unique(array_column($result->hostGuidelineShadows, 'guideline')));
             $shadowNotes[] = sprintf('%d host guideline(s)', $uniqueGuidelines);
         }
@@ -287,8 +287,8 @@ final class WhereCommand extends BoostBaseCommand
     /**
      * @param  list<array{guideline: string, shadowedVendor: string}>  $shadows
      * @return array<string, string>  guideline name → ALL shadowed vendors,
-     *   comma-joined (codex-review: a host guideline can shadow the same-named
-     *   guideline from MULTIPLE allowlisted vendors; don't collapse to one).
+     *   comma-joined (a host guideline can shadow the same-named guideline
+     *   from MULTIPLE allowlisted vendors; don't collapse to one).
      */
     private function guidelineShadowIndex(array $shadows): array
     {
@@ -325,10 +325,10 @@ final class WhereCommand extends BoostBaseCommand
      * vendor's upstream version. Answers "what exactly differs in this
      * override" so a maintainer can decide whether the host copy still
      * earns its keep vs upstream, or can be dropped + replaced with the
-     * vendor version. Skills are matched first, then guidelines (0.13.0).
+     * vendor version. Skills are matched first, then guidelines.
      */
     /**
-     * 0.15.0 (spec D5): the on-request convention audit surface. With inlining
+     * The on-request convention audit surface. With inlining
      * the always-loaded `## Project Conventions` block is dropped once a project
      * is fully migrated, so this is how an operator inspects the effective
      * resolved slots + their provenance (declared / schema-default / missing) —
@@ -406,8 +406,8 @@ final class WhereCommand extends BoostBaseCommand
 
                 // Multiple allowlisted vendors publish this guideline name — the
                 // host shadows them ALL, so --diff can't pick one upstream to
-                // compare against (codex-review: don't silently diff against the
-                // first + ignore the rest).
+                // compare against (don't silently diff against the first +
+                // ignore the rest).
                 if (count($guidelineMatches) > 1) {
                     $vendors = array_map(static fn (array $m): string => $m['vendor'], $guidelineMatches);
                     $io->error(sprintf(

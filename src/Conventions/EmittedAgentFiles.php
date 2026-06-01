@@ -105,18 +105,41 @@ final readonly class EmittedAgentFiles
             return [];
         }
 
+        // Real-file skills under the tree. Links are NOT followed here: a cyclic
+        // symlink beneath the skills root (e.g. `<skill>/loop -> ..`) would make
+        // recursive link-following spin forever, so the broad walk stays link-free.
+        $files = $this->scanSkillFiles($skillsDir, $skillsDirRelative);
+
+        // A host shadow is often a user-placed directory symlink at the immediate
+        // skill level (`.claude/skills/<name> -> ../../.ai/skills/<name>`). boost
+        // declines to WRITE through such a symlink (FileWriter), so a raw token in
+        // the symlinked source survives on the emitted surface — what the agent
+        // actually reads. The walk above does not descend the symlink, so resolve
+        // each ONE hop and scan its real target (still without following further
+        // links — a cycle in the target cannot loop). Report each SKILL.md under
+        // its EMITTED path, not the resolved `.ai/` realpath.
+        foreach ($this->immediateSymlinkedDirs($skillsDir) as $name => $target) {
+            foreach ($this->scanSkillFiles($target, $skillsDirRelative . '/' . $name) as $relative => $absolute) {
+                $files[$relative] = $absolute;
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * SKILL.md files under $dir (recursively), WITHOUT following symlinks, keyed by
+     * `<relativePrefix>/<pathname>` => absolute realpath.
+     *
+     * @return array<string, string>
+     */
+    private function scanSkillFiles(string $dir, string $relativePrefix): array
+    {
         $files = [];
         $finder = (new Finder())
             ->files()
-            ->in($skillsDir)
+            ->in($dir)
             ->name(AgentTarget::SKILL_FILE)
-            // Follow symlinks: a host shadow is often a user-placed directory
-            // symlink (.claude/skills/<name> -> ../../.ai/skills/<name>). boost
-            // declines to WRITE through such a symlink (FileWriter), so a raw
-            // conventions token in the symlinked source survives on the emitted
-            // surface — exactly what the agent reads. The scan must descend the
-            // link to see it; reading is safe where writing is not.
-            ->followLinks()
             ->ignoreDotFiles(false);
 
         foreach ($finder as $file) {
@@ -125,10 +148,54 @@ final readonly class EmittedAgentFiles
                 continue;
             }
 
-            $relative = $skillsDirRelative . '/' . str_replace('\\', '/', $file->getRelativePathname());
+            $relative = $relativePrefix . '/' . str_replace('\\', '/', $file->getRelativePathname());
             $files[$relative] = $absolute;
         }
 
         return $files;
+    }
+
+    /**
+     * Immediate children of $skillsDir that are symlinks to directories, as
+     * `basename => resolved-target-absolute`. The one-hop host-shadow case;
+     * recursive link-following is deliberately avoided (cycle-safe).
+     *
+     * @return array<string, string>
+     */
+    private function immediateSymlinkedDirs(string $skillsDir): array
+    {
+        $out = [];
+        $entries = @scandir($skillsDir);
+        if ($entries === false) {
+            return $out;
+        }
+
+        foreach ($entries as $entry) {
+            if ($entry === '.') {
+                continue;
+            }
+
+            if ($entry === '..') {
+                continue;
+            }
+
+            $path = $skillsDir . '/' . $entry;
+            if (! is_link($path)) {
+                continue;
+            }
+
+            $target = realpath($path);
+            if ($target === false) {
+                continue;
+            }
+
+            if (! is_dir($target)) {
+                continue;
+            }
+
+            $out[$entry] = $target;
+        }
+
+        return $out;
     }
 }

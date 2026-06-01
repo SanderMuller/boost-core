@@ -110,6 +110,30 @@ it('follows a symlinked host-shadow skill dir so a raw token there is not invisi
     }
 })->skip(DIRECTORY_SEPARATOR !== '/', 'POSIX-only — Windows symlink semantics + admin-perm requirements differ.');
 
+it('does not recurse unboundedly on a symlink cycle beneath the skills root (#88)', function (): void {
+    $dir = emittedFilesTempProject();
+
+    // A real skill dir with a cyclic symlink inside it: the scan must TERMINATE
+    // and find the real SKILL.md exactly once — not the infinite
+    // cyclic/loop/cyclic/loop/... chain a recursive followLinks would produce.
+    mkdir($dir . '/.claude/skills/cyclic', 0o755, recursive: true);
+    file_put_contents($dir . '/.claude/skills/cyclic/SKILL.md', "# Cyclic skill\n");
+    symlink('..', $dir . '/.claude/skills/cyclic/loop');
+
+    try {
+        $files = EmittedAgentFiles::default()->forConfig($dir, emittedFilesConfig([Agent::CLAUDE_CODE]));
+        $relatives = array_map(static fn (array $f): string => $f['relative'], $files);
+
+        expect($relatives)->toContain('.claude/skills/cyclic/SKILL.md');
+        // The cycle is never traversed — no `/loop/` descent.
+        $loopHits = array_filter($relatives, static fn (string $r): bool => str_contains($r, '/loop/'));
+        expect($loopHits)->toBeEmpty();
+    } finally {
+        @unlink($dir . '/.claude/skills/cyclic/loop');
+        emittedFilesCleanup($dir);
+    }
+})->skip(DIRECTORY_SEPARATOR !== '/', 'POSIX-only — Windows symlink semantics + admin-perm requirements differ.');
+
 it('returns absolute + relative paths that resolve to existing files', function (): void {
     $dir = emittedFilesTempProject();
 

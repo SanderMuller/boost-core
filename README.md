@@ -12,6 +12,8 @@
 
 Tag filtering, remote skill sources, vendor allowlist, `boost doctor`, `boost where` origin tracing, and `.ai/commands/` argument-transpiling fanout. Coexists with [`laravel/boost`](https://github.com/laravel/boost) in Laravel projects via [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel).
 
+![family overview image](overview_family.png)
+
 ## Install
 
 `boost-core` is the engine. You rarely install it directly — you install the family package that matches what you're building, and it pulls `boost-core` in.

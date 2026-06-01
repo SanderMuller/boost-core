@@ -115,6 +115,7 @@ final readonly class UnrenderableSourceScanner
             if ($dispatcher->resolve($filename) instanceof MatchedRenderer) {
                 continue;
             }
+
             if ($this->isAsset($filename)) {
                 continue;
             }

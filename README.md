@@ -53,6 +53,8 @@ vendor/bin/boost install   # generate boost.php (if missing) + interactive picke
 vendor/bin/boost sync      # fan out to selected agents
 ```
 
+The config lives at **`boost.php`** in the repo root, or at **`.config/boost.php`** if you'd rather keep the root tidy (0.17.0+). Pick one — having both is a hard error. `boost install --config-dir` scaffolds the `.config/` variant, and every command accepts `--config <path>` to point at an explicit file. Source paths default to the project root regardless of where the config lives, so the two locations are interchangeable (avoid `__DIR__`-relative paths in the config — they break if the file moves).
+
 boost-core is a plain library — it runs no install-time code of its own. To re-sync automatically after a `composer install` / `composer update`, wire the `BoostAutoSync` script callback into your project's `composer.json` (see below); otherwise run `vendor/bin/boost sync` yourself, e.g. in CI. `BOOST_SKIP_AUTOSYNC=1` disables the callback.
 
 For tooling authors who want to publish their own skills to every AI agent on the user's machine:

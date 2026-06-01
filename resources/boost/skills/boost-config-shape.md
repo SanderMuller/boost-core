@@ -24,10 +24,12 @@ return BoostConfig::configure()
     ->withAllowedVendors([
         'sandermuller/project-boost',
     ])
-    ->withDisabledEmitters([])
-    ->withSkillsPath(__DIR__ . '/.ai/skills')
-    ->withGuidelinesPath(__DIR__ . '/.ai/guidelines');
+    ->withDisabledEmitters([]);
 ```
+
+The config lives at `boost.php` (repo root) or `.config/boost.php` — pick one;
+both present is a hard error. Source paths default to the project root either
+way, so the location is interchangeable.
 
 ## Method semantics
 
@@ -62,8 +64,10 @@ return BoostConfig::configure()
   ship and tag-filtering cannot reach them.
 - `withSkillsPath(...)` / `withGuidelinesPath(...)` — host-authored content
   locations. Default to `<project-root>/.ai/skills` and
-  `<project-root>/.ai/guidelines`. Override only if your project uses a
-  non-conventional layout.
+  `<project-root>/.ai/guidelines` (resolved against the project root, not the
+  config file's directory). Override only if your project uses a
+  non-conventional layout, and pass an ABSOLUTE path — avoid `__DIR__`-relative
+  values, which break if `boost.php` is moved (e.g. into `.config/`).
 - `withRemoteSkills([RemoteSkillSource::githubBundle(...), RemoteSkillSource::githubPath(...)])` —
   declarative non-Composer skill sources. `githubBundle()` pulls `.skill`
   ZIP release assets; `githubPath()` extracts a subdir of a repo at a

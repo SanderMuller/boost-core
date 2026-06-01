@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Config\BoostConfigWriteException;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
 use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
@@ -46,7 +47,9 @@ final class ConvertConventionsCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
-        $configPath = $projectRoot . '/boost.php';
+        // Resolved location (root or .config/boost.php) — write back where the
+        // config actually lives. Safe post-load.
+        $configPath = BoostConfigPath::resolve($projectRoot)->path;
         $claudeMdPath = $projectRoot . '/' . self::CLAUDE_MD;
 
         // Edge: no CLAUDE.md

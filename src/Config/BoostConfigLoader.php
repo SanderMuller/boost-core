@@ -7,7 +7,8 @@ namespace SanderMuller\BoostCore\Config;
  *
  * `boost.php` must:
  *
- * 1. Exist at `$projectRoot/boost.php` (or the explicit `$configFile` path).
+ * 1. Exist at `$projectRoot/boost.php` or `$projectRoot/.config/boost.php` (or the
+ *    explicit `$configFile` path). Location is resolved by {@see BoostConfigPath}.
  * 2. Return a {@see BoostConfigBuilder} instance — typically via
  *    `BoostConfig::configure()->with*()` chained calls.
  *
@@ -18,13 +19,15 @@ final class BoostConfigLoader
     /**
      * @throws BoostConfigNotFoundException
      * @throws InvalidBoostConfigException
+     * @throws AmbiguousBoostConfigException
      */
     public function load(string $projectRoot, ?string $configFile = null): BoostConfig
     {
         $projectRoot = rtrim($projectRoot, '/');
-        $path = $configFile ?? $projectRoot . '/boost.php';
+        $resolved = BoostConfigPath::resolve($projectRoot, $configFile);
+        $path = $resolved->path;
 
-        if (! is_file($path)) {
+        if (! $resolved->exists) {
             throw new BoostConfigNotFoundException($path);
         }
 

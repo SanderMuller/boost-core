@@ -3,7 +3,9 @@
 namespace SanderMuller\BoostCore\Commands;
 
 use JsonException;
+use SanderMuller\BoostCore\Config\AmbiguousBoostConfigException;
 use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
@@ -75,6 +77,15 @@ final class DoctorCommand extends BoostBaseCommand
 
         $io->title('boost-core doctor');
         $io->writeln(sprintf('Project root: <info>%s</info>', $projectRoot));
+
+        // Resolve the config LOCATION first, so a both-files ambiguity surfaces as
+        // a helpful diagnostic here rather than a bare exception from the loader.
+        $configFile = $this->resolveConfigLocationOrReport($io, $projectRoot);
+        if (! $configFile instanceof BoostConfigPath) {
+            return self::FAILURE;
+        }
+
+        $io->writeln(sprintf('Config: <info>%s</info>', $configFile->path));
         $io->newLine();
 
         $config = $this->loadConfig($io, $projectRoot);
@@ -82,11 +93,11 @@ final class DoctorCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
-        $io->success(sprintf('boost.php at %s parses cleanly.', $projectRoot . '/boost.php'));
+        $io->success(sprintf('boost.php at %s parses cleanly.', $configFile->path));
 
         $this->reportEntryPointMismatch($io);
         $this->reportAgents($io, $config);
-        $this->reportSourcePaths($io, $config);
+        $this->reportSourcePaths($io, $config, $configFile->inConfigDir);
         $this->reportCommandLimitations($io, $config);
         $this->reportAllowlist($io, $config);
         $this->reportRemoteSkills($io, $config);
@@ -276,14 +287,69 @@ final class DoctorCommand extends BoostBaseCommand
         $io->listing($agents);
     }
 
-    private function reportSourcePaths(SymfonyStyle $io, BoostConfig $config): void
+    /**
+     * Resolve the config location, reporting a both-files ambiguity as a doctor
+     * section and returning null (so the caller fails cleanly) instead of letting
+     * the loader throw a bare exception downstream.
+     */
+    private function resolveConfigLocationOrReport(SymfonyStyle $io, string $projectRoot): ?BoostConfigPath
     {
+        try {
+            return BoostConfigPath::resolve($projectRoot);
+        } catch (AmbiguousBoostConfigException $ambiguousBoostConfigException) {
+            $io->newLine();
+            $io->section('Config location');
+            $io->error($ambiguousBoostConfigException->getMessage());
+
+            return null;
+        }
+    }
+
+    private function reportSourcePaths(SymfonyStyle $io, BoostConfig $config, bool $configInConfigDir): void
+    {
+        $paths = [
+            'skillsPath' => $config->skillsPath,
+            'guidelinesPath' => $config->guidelinesPath,
+            'commandsPath' => $config->commandsPath,
+        ];
+
         $io->section('Source paths');
         $io->table(['Key', 'Path', 'Status'], [
             ['skillsPath', $config->skillsPath, is_dir($config->skillsPath) ? 'exists' : 'MISSING'],
             ['guidelinesPath', $config->guidelinesPath, is_dir($config->guidelinesPath) ? 'exists' : 'MISSING'],
             ['commandsPath', $config->commandsPath, is_dir($config->commandsPath) ? 'exists' : 'MISSING'],
         ]);
+
+        if ($configInConfigDir) {
+            $this->warnConfigDirRelativePaths($io, $paths);
+        }
+    }
+
+    /**
+     * Migration footgun: a `.config/boost.php` that sets an explicit
+     * `__DIR__`-relative path resolves it under `.config/` (e.g.
+     * `.config/.ai/skills`) instead of the project root, so the source silently
+     * resolves to nothing. Flag a MISSING path that landed under `.config/`.
+     *
+     * @param  array<string, string>  $paths
+     */
+    private function warnConfigDirRelativePaths(SymfonyStyle $io, array $paths): void
+    {
+        foreach ($paths as $key => $path) {
+            if (is_dir($path)) {
+                continue;
+            }
+
+            if (! str_contains($path, '/.config/')) {
+                continue;
+            }
+
+            $io->warning(sprintf(
+                '%s resolves under .config/ (%s) and does not exist — this looks like a __DIR__-relative path that did not survive the move to .config/boost.php. Use an absolute path, or rely on the project-root default by removing the explicit with*Path() call.',
+                $key,
+                $path,
+            ));
+        }
     }
 
     /**

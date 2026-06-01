@@ -1,5 +1,7 @@
 <?php declare(strict_types=1);
 
+use SanderMuller\BoostCore\Config\AmbiguousBoostConfigException;
+use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
 use SanderMuller\BoostCore\Config\InvalidBoostConfigException;
@@ -95,5 +97,50 @@ it('round-trips withTags and withExcludedSkills through a boost.php', function (
             ->and($config->excludedSkills)->toBe(['acme/pack:unwanted']);
     } finally {
         @unlink($path);
+    }
+});
+
+it('loads from .config/boost.php when only it exists (no explicit path)', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-loader-cfg-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/.config', 0o755, recursive: true);
+    file_put_contents($dir . '/.config/boost.php', <<<'PHP'
+        <?php declare(strict_types=1);
+
+        use SanderMuller\BoostCore\Config\BoostConfig;
+        use SanderMuller\BoostCore\Enums\Agent;
+
+        return BoostConfig::configure()->withAgents([Agent::CODEX]);
+        PHP);
+
+    try {
+        $config = (new BoostConfigLoader())->load($dir);
+
+        // Defaults are project-root-relative — a .config/ config still resolves
+        // sources to <root>/.ai/*, NOT <root>/.config/.ai/*.
+        expect($config->agents)->toBe([Agent::CODEX])
+            ->and($config->skillsPath)->toBe($dir . '/.ai/skills')
+            ->and($config->guidelinesPath)->toBe($dir . '/.ai/guidelines');
+    } finally {
+        @unlink($dir . '/.config/boost.php');
+        @rmdir($dir . '/.config');
+        @rmdir($dir);
+    }
+});
+
+it('throws Ambiguous on load when BOTH root and .config/ configs exist', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-loader-ambig-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/.config', 0o755, recursive: true);
+    $body = '<?php return ' . BoostConfig::class . '::configure();';
+    file_put_contents($dir . '/boost.php', $body);
+    file_put_contents($dir . '/.config/boost.php', $body);
+
+    try {
+        expect(fn () => (new BoostConfigLoader())->load($dir))
+            ->toThrow(AmbiguousBoostConfigException::class);
+    } finally {
+        @unlink($dir . '/boost.php');
+        @unlink($dir . '/.config/boost.php');
+        @rmdir($dir . '/.config');
+        @rmdir($dir);
     }
 });

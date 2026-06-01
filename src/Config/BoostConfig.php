@@ -13,9 +13,14 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
  *
  *     return BoostConfig::configure()
  *         ->withAgents([Agent::CLAUDE_CODE, Agent::CURSOR])
- *         ->withAllowedVendors(['doctrine/orm', 'symfony/symfony'])
- *         ->withSkillsPath(__DIR__ . '/.ai/skills')
- *         ->withGuidelinesPath(__DIR__ . '/.ai/guidelines');
+ *         ->withAllowedVendors(['doctrine/orm', 'symfony/symfony']);
+ *
+ * Source paths default to the project root's `.ai/skills` and `.ai/guidelines`
+ * (resolved against `$projectRoot`, NOT this file's directory), so the config is
+ * location-independent — it works the same at the repo root or at
+ * `.config/boost.php`. Override only with an ABSOLUTE path
+ * (`->withSkillsPath('/abs/path')`); avoid `__DIR__`-relative paths, which break
+ * if `boost.php` is moved.
  *
  * `configure()` returns a BoostConfigBuilder; the builder accumulates state.
  * BoostConfigLoader calls `->build($projectRoot)` to produce this immutable

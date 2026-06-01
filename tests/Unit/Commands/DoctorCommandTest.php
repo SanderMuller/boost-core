@@ -2,6 +2,7 @@
 
 use Composer\Console\Application as ComposerApplication;
 use SanderMuller\BoostCore\Commands\DoctorCommand;
+use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
 use SanderMuller\BoostCore\Skills\Remote\HttpResponse;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
@@ -703,6 +704,43 @@ it('0.16.0 conventions-token leak: clean project reports no leaks', function ():
 
         expect($result['exit'])->toBe(0)
             ->and($display)->toContain('No leaked conventions tokens');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: reports the both-configs ambiguity as a section and fails cleanly (#89)', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-doctor-ambig-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/.config', 0o755, recursive: true);
+    mkdir($dir . '/vendor', 0o755, recursive: true);
+    $body = '<?php return ' . BoostConfig::class . '::configure();';
+    file_put_contents($dir . '/boost.php', $body);
+    file_put_contents($dir . '/.config/boost.php', $body);
+
+    try {
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(1)
+            ->and($result['display'])->toContain('Config location')
+            ->and($result['display'])->toContain('Two boost configs found');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: resolves and names a .config/boost.php config (#89)', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-doctor-cfgdir-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/.config', 0o755, recursive: true);
+    mkdir($dir . '/vendor', 0o755, recursive: true);
+    file_put_contents(
+        $dir . '/.config/boost.php',
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE]);\n",
+    );
+
+    try {
+        $result = runDoctor($dir);
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('.config/boost.php')
+            ->and($result['display'])->toContain('parses cleanly');
     } finally {
         doctorCleanup($dir);
     }

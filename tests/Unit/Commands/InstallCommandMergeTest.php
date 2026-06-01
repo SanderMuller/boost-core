@@ -1,6 +1,7 @@
 <?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Commands\InstallCommand;
+use SanderMuller\BoostCore\Config\BoostConfigPath;
 
 it('merges picker output with declared-but-not-discovered tags, picker order first, dedup', function (): void {
     $merged = InstallCommand::mergePickedWithPreserved(
@@ -41,4 +42,31 @@ it('mergePickedWithPreserved: empty preserved returns picker output unchanged', 
     );
 
     expect($merged)->toBe(['php', 'jira']);
+});
+
+it('scaffoldTarget: --config-dir picks .config/boost.php for a fresh project (#89)', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-install-tgt-' . bin2hex(random_bytes(8));
+    mkdir($dir, 0o755, recursive: true);
+    try {
+        $resolved = BoostConfigPath::resolve($dir);
+        expect(InstallCommand::scaffoldTarget($resolved, true, $dir))->toBe($dir . '/.config/boost.php')
+            ->and(InstallCommand::scaffoldTarget($resolved, false, $dir))->toBe($dir . '/boost.php');
+    } finally {
+        @rmdir($dir);
+    }
+});
+
+it('scaffoldTarget: an existing config wins — --config-dir never creates a second (#89)', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-install-existing-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/.config', 0o755, recursive: true);
+    file_put_contents($dir . '/.config/boost.php', '<?php return null;');
+    try {
+        $resolved = BoostConfigPath::resolve($dir);
+        // Even with --config-dir false, the existing .config/ config is edited in place.
+        expect(InstallCommand::scaffoldTarget($resolved, false, $dir))->toBe($dir . '/.config/boost.php');
+    } finally {
+        @unlink($dir . '/.config/boost.php');
+        @rmdir($dir . '/.config');
+        @rmdir($dir);
+    }
 });

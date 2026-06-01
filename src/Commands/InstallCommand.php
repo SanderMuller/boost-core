@@ -4,6 +4,7 @@ namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
+use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
 use SanderMuller\BoostCore\Discovery\AvailableTagsDiscovery;
 use SanderMuller\BoostCore\Discovery\FirstPartyPrefixes;
@@ -11,6 +12,7 @@ use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
@@ -40,7 +42,8 @@ final class InstallCommand extends BoostBaseCommand
     {
         $this
             ->setName('boost:install')
-            ->setDescription('Generate boost.php (if missing) and interactively pick agents + vendor allowlist.');
+            ->setDescription('Generate boost.php (if missing) and interactively pick agents + vendor allowlist.')
+            ->addOption('config-dir', null, InputOption::VALUE_NONE, 'Scaffold a new config at .config/boost.php instead of the repo root (no effect when a config already exists).');
         $this->addWorkingDirOption();
     }
 
@@ -48,9 +51,28 @@ final class InstallCommand extends BoostBaseCommand
     {
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
-        $configPath = $projectRoot . '/boost.php';
 
-        if (! is_file($configPath)) {
+        try {
+            $resolved = BoostConfigPath::resolve($projectRoot);
+        } catch (Throwable $throwable) {
+            $io->error($throwable->getMessage());
+
+            return self::FAILURE;
+        }
+
+        // Edit an existing config wherever it lives; otherwise scaffold at the
+        // chosen location (root by default, .config/ with --config-dir). Never
+        // create a second config when one already exists.
+        $configPath = self::scaffoldTarget($resolved, $input->getOption('config-dir') === true, $projectRoot);
+
+        if (! $resolved->exists) {
+            $dir = dirname($configPath);
+            if (! is_dir($dir) && ! @mkdir($dir, 0o755, recursive: true) && ! is_dir($dir)) {
+                $io->error(sprintf('Failed to create directory %s.', $dir));
+
+                return self::FAILURE;
+            }
+
             if (file_put_contents($configPath, $this->starterContents()) === false) {
                 $io->error(sprintf('Failed to write boost.php at %s.', $configPath));
 
@@ -219,6 +241,24 @@ final class InstallCommand extends BoostBaseCommand
     }
 
     /**
+     * Where a fresh scaffold lands: edit the existing config wherever it lives;
+     * otherwise root by default, or `.config/boost.php` when `--config-dir` is set.
+     * Never picks a second location when one already exists.
+     */
+    public static function scaffoldTarget(BoostConfigPath $resolved, bool $useConfigDir, string $projectRoot): string
+    {
+        if ($resolved->exists) {
+            return $resolved->path;
+        }
+
+        $projectRoot = rtrim($projectRoot, '/');
+
+        return $useConfigDir
+            ? $projectRoot . '/' . BoostConfigPath::CONFIG_DIR
+            : $projectRoot . '/' . BoostConfigPath::ROOT;
+    }
+
+    /**
      * @return list<string>
      */
     private function discoverPublishers(InstalledPackages $packages): array
@@ -271,9 +311,12 @@ final class InstallCommand extends BoostBaseCommand
                 // Each entry is a `vendor/package:skill-name` string.
                 // ->withExcludedSkills(['acme/some-pack:unwanted-skill'])
 
-                // Source paths (relative or absolute). Defaults shown — uncomment to override.
-                // ->withSkillsPath(__DIR__ . '/.ai/skills')
-                // ->withGuidelinesPath(__DIR__ . '/.ai/guidelines')
+                // Source paths default to the project root's .ai/skills and
+                // .ai/guidelines. Override with an ABSOLUTE path only if your
+                // sources live elsewhere. Avoid __DIR__-relative paths — they
+                // break if this file moves (e.g. into .config/).
+                // ->withSkillsPath('/absolute/path/to/skills')
+                // ->withGuidelinesPath('/absolute/path/to/guidelines')
             ;
 
             PHP;

@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
+use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
 use SanderMuller\BoostCore\Discovery\FirstPartyPrefixes;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
@@ -44,7 +45,6 @@ final class ScanCommand extends BoostBaseCommand
     {
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
-        $configPath = $projectRoot . '/boost.php';
 
         try {
             $config = $this->loader->load($projectRoot);
@@ -53,6 +53,11 @@ final class ScanCommand extends BoostBaseCommand
 
             return self::FAILURE;
         }
+
+        // Write back to the file the config was loaded from (root or
+        // .config/boost.php), not a hardcoded root path. Safe post-load — an
+        // ambiguous/missing config already errored above.
+        $configPath = BoostConfigPath::resolve($projectRoot)->path;
 
         $packages = InstalledPackages::fromComposer();
         $scanner = new VendorScanner($packages);

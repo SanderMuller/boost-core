@@ -2142,6 +2142,53 @@ it('0.15.0 inlining: the block DROPS on the re-sync after a skill migrates, even
     }
 });
 
+it('conventions block renders into CLAUDE.md ONLY, never AGENTS.md, even with both CLAUDE_CODE + CODEX active and the block KEPT (#87 — the CLAUDE/AGENTS difference is by-design placement, not a per-target drop)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-conv-placement-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE, Agent::CODEX])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+
+        // A host guideline points at the section in prose → not fully migrated →
+        // the gate KEEPS the block. Both agents are active and share identical
+        // resolved guidance.
+        file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nFollow the Project Conventions section above for the key.\n");
+        SyncEngine::default($packages)->sync($root);
+
+        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        $agentsMd = (string) file_get_contents($root . '/AGENTS.md');
+
+        // The block lives in its canonical home (CLAUDE.md) and is ABSENT from
+        // AGENTS.md by design — conventions render into CLAUDE.md only. This is the
+        // CLAUDE-keeps/CODEX-"drops" shape #87 was reported as: it is correct, not a
+        // per-target drop asymmetry. (When fully migrated the block leaves CLAUDE.md
+        // too; resolved values reach every agent inlined into their skill bodies.)
+        expect($claudeMd)->toContain('## Project Conventions')
+            ->and($agentsMd)->not->toContain('## Project Conventions')
+            // The guideline body itself is emitted to BOTH (shared guidance).
+            ->and($claudeMd)->toContain('Follow the Project Conventions section above')
+            ->and($agentsMd)->toContain('Follow the Project Conventions section above');
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
 it('0.15.0 inlining: a boost-OWNED markerless guidance file with stale conventions-pointer prose does NOT stay sticky once the guideline migrates (codex round-5 over-keep)', function (): void {
     $root = makeEndToEndProject();
     $vendor = sys_get_temp_dir() . '/boost-inline-sticky-' . bin2hex(random_bytes(8));

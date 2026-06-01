@@ -81,6 +81,35 @@ it('returns nothing when no agents are active', function (): void {
     }
 });
 
+it('follows a symlinked host-shadow skill dir so a raw token there is not invisible to the scan (#88)', function (): void {
+    $dir = emittedFilesTempProject();
+
+    // A user-placed directory symlink shadow: .claude/skills/write-spec ->
+    // ../../.ai/skills/write-spec, whose SKILL.md carries a raw token. This is
+    // exactly what the agent reads; the leak scan must see it. boost never wrote
+    // the inlined body through the symlink (FileWriter declines user symlinks), so
+    // the raw token survives on the emitted surface.
+    mkdir($dir . '/.ai/skills/write-spec', 0o755, recursive: true);
+    file_put_contents(
+        $dir . '/.ai/skills/write-spec/SKILL.md',
+        '<!--boost:conv path="spec.filename_pattern" mode="inline"-->',
+    );
+    $link = $dir . '/.claude/skills/write-spec';
+    symlink('../../.ai/skills/write-spec', $link);
+
+    try {
+        $files = EmittedAgentFiles::default()->forConfig($dir, emittedFilesConfig([Agent::CLAUDE_CODE]));
+        $relatives = array_map(static fn (array $f): string => $f['relative'], $files);
+
+        // Reported under its EMITTED path (the surface that serves the raw token),
+        // NOT the .ai/ realpath the symlink resolves to.
+        expect($relatives)->toContain('.claude/skills/write-spec/SKILL.md');
+    } finally {
+        @unlink($link);
+        emittedFilesCleanup($dir);
+    }
+})->skip(DIRECTORY_SEPARATOR !== '/', 'POSIX-only — Windows symlink semantics + admin-perm requirements differ.');
+
 it('returns absolute + relative paths that resolve to existing files', function (): void {
     $dir = emittedFilesTempProject();
 

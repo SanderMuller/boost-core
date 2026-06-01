@@ -110,6 +110,13 @@ final readonly class EmittedAgentFiles
             ->files()
             ->in($skillsDir)
             ->name(AgentTarget::SKILL_FILE)
+            // Follow symlinks: a host shadow is often a user-placed directory
+            // symlink (.claude/skills/<name> -> ../../.ai/skills/<name>). boost
+            // declines to WRITE through such a symlink (FileWriter), so a raw
+            // conventions token in the symlinked source survives on the emitted
+            // surface — exactly what the agent reads. The scan must descend the
+            // link to see it; reading is safe where writing is not.
+            ->followLinks()
             ->ignoreDotFiles(false);
 
         foreach ($finder as $file) {

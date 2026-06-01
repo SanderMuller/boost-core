@@ -781,3 +781,63 @@ it('doctor: --config loads an explicit config path, overriding auto-discovery (#
         doctorCleanup($dir);
     }
 });
+
+it('doctor: surfaces a guideline with no registered renderer as a skip warning (#85)', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/guidelines', 0o755, recursive: true);
+        // No BladeRenderer registered → this is silently dropped by the loader;
+        // doctor must surface it (the silent-capability-loss health check).
+        file_put_contents($dir . '/.ai/guidelines/styling.blade.php', "---\nname: styling\n---\nBlade.");
+
+        $result = runDoctor($dir);
+
+        // Assert the file path (a single token — wrap-safe in SymfonyStyle's
+        // warning block, unlike a multi-word phrase).
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('styling.blade.php');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: stays quiet about source rendering when every guideline is .md (#85)', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/guidelines', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/guidelines/team.md', "---\nname: team\n---\nBody.");
+
+        $result = runDoctor($dir);
+
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->not->toContain('no renderer registered');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: surfaces an unrenderable ALLOWLISTED-VENDOR source, matching what sync drops (#87 codex P2)', function (): void {
+    $dir = doctorTempProject("BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/x'])");
+    $vendor = sys_get_temp_dir() . '/boost-doctor-vendor-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills/templated', 0o755, recursive: true);
+    file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/x'], JSON_THROW_ON_ERROR));
+    file_put_contents($vendor . '/resources/boost/skills/templated/SKILL.blade.php', "---\nname: templated\n---\nBlade.");
+
+    $packages = new InstalledPackages([
+        'acme/x' => new PackageInfo('acme/x', '1.0.0', $vendor),
+    ]);
+
+    try {
+        $command = new DoctorCommand(injectedPackages: $packages);
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir]);
+
+        expect($exit)->toBe(0)
+            ->and($tester->getDisplay())->toContain('SKILL.blade.php');
+    } finally {
+        doctorCleanup($dir);
+        doctorCleanup($vendor);
+    }
+});

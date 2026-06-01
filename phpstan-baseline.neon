@@ -6,7 +6,7 @@ parameters:
 			count: 1
 			path: src/Sync/SyncEngine.php
 		-
-			rawMessage: 'Class cognitive complexity is 123, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 124, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Commands/DoctorCommand.php

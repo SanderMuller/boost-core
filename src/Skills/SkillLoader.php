@@ -47,9 +47,11 @@ final readonly class SkillLoader
 
     /**
      * @param  list<string>  $errors  Out-parameter: render failures (lenient mode) accumulate here.
+     * @param  list<string>  $warnings  Out-parameter: a SKILL.* file skipped because
+     *   no registered renderer claims its extension (silent-capability-loss guard).
      * @return iterable<Skill>
      */
-    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = []): iterable
+    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = [], array &$warnings = []): iterable
     {
         if (! is_dir($directory)) {
             return;
@@ -57,6 +59,8 @@ final readonly class SkillLoader
 
         $dispatcher = $renderers ?? new SkillRendererDispatcher([new PassthroughRenderer()]);
         $strict = Env::flagEnabled(Env::RENDER_STRICT);
+
+        $warnings = [...$warnings, ...(new UnrenderableSourceScanner())->skillSkips($directory, $dispatcher)];
 
         $finder = (new Finder())
             ->files()

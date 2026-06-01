@@ -3188,3 +3188,32 @@ it('Phase0 characterization: an errored sync SKIPS reap + manifest write, and a 
         rmTreeE2E($root);
     }
 });
+
+it('#85: a host guideline whose extension has no renderer is skipped with a WARNING, not silently dropped', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/team.md', "---\nname: team\n---\nMarkdown guideline body.\n");
+        // No BladeRenderer is registered, so this .blade.php has no renderer.
+        file_put_contents($root . '/.ai/guidelines/styling.blade.php', "---\nname: styling\n---\nBlade guideline.\n");
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // The .md guideline still ships normally.
+        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('Markdown guideline body.');
+
+        // The .blade.php is skipped — but now OBSERVABLE as a warning naming it.
+        $skipWarnings = array_filter(
+            $result->diagnostics,
+            static fn (Diagnostic $d): bool => $d->level === 'warning'
+                && str_contains($d->message, 'styling.blade.php')
+                && str_contains($d->message, 'no renderer registered'),
+        );
+        expect($skipWarnings)->not->toBeEmpty();
+
+        // Warning-level only: it must NOT fail --check or block the .md write.
+        expect($result->errors)->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+    }
+});

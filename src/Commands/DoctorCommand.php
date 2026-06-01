@@ -17,6 +17,7 @@ use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
+use SanderMuller\BoostCore\Skills\UnrenderableSourceScanner;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncResult;
@@ -325,6 +326,24 @@ final class DoctorCommand extends BoostBaseCommand
 
         if ($configInConfigDir) {
             $this->warnConfigDirRelativePaths($io, $paths);
+        }
+
+        $this->reportUnrenderableSources($io, $config);
+    }
+
+    /**
+     * Surface skill/guideline sources that no registered renderer claims — they
+     * are silently dropped by the loaders (the silent-capability-loss class).
+     * Reuses {@see UnrenderableSourceScanner} so doctor classifies identically to
+     * the sync-path loaders, and covers host AND allowlisted-vendor sources to
+     * match what `boost sync` would drop. Quiet when every source renders.
+     */
+    private function reportUnrenderableSources(SymfonyStyle $io, BoostConfig $config): void
+    {
+        $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
+
+        foreach ((new UnrenderableSourceScanner())->allSourceSkips($config, $packages) as $warning) {
+            $io->warning($warning);
         }
     }
 

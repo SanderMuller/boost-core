@@ -345,3 +345,42 @@ it('strict mode: renderer exception throws SkillRenderException', function (): v
         rmTreeSkillLoader($fixtureDir);
     }
 });
+
+it('warns on a SKILL.* file with no renderer, and does NOT false-trigger on asset files (#85)', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-sl-skip-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/templated', 0o755, recursive: true);
+    mkdir($dir . '/plain', 0o755, recursive: true);
+    // A SKILL.* file with no registered renderer → must warn (silent-loss guard).
+    file_put_contents($dir . '/templated/SKILL.blade.php', "---\nname: templated\n---\nBlade skill.");
+    // A normal skill PLUS a non-SKILL asset alongside it → the asset must NOT warn
+    // (detection is scoped to the SKILL.* convention).
+    file_put_contents($dir . '/plain/SKILL.md', "---\nname: plain\n---\nBody.");
+    file_put_contents($dir . '/plain/snippet.blade.php', 'asset partial, not a skill file');
+
+    try {
+        $errors = [];
+        $warnings = [];
+        $skills = iterator_to_array(loader()->load($dir, null, null, $errors, $warnings), false);
+
+        $names = array_map(static fn (Skill $s): string => $s->name, $skills);
+        expect($names)->toContain('plain')
+            ->and($names)->not->toContain('templated')
+            // Exactly one warning — the SKILL.blade.php. snippet.blade.php is not
+            // a SKILL.* file, so it must not appear.
+            ->and($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('SKILL.blade.php')
+            ->and($warnings[0])->not->toContain('snippet')
+            ->and($errors)->toBeEmpty();
+    } finally {
+        $iter = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        /** @var SplFileInfo $f */
+        foreach ($iter as $f) {
+            $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+        }
+
+        @rmdir($dir);
+    }
+});

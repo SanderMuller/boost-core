@@ -21,7 +21,10 @@ use Throwable;
  * PassthroughRenderer. Files matching a registered renderer's extension
  * (e.g. `.blade.php` with a downstream `BladeRenderer`) render through
  * that renderer first, then the rendered output is frontmatter-parsed.
- * Files whose extension no registered renderer claims are silently skipped.
+ * Files whose extension no registered renderer claims are skipped — and the
+ * skip is surfaced via the `$warnings` out-param so it is never silent (a host
+ * `.blade.php` with no `BladeRenderer` registered, e.g. under bare-CLI, would
+ * otherwise vanish from agents with no signal).
  *
  * Tag resolution: frontmatter `metadata.boost-tags` wins; otherwise the
  * sidecar `.boost-tags.yaml` manifest fills in (the only tag source for
@@ -39,9 +42,11 @@ final readonly class GuidelineLoader
 
     /**
      * @param  list<string>  $errors  Out-parameter: render failures (lenient mode) accumulate here.
+     * @param  list<string>  $warnings  Out-parameter: a file skipped because no
+     *   registered renderer claims its extension (silent-capability-loss guard).
      * @return iterable<Guideline>
      */
-    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = []): iterable
+    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = [], array &$warnings = []): iterable
     {
         if (! is_dir($directory)) {
             return;
@@ -50,6 +55,8 @@ final readonly class GuidelineLoader
         $dispatcher = $renderers ?? new SkillRendererDispatcher([new PassthroughRenderer()]);
         $strict = Env::flagEnabled(Env::RENDER_STRICT);
         $manifest = GuidelineTagManifest::load($directory);
+
+        $warnings = [...$warnings, ...(new UnrenderableSourceScanner())->guidelineSkips($directory, $dispatcher)];
 
         $finder = (new Finder())
             ->files()

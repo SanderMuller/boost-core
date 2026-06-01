@@ -3,9 +3,11 @@
 namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Conventions\ConventionsPass;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
+use SanderMuller\BoostCore\Conventions\EmittedAgentFiles;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Conventions\TokenLeak;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
@@ -16,6 +18,14 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 final class ValidateCommand extends BoostBaseCommand
 {
+    public function __construct(
+        // Injection seam for tests — null means "read the real Composer runtime
+        // via InstalledPackages::fromComposer()". Mirrors WhereCommand/DoctorCommand.
+        private readonly ?InstalledPackages $injectedPackages = null,
+    ) {
+        parent::__construct();
+    }
+
     protected function configure(): void
     {
         $this
@@ -37,7 +47,7 @@ final class ValidateCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
-        $packages = InstalledPackages::fromComposer();
+        $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
         $allowedVendors = $config->allowedVendors;
         $discovery = new SchemaDiscovery($packages);
         ['sources' => $sources, 'diagnostics' => $discoveryDiagnostics] = $discovery->discover($allowedVendors);
@@ -82,7 +92,12 @@ final class ValidateCommand extends BoostBaseCommand
 
         // Source of truth is BoostConfig::$conventions, not CLAUDE.md.
         $schema = new ConventionsSchema($sources);
-        $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions), ...$leakDiagnostics];
+        $diagnostics = [
+            ...$diagnostics,
+            ...$schema->validate($config->conventions),
+            ...$leakDiagnostics,
+            ...$this->legacyRefDiagnostics($projectRoot, $config, $packages),
+        ];
 
         return $this->render($io, $output, $diagnostics, $json, $strict, $verboseInfo);
     }
@@ -106,6 +121,43 @@ final class ValidateCommand extends BoostBaseCommand
             ),
             $leaks,
         );
+    }
+
+    /**
+     * Proactive legacy `$.<slot-root>` reference scan over the EMITTED set. Such
+     * refs are NEVER resolved by boost-core (it only detects them; they emit
+     * literally), and because the `## Project Conventions` block is CLAUDE.md-only
+     * they dangle unresolved for non-Claude agents — a correctness gap, not just
+     * cosmetics. Advisory (warning-level): does NOT fail `--strict`, since a
+     * legacy ref may be mid-migration. De-duplicated by ref, slotted by the first
+     * emitted file it appears in.
+     *
+     * @return list<Diagnostic>
+     */
+    private function legacyRefDiagnostics(string $projectRoot, BoostConfig $config, InstalledPackages $packages): array
+    {
+        $inliner = ConventionsPass::build($packages, $config)->inliner();
+
+        $seen = [];
+        foreach (EmittedAgentFiles::default()->forConfig($projectRoot, $config) as $file) {
+            $content = (string) @file_get_contents($file['absolute']);
+            foreach ($inliner->legacyRefsIn($content) as $ref) {
+                $seen[$ref] ??= $file['relative'];
+            }
+        }
+
+        $diagnostics = [];
+        foreach ($seen as $ref => $relative) {
+            $diagnostics[] = Diagnostic::warning(
+                $relative,
+                sprintf(
+                    'legacy conventions reference `%s` is emitted literally — boost-core never resolves `$.` refs, and the Project Conventions block is CLAUDE.md-only, so it does not resolve for non-Claude agents. Migrate it to a `<!--boost:conv path="…" mode="…"-->` token, or inline the value.',
+                    $ref,
+                ),
+            );
+        }
+
+        return $diagnostics;
     }
 
     /**

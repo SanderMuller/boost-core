@@ -400,9 +400,55 @@ final readonly class ConventionsInliner
             return false;
         }
 
-        $roots = implode('|', array_map(static fn (string $r): string => preg_quote($r, '/'), $this->slotRoots));
+        return preg_match('/\$\.(?:' . $this->slotRootsAlternation() . ')\b/', $text) === 1;
+    }
 
-        return preg_match('/\$\.(?:' . $roots . ')\b/', $text) === 1;
+    /**
+     * The legacy `$.<root>...` runtime references in a body — refs boost-core
+     * never resolves (it only DETECTS them; they emit literally) and which, since
+     * the `## Project Conventions` block is CLAUDE.md-only, dangle unresolved for
+     * non-Claude agents. Matched only against KNOWN slot roots (from the composed
+     * schema), so plain `$.foo` text isn't a false positive.
+     *
+     * PROSE-scoped, with inline-code spans masked — mirroring {@see scanLeaks()}:
+     * a `$.slot` ref shown inside backticks or a fenced block is an intentional
+     * documentation example (the shipped conventions-migration skills do exactly
+     * this), NOT a live dangling reference, so it must not be flagged. Returns the
+     * full dotted refs (e.g. `$.jira.project_key`), de-duplicated, in first-seen order.
+     *
+     * @return list<string>
+     */
+    public function legacyRefsIn(string $text): array
+    {
+        if ($this->slotRoots === []) {
+            return [];
+        }
+
+        $pattern = '/\$\.(?:' . $this->slotRootsAlternation() . ')(?:\.[A-Za-z0-9_-]+)*/';
+        $found = [];
+
+        $this->walkLines($text, function (int $_lineNo, string $line, string $context) use ($pattern, &$found): void {
+            if ($context !== self::CTX_PROSE) {
+                return;
+            }
+
+            $spans = [];
+            $masked = $this->maskInlineCode($line, $spans);
+            if (preg_match_all($pattern, $masked, $matches) === 0) {
+                return;
+            }
+
+            foreach ($matches[0] as $ref) {
+                $found[$ref] = true;
+            }
+        });
+
+        return array_keys($found);
+    }
+
+    private function slotRootsAlternation(): string
+    {
+        return implode('|', array_map(static fn (string $r): string => preg_quote($r, '/'), $this->slotRoots));
     }
 
     private function mentionsConventionsPointer(string $text): bool

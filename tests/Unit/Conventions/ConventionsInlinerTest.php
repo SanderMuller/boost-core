@@ -109,3 +109,31 @@ it('a fully-inlined body with no legacy ref does NOT require the block', functio
         ->and($r->errors)
         ->toBeEmpty();
 });
+
+it('legacyRefsIn: captures full dotted PROSE refs for known roots; ignores code examples + unknown roots (#87)', function (): void {
+    $body = 'Runner is $.testing.runner; again $.testing.runner; bare $.codex. '
+        . 'A documented example like `$.github.default_base_branch` in inline-code is NOT a live ref. '
+        . 'And $.jira.project_key is an unknown root.';
+
+    $refs = inliner([])->legacyRefsIn($body);
+
+    expect($refs)->toBe(['$.testing.runner', '$.codex'])
+        // Inline-code is a doc example, not a dangling ref (the shipped
+        // conventions-migration skills show `$.slot` syntax this way).
+        ->and($refs)->not->toContain('$.github.default_base_branch')
+        // Unknown root → not a false positive.
+        ->and($refs)->not->toContain('$.jira.project_key');
+});
+
+it('legacyRefsIn: ignores refs inside a fenced code block (#87)', function (): void {
+    $body = "Live ref \$.testing.runner.\n\n```\n\$.codex example in a fence\n```\n";
+
+    expect(inliner([])->legacyRefsIn($body))->toBe(['$.testing.runner']);
+});
+
+it('legacyRefsIn: returns nothing when no slot roots are composed (no schema)', function (): void {
+    $inliner = new ConventionsInliner(new SlotResolver([], []), []);
+
+    expect($inliner->legacyRefsIn('mentions $.github.x and $.anything.y'))
+        ->toBeEmpty();
+});

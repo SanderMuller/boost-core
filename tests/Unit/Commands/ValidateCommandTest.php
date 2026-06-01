@@ -2,6 +2,8 @@
 
 use Composer\Console\Application as ComposerApplication;
 use SanderMuller\BoostCore\Commands\ValidateCommand;
+use SanderMuller\BoostCore\Sync\InstalledPackages;
+use SanderMuller\BoostCore\Sync\PackageInfo;
 use Symfony\Component\Console\Tester\CommandTester;
 
 function validateTempProject(string $boostBody): string
@@ -107,5 +109,39 @@ it('0.16.0 leak gate: emits leak diagnostics in --json output', function (): voi
         expect(implode("\n", $messages))->toContain('leaked conventions token');
     } finally {
         validateCleanup($dir);
+    }
+});
+
+it('legacy-ref scan: warns (advisory, never fails --strict) on a $.<root> ref in emitted output (#87)', function (): void {
+    $dir = validateTempProject("BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/conv'])");
+    $vendor = sys_get_temp_dir() . '/boost-validate-vendor-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost', 0o755, recursive: true);
+    file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+    file_put_contents($vendor . '/resources/boost/conventions-schema.json', json_encode([
+        'type' => 'object',
+        'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+    ], JSON_THROW_ON_ERROR));
+    // An emitted file the agent reads, carrying a legacy $.jira ref (never inlined).
+    file_put_contents($dir . '/CLAUDE.md', "# Project\n\nFile issues under \$.jira.project_key.\n");
+
+    $packages = new InstalledPackages([
+        'acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor),
+    ]);
+
+    try {
+        $command = new ValidateCommand($packages);
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $exit = $tester->execute(['--working-dir' => $dir, '--strict' => true]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('$.jira.project_key')
+            ->and($display)->toContain('legacy conventions reference')
+            // Advisory (warning-level): must NOT fail --strict.
+            ->and($exit)->toBe(0);
+    } finally {
+        validateCleanup($dir);
+        validateCleanup($vendor);
     }
 });

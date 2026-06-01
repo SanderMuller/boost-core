@@ -33,6 +33,7 @@ final class ConvertConventionsCommand extends BoostBaseCommand
             ->setName('boost:convert-conventions')
             ->setDescription("Migrate Project Conventions YAML from CLAUDE.md into boost.php's ->withConventions([...]) chain.")
             ->addWorkingDirOption()
+            ->addConfigOption()
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Print the diff against boost.php without writing.')
             ->addOption('keep-block', null, InputOption::VALUE_NONE, 'Leave the CLAUDE.md marker region untouched after writing into boost.php.');
     }
@@ -41,15 +42,16 @@ final class ConvertConventionsCommand extends BoostBaseCommand
     {
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
+        $configOverride = $this->configFileOption($input);
 
-        $config = $this->loadConfig($io, $projectRoot);
+        $config = $this->loadConfig($io, $projectRoot, $configOverride);
         if (! $config instanceof BoostConfig) {
             return self::FAILURE;
         }
 
         // Resolved location (root or .config/boost.php) — write back where the
         // config actually lives. Safe post-load.
-        $configPath = BoostConfigPath::resolve($projectRoot)->path;
+        $configPath = BoostConfigPath::resolve($projectRoot, $configOverride)->path;
         $claudeMdPath = $projectRoot . '/' . self::CLAUDE_MD;
 
         // Edge: no CLAUDE.md

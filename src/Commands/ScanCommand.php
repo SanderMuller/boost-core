@@ -39,15 +39,17 @@ final class ScanCommand extends BoostBaseCommand
             ->setName('boost:scan')
             ->setDescription('Re-run the vendor allowlist picker. Use after installing new packages that publish skills/guidelines.');
         $this->addWorkingDirOption();
+        $this->addConfigOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
+        $configOverride = $this->configFileOption($input);
 
         try {
-            $config = $this->loader->load($projectRoot);
+            $config = $this->loader->load($projectRoot, $configOverride);
         } catch (Throwable $throwable) {
             $io->error($throwable->getMessage());
 
@@ -57,7 +59,7 @@ final class ScanCommand extends BoostBaseCommand
         // Write back to the file the config was loaded from (root or
         // .config/boost.php), not a hardcoded root path. Safe post-load — an
         // ambiguous/missing config already errored above.
-        $configPath = BoostConfigPath::resolve($projectRoot)->path;
+        $configPath = BoostConfigPath::resolve($projectRoot, $configOverride)->path;
 
         $packages = InstalledPackages::fromComposer();
         $scanner = new VendorScanner($packages);

@@ -47,6 +47,7 @@ final class SyncCommand extends BoostBaseCommand
                 'With `--scope=user`: sync every installed package that ships skills — run once after `composer global require`.',
             );
         $this->addWorkingDirOption();
+        $this->addConfigOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -71,7 +72,7 @@ final class SyncCommand extends BoostBaseCommand
         }
 
         try {
-            $result = SyncEngine::default()->sync($projectRoot, $checkOnly, $force);
+            $result = SyncEngine::default(configFile: $this->configFileOption($input))->sync($projectRoot, $checkOnly, $force);
         } catch (BoostConfigNotFoundException $e) {
             $io->error($e->getMessage());
 

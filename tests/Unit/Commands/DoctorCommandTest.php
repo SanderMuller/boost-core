@@ -745,3 +745,30 @@ it('doctor: resolves and names a .config/boost.php config (#89)', function (): v
         doctorCleanup($dir);
     }
 });
+
+it('doctor: --config loads an explicit config path, overriding auto-discovery (#89)', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-doctor-cfgflag-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/vendor', 0o755, recursive: true);
+    mkdir($dir . '/custom', 0o755, recursive: true);
+    // No root or .config/ boost.php — only a custom-named file the flag points at.
+    file_put_contents(
+        $dir . '/custom/my-boost.php',
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE]);\n",
+    );
+
+    $command = new DoctorCommand();
+    $app = new ComposerApplication();
+    $app->addCommand($command);
+
+    $tester = new CommandTester($command);
+
+    try {
+        $exit = $tester->execute(['--working-dir' => $dir, '--config' => 'custom/my-boost.php']);
+        $display = $tester->getDisplay();
+        expect($exit)->toBe(0)
+            ->and($display)->toContain('custom/my-boost.php')
+            ->and($display)->toContain('parses cleanly');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

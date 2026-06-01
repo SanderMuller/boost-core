@@ -119,6 +119,9 @@ final readonly class SyncEngine
         ?InstalledPackages $installedPackages = null,
         ?RemoteSkillIngester $remoteSkillIngester = null,
         ?RemoteOrphanPruner $remoteOrphanPruner = null,
+        // Explicit config-file override (CLI `--config`). Null → BoostConfigPath
+        // auto-discovers root vs .config/boost.php. Used at every config load.
+        private ?string $configFile = null,
     ) {
         $this->injectedVendorMerger = new InjectedVendorMerger($this->skillTagFilter, $this->guidelineTagFilter);
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -145,11 +148,12 @@ final readonly class SyncEngine
         );
     }
 
-    public static function default(?InstalledPackages $installedPackages = null): self
+    public static function default(?InstalledPackages $installedPackages = null, ?string $configFile = null): self
     {
         return new self(
             agentTargets: self::allAgentTargets(),
             installedPackages: $installedPackages,
+            configFile: $configFile,
         );
     }
 
@@ -412,7 +416,7 @@ final readonly class SyncEngine
     public function resolveForInspection(string $projectRoot): array
     {
         $projectRoot = rtrim($projectRoot, '/');
-        $config = $this->configLoader->load($projectRoot);
+        $config = $this->configLoader->load($projectRoot, $this->configFile);
         $allowedVendors = $this->discoverAllowedVendors($config);
 
         $remoteSourceKeys = array_map(
@@ -477,7 +481,7 @@ final readonly class SyncEngine
     public function sync(string $projectRoot, bool $checkOnly = false, bool $force = false, array $injectedVendorSkills = [], array $extraSkillRenderers = [], array $injectedVendorGuidelines = []): SyncResult
     {
         $projectRoot = rtrim($projectRoot, '/');
-        $config = $this->configLoader->load($projectRoot);
+        $config = $this->configLoader->load($projectRoot, $this->configFile);
 
         $config = $this->injectedVendorMerger->mergeExtraRenderers($config, $extraSkillRenderers);
 
@@ -1564,7 +1568,7 @@ final readonly class SyncEngine
     public function resolveSkillShadowPaths(string $projectRoot, string $skillName): ?array
     {
         $projectRoot = rtrim($projectRoot, '/');
-        $config = $this->configLoader->load($projectRoot);
+        $config = $this->configLoader->load($projectRoot, $this->configFile);
 
         if (! is_dir($config->skillsPath)) {
             return null;
@@ -1640,7 +1644,7 @@ final readonly class SyncEngine
     public function resolveGuidelineShadowPaths(string $projectRoot, string $guidelineName): array
     {
         $projectRoot = rtrim($projectRoot, '/');
-        $config = $this->configLoader->load($projectRoot);
+        $config = $this->configLoader->load($projectRoot, $this->configFile);
 
         if (! is_dir($config->guidelinesPath)) {
             return [];

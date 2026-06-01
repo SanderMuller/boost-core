@@ -22,6 +22,7 @@ final class ValidateCommand extends BoostBaseCommand
             ->setName('boost:validate')
             ->setDescription("Validate boost.php's withConventions([...]) against allowlisted vendors' schemas.")
             ->addWorkingDirOption()
+            ->addConfigOption()
             ->addOption('strict', null, InputOption::VALUE_NONE, 'Exit non-zero (1) on any error-level diagnostic.')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Emit machine-readable diagnostics for CI tooling.');
     }
@@ -31,7 +32,7 @@ final class ValidateCommand extends BoostBaseCommand
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
 
-        $config = $this->loadConfig($io, $projectRoot);
+        $config = $this->loadConfig($io, $projectRoot, $this->configFileOption($input));
         if (! $config instanceof BoostConfig) {
             return self::FAILURE;
         }

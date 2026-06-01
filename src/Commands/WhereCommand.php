@@ -4,6 +4,7 @@ namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
+use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Conventions\ConventionsAudit;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
@@ -52,6 +53,7 @@ final class WhereCommand extends BoostBaseCommand
             ->setName('boost:where')
             ->setDescription('Show every skill, guideline, and command grouped by its origin: host `.ai/`, scanned vendor packages, remote skill sources, and host overrides.');
         $this->addWorkingDirOption();
+        $this->addConfigOption();
         $this->addOption(
             'diff',
             null,
@@ -76,9 +78,10 @@ final class WhereCommand extends BoostBaseCommand
     {
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
+        $configOverride = $this->configFileOption($input);
 
         if ($input->getOption('conventions') === true) {
-            return $this->executeConventions($io, $projectRoot, $input->getOption('json') === true);
+            return $this->executeConventions($io, $projectRoot, $input->getOption('json') === true, $configOverride);
         }
 
         $diffSkill = $input->getOption('diff');
@@ -86,9 +89,17 @@ final class WhereCommand extends BoostBaseCommand
             return $this->executeDiff($io, $projectRoot, $diffSkill);
         }
 
+        // Surface which config is live (root vs .config/boost.php). Best-effort —
+        // a resolution error (e.g. both present) is reported by the sync below.
         try {
-            $result = SyncEngine::default($this->injectedPackages)->sync($projectRoot, checkOnly: true);
-            $inspection = SyncEngine::default($this->injectedPackages)->resolveForInspection($projectRoot);
+            $io->writeln(sprintf('Config: <info>%s</info>', BoostConfigPath::resolve($projectRoot, $configOverride)->path));
+        } catch (Throwable) {
+            // surfaced below
+        }
+
+        try {
+            $result = SyncEngine::default($this->injectedPackages, $configOverride)->sync($projectRoot, checkOnly: true);
+            $inspection = SyncEngine::default($this->injectedPackages, $configOverride)->resolveForInspection($projectRoot);
         } catch (BoostConfigNotFoundException $e) {
             $io->error($e->getMessage());
 
@@ -334,10 +345,10 @@ final class WhereCommand extends BoostBaseCommand
      * resolved slots + their provenance (declared / schema-default / missing) —
      * a human table, or `--json` for a machine-readable shape.
      */
-    private function executeConventions(SymfonyStyle $io, string $projectRoot, bool $asJson): int
+    private function executeConventions(SymfonyStyle $io, string $projectRoot, bool $asJson, ?string $configOverride = null): int
     {
         try {
-            $config = (new BoostConfigLoader())->load($projectRoot);
+            $config = (new BoostConfigLoader())->load($projectRoot, $configOverride);
         } catch (BoostConfigNotFoundException $boostConfigNotFoundException) {
             $io->error($boostConfigNotFoundException->getMessage());
 

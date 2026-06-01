@@ -5,6 +5,7 @@ namespace SanderMuller\BoostCore\Commands;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
+use SanderMuller\BoostCore\Config\BoostConfigPath;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -32,6 +33,33 @@ abstract class BoostBaseCommand extends Command
         return $this;
     }
 
+    protected function addConfigOption(): static
+    {
+        $this->addOption(
+            'config',
+            null,
+            InputOption::VALUE_REQUIRED,
+            'Path to a boost.php config (a relative path resolves against the project root). Overrides auto-discovery of root vs .config/boost.php.',
+        );
+
+        return $this;
+    }
+
+    /**
+     * The `--config` override value, or null when unset/empty. A relative path is
+     * resolved against the project root by {@see BoostConfigPath}.
+     */
+    protected function configFileOption(InputInterface $input): ?string
+    {
+        if (! $input->hasOption('config')) {
+            return null;
+        }
+
+        $value = $input->getOption('config');
+
+        return is_string($value) && $value !== '' ? $value : null;
+    }
+
     protected function resolveProjectRoot(InputInterface $input): string
     {
         $workingDir = $input->getOption('working-dir');
@@ -49,10 +77,10 @@ abstract class BoostBaseCommand extends Command
      * and returns null on a missing or broken config — callers return
      * `self::FAILURE` on null.
      */
-    protected function loadConfig(SymfonyStyle $io, string $projectRoot): ?BoostConfig
+    protected function loadConfig(SymfonyStyle $io, string $projectRoot, ?string $configFile = null): ?BoostConfig
     {
         try {
-            return (new BoostConfigLoader())->load($projectRoot);
+            return (new BoostConfigLoader())->load($projectRoot, $configFile);
         } catch (BoostConfigNotFoundException $e) {
             $io->error($e->getMessage());
 

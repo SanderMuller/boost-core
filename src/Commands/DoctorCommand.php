@@ -50,6 +50,7 @@ final class DoctorCommand extends BoostBaseCommand
             ->setName('boost:doctor')
             ->setDescription('Diagnose a boost-core install. Reports config, allowlist, drift, etc.');
         $this->addWorkingDirOption();
+        $this->addConfigOption();
         $this->addOption(
             'check-versions',
             null,
@@ -75,12 +76,14 @@ final class DoctorCommand extends BoostBaseCommand
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
 
+        $configOverride = $this->configFileOption($input);
+
         $io->title('boost-core doctor');
         $io->writeln(sprintf('Project root: <info>%s</info>', $projectRoot));
 
         // Resolve the config LOCATION first, so a both-files ambiguity surfaces as
         // a helpful diagnostic here rather than a bare exception from the loader.
-        $configFile = $this->resolveConfigLocationOrReport($io, $projectRoot);
+        $configFile = $this->resolveConfigLocationOrReport($io, $projectRoot, $configOverride);
         if (! $configFile instanceof BoostConfigPath) {
             return self::FAILURE;
         }
@@ -88,7 +91,7 @@ final class DoctorCommand extends BoostBaseCommand
         $io->writeln(sprintf('Config: <info>%s</info>', $configFile->path));
         $io->newLine();
 
-        $config = $this->loadConfig($io, $projectRoot);
+        $config = $this->loadConfig($io, $projectRoot, $configOverride);
         if (! $config instanceof BoostConfig) {
             return self::FAILURE;
         }
@@ -292,10 +295,10 @@ final class DoctorCommand extends BoostBaseCommand
      * section and returning null (so the caller fails cleanly) instead of letting
      * the loader throw a bare exception downstream.
      */
-    private function resolveConfigLocationOrReport(SymfonyStyle $io, string $projectRoot): ?BoostConfigPath
+    private function resolveConfigLocationOrReport(SymfonyStyle $io, string $projectRoot, ?string $configOverride): ?BoostConfigPath
     {
         try {
-            return BoostConfigPath::resolve($projectRoot);
+            return BoostConfigPath::resolve($projectRoot, $configOverride);
         } catch (AmbiguousBoostConfigException $ambiguousBoostConfigException) {
             $io->newLine();
             $io->section('Config location');

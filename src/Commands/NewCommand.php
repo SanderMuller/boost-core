@@ -54,6 +54,7 @@ final class NewCommand extends BoostBaseCommand
                 'Overwrite existing file.',
             );
         $this->addWorkingDirOption();
+        $this->addConfigOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -84,7 +85,7 @@ final class NewCommand extends BoostBaseCommand
         $projectRoot = $this->resolveProjectRoot($input);
 
         try {
-            $config = $this->loader->load($projectRoot);
+            $config = $this->loader->load($projectRoot, $this->configFileOption($input));
         } catch (Throwable $throwable) {
             $io->error($throwable->getMessage());
 

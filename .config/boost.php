@@ -13,12 +13,12 @@ return BoostConfig::configure()
     ->withAllowedVendors([
         'sandermuller/boost-skills',
     ])
-    ->withTags(
+    ->withTags([
         Tag::Php,
         Tag::Github,
         Tag::Pest,
         'release-automation',
-    )
+    ])
     ->withExcludedGuidelines([
         // boost-core is a framework-free Composer plugin — no database, no
         // migrations. These ship from boost-skills untagged, so the deny-list

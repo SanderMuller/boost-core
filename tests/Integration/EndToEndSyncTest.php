@@ -3453,3 +3453,86 @@ it('0.18.1 --check reports (but does NOT remove) a stale old-layout manifest a r
         rmTreeE2E($root);
     }
 });
+
+it('0.18.3 BUG: the .boost-remote-manifest.json survives sync (not reaped as a stale managed file)', function (): void {
+    // Regression: enumerateManagedFiles must skip the remote-orphan manifest the
+    // same way it skips .boost/ — it's engine-internal state written outside the
+    // WriteAction pipeline. Pre-fix it was enumerated as a prior-managed file,
+    // found absent from this sync's writes, and reaped EVERY sync (spurious
+    // DELETED warning + dead orphan pruning, since the next sync read an empty
+    // manifest).
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-manifest-survives-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+        $makeEngine = fn (): SyncEngine => new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot)),
+        );
+
+        $makeEngine()->sync($root);
+        // The orphan-tracking manifest must exist after a sync — it's how the
+        // NEXT sync knows what to prune.
+        expect($root . '/.boost-remote-manifest.json')->toBeFile();
+
+        // A second sync must NOT report deleting the manifest, and it must still
+        // be present afterwards (orphan pruning stays alive across syncs).
+        $result = $makeEngine()->sync($root);
+        $deletedManifest = array_filter(
+            $result->writes,
+            static fn (WrittenFile $w): bool => str_contains($w->relativePath, '.boost-remote-manifest.json')
+                && in_array($w->action, [WriteAction::DELETED, WriteAction::WOULD_DELETE], true),
+        );
+        expect($deletedManifest)->toBeEmpty('the remote manifest must never be reaped')
+            ->and($root . '/.boost-remote-manifest.json')->toBeFile();
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('0.18.3: removing withRemoteSkills entirely still prunes the skill dir AND cleans the manifest (no leak from the survive-sync fix)', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-removeall-' . bin2hex(random_bytes(6));
+
+    try {
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+        $engineWith = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot)),
+        );
+
+        // Sync 1: remote skill declared → dir + manifest present.
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+        $engineWith->sync($root);
+        expect($root . '/.boost-remote-manifest.json')->toBeFile()
+            ->and($root . '/.claude/skills/composer-upgrade')->toBeDirectory();
+
+        // Sync 2: withRemoteSkills removed entirely. The orphaned skill dir is
+        // pruned (reported as drift), and RemoteOrphanPruner unlinks the now-empty
+        // manifest — so nothing lingers despite enumerateManagedFiles skipping it.
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        $result = (new SyncEngine(agentTargets: [new ClaudeCodeTarget()], installedPackages: emptyInstalledPackages()))->sync($root);
+
+        expect($root . '/.claude/skills/composer-upgrade')->not->toBeDirectory()
+            ->and($root . '/.boost-remote-manifest.json')->not->toBeFile();
+        // The meaningful drift (the skill dir) is surfaced even though the
+        // gitignored manifest's own deletion is not (engine-internal state).
+        $prunedDir = array_filter(
+            $result->writes,
+            static fn (WrittenFile $w): bool => str_contains($w->relativePath, 'composer-upgrade')
+                && $w->action === WriteAction::DELETED,
+        );
+        expect($prunedDir)->not->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});

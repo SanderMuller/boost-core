@@ -8,6 +8,7 @@ use RecursiveIteratorIterator;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Skills\Remote\RemoteOrphanPruner;
 use SplFileInfo;
 
 /**
@@ -177,6 +178,22 @@ final readonly class StaleFileCleaner
             }
 
             if (rtrim($pattern, '/') === SyncManifest::CONFIG_DIR) {
+                continue;
+            }
+
+            // The remote-skill orphan manifest is engine-internal tracking state
+            // written outside the WriteAction pipeline (so it's never in $writes),
+            // exactly like the sync manifest above. Without this skip it would be
+            // enumerated as a prior-managed file, found "absent this sync", and
+            // reaped EVERY sync — a spurious DELETED warning plus dead orphan
+            // pruning (the next sync would read an emptied manifest). updateGitignore
+            // adds it as `/<MANIFEST_FILE>`, so match both with and without the
+            // leading slash.
+            if (rtrim($pattern, '/') === RemoteOrphanPruner::MANIFEST_FILE) {
+                continue;
+            }
+
+            if (rtrim($pattern, '/') === '/' . RemoteOrphanPruner::MANIFEST_FILE) {
                 continue;
             }
 

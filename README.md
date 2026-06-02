@@ -374,6 +374,22 @@ composer test
 
 That runs the full Pest suite (unit + integration, including real `composer install` subprocesses for the standalone-bin and end-user-install surfaces). Coverage report via `composer test-coverage`.
 
+## Versioning & stability
+
+boost-core follows [Semantic Versioning](https://semver.org). The semver promise covers the **public surface** only:
+
+- **Config authoring API** — `BoostConfig::configure()` and the `BoostConfigBuilder` `with*()` methods you call in `boost.php`, plus the `Agent`/`Tag` enums and `RemoteSkillSource`.
+- **CLI** — the `bin/boost` command names, their documented options, and exit codes (`0` ok, `1` failure, `2` usage).
+- **Composer hooks** — `BoostAutoSync::run` / `runWithSummary` (the `post-install`/`post-update` targets). New parameters are always optional-with-default.
+- **Plugin contracts** — `BoostWrapperContract` (stable). `FileEmitter` and `SkillRenderer` are **`@experimental`** until a second independent consumer validates their shape; they may change in a minor.
+
+**Explicitly NOT covered** (may change in any release, including patches):
+
+- Everything marked `@internal` — the whole engine (`Sync\`, `Discovery\`, `Conventions\`, `Agents\`, `Commands\`, `Skills\` internals). Don't import these.
+- On-disk regenerable state: the sync manifest, the remote-skill ledger, the user-scope manifests under `~/.boost/`, the `.boost/` ⁄ `.config/boost/` runtime dir, and the cache sentinel. These are engine internals; their schema is not a contract.
+
+The committed surface is enumerated in [`PUBLIC_API.md`](PUBLIC_API.md). Pre-`1.0.0`, MINOR bumps may still break the public API — those are called out in `CHANGELOG.md` and `UPGRADING.md`.
+
 ## Upgrading
 
 See [`UPGRADING.md`](UPGRADING.md) for breaking-change migrations between majors/minors.

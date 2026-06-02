@@ -141,11 +141,16 @@ final class SyncCommand extends BoostBaseCommand
         }
 
         if ($checkOnly && $result->hasDrift()) {
+            // Count BOTH would-write and would-reap: a dropped/removed skill whose
+            // only pending change is a reap must not report "0 file(s) would
+            // change" now that hasDrift() treats WOULD_DELETE as drift (codex 0.19.0).
             $io->warning(sprintf(
-                '[%s → %s] Drift detected: %d file(s) would change.',
+                '[%s → %s] Drift detected: %d file(s) would change (%d write, %d reap).',
                 $result->packageName,
                 $result->homeRoot,
+                $result->countByAction(WriteAction::WOULD_WRITE) + $result->countByAction(WriteAction::WOULD_DELETE),
                 $result->countByAction(WriteAction::WOULD_WRITE),
+                $result->countByAction(WriteAction::WOULD_DELETE),
             ));
 
             return self::FAILURE;

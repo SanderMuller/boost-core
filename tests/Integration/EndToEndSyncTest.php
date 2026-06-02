@@ -971,8 +971,10 @@ it('remote-skill source: removing a skill from boost.php prunes its fan-out dire
             ->toBeTrue()
             ->and(is_file($root . '/.claude/skills/phpstan-developer/SKILL.md'))
             ->toBeTrue()
+            ->and(is_file($root . '/.boost/remote-manifest.json'))
+            ->toBeTrue('ledger lives under the manifest dir, not repo root')
             ->and(is_file($root . '/.boost-remote-manifest.json'))
-            ->toBeTrue();
+            ->toBeFalse('no stale root-level ledger');
 
         // Sync 2: drop `phpstan-developer` from the declared set.
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
@@ -1028,7 +1030,7 @@ it('remote-skill source: removing an entire source prunes every skill under its 
             ->and(is_dir($root . '/.claude/skills/composer-upgrade'))
             ->toBeFalse();
         // Manifest deleted when nothing's declared.
-        expect($root . '/.boost-remote-manifest.json')->not->toBeFile();
+        expect($root . '/.boost/remote-manifest.json')->not->toBeFile();
     } finally {
         rmTreeE2E($root);
         BundleExtractor::recursivelyRemove($cacheRoot);
@@ -1101,11 +1103,11 @@ it('remote-skill source: --check mode reports a WOULD_DELETE for orphans without
             ),
         );
         $engine()->sync($root);
-        expect($root . '/.boost-remote-manifest.json')
+        expect($root . '/.boost/remote-manifest.json')
             ->toBeFile();
 
         // Snapshot manifest contents to confirm --check doesn't rewrite it.
-        $manifestBefore = (string) file_get_contents($root . '/.boost-remote-manifest.json');
+        $manifestBefore = (string) file_get_contents($root . '/.boost/remote-manifest.json');
 
         // Drop the skill from config, then run --check. Expect a WOULD_DELETE
         // for the orphan; dir survives; manifest unchanged.
@@ -1123,7 +1125,7 @@ it('remote-skill source: --check mode reports a WOULD_DELETE for orphans without
         expect($wouldDeletePaths)->toContain('.claude/skills/composer-upgrade')
             ->and(is_dir($root . '/.claude/skills/composer-upgrade'))
             ->toBeTrue('--check must not delete anything')
-            ->and((string) file_get_contents($root . '/.boost-remote-manifest.json'))
+            ->and((string) file_get_contents($root . '/.boost/remote-manifest.json'))
             ->toBe($manifestBefore, '--check must not rewrite the manifest');
     } finally {
         rmTreeE2E($root);
@@ -3454,13 +3456,14 @@ it('0.18.1 --check reports (but does NOT remove) a stale old-layout manifest a r
     }
 });
 
-it('0.18.3 BUG: the .boost-remote-manifest.json survives sync (not reaped as a stale managed file)', function (): void {
-    // Regression: enumerateManagedFiles must skip the remote-orphan manifest the
+it('0.18.3 BUG: the remote-orphan ledger survives sync (not reaped as a stale managed file)', function (): void {
+    // Regression: enumerateManagedFiles must skip the remote-orphan ledger the
     // same way it skips .boost/ — it's engine-internal state written outside the
     // WriteAction pipeline. Pre-fix it was enumerated as a prior-managed file,
     // found absent from this sync's writes, and reaped EVERY sync (spurious
     // DELETED warning + dead orphan pruning, since the next sync read an empty
-    // manifest).
+    // manifest). 0.19.0+ the ledger lives inside .boost/, which is already skipped
+    // wholesale — so the guarantee holds at the new path.
     $root = makeEndToEndProject();
     $cacheRoot = sys_get_temp_dir() . '/boost-remote-manifest-survives-' . bin2hex(random_bytes(6));
 
@@ -3476,20 +3479,21 @@ it('0.18.3 BUG: the .boost-remote-manifest.json survives sync (not reaped as a s
         );
 
         $makeEngine()->sync($root);
-        // The orphan-tracking manifest must exist after a sync — it's how the
+        // The orphan-tracking ledger must exist after a sync — it's how the
         // NEXT sync knows what to prune.
-        expect($root . '/.boost-remote-manifest.json')->toBeFile();
+        expect($root . '/.boost/remote-manifest.json')->toBeFile()
+            ->and($root . '/.boost-remote-manifest.json')->not->toBeFile('no stale root-level ledger');
 
-        // A second sync must NOT report deleting the manifest, and it must still
+        // A second sync must NOT report deleting the ledger, and it must still
         // be present afterwards (orphan pruning stays alive across syncs).
         $result = $makeEngine()->sync($root);
         $deletedManifest = array_filter(
             $result->writes,
-            static fn (WrittenFile $w): bool => str_contains($w->relativePath, '.boost-remote-manifest.json')
+            static fn (WrittenFile $w): bool => str_contains($w->relativePath, 'remote-manifest.json')
                 && in_array($w->action, [WriteAction::DELETED, WriteAction::WOULD_DELETE], true),
         );
-        expect($deletedManifest)->toBeEmpty('the remote manifest must never be reaped')
-            ->and($root . '/.boost-remote-manifest.json')->toBeFile();
+        expect($deletedManifest)->toBeEmpty('the remote ledger must never be reaped')
+            ->and($root . '/.boost/remote-manifest.json')->toBeFile();
     } finally {
         rmTreeE2E($root);
         BundleExtractor::recursivelyRemove($cacheRoot);
@@ -3512,7 +3516,7 @@ it('0.18.3: removing withRemoteSkills entirely still prunes the skill dir AND cl
         // Sync 1: remote skill declared → dir + manifest present.
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
         $engineWith->sync($root);
-        expect($root . '/.boost-remote-manifest.json')->toBeFile()
+        expect($root . '/.boost/remote-manifest.json')->toBeFile()
             ->and($root . '/.claude/skills/composer-upgrade')->toBeDirectory();
 
         // Sync 2: withRemoteSkills removed entirely. The orphaned skill dir is
@@ -3522,7 +3526,7 @@ it('0.18.3: removing withRemoteSkills entirely still prunes the skill dir AND cl
         $result = (new SyncEngine(agentTargets: [new ClaudeCodeTarget()], installedPackages: emptyInstalledPackages()))->sync($root);
 
         expect($root . '/.claude/skills/composer-upgrade')->not->toBeDirectory()
-            ->and($root . '/.boost-remote-manifest.json')->not->toBeFile();
+            ->and($root . '/.boost/remote-manifest.json')->not->toBeFile();
         // The meaningful drift (the skill dir) is surfaced even though the
         // gitignored manifest's own deletion is not (engine-internal state).
         $prunedDir = array_filter(
@@ -3531,6 +3535,106 @@ it('0.18.3: removing withRemoteSkills entirely still prunes the skill dir AND cl
                 && $w->action === WriteAction::DELETED,
         );
         expect($prunedDir)->not->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('0.19.0: a pre-0.19 root-level .boost-remote-manifest.json is migrated into .boost/ on the next sync', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-migrate-' . bin2hex(random_bytes(6));
+
+    try {
+        // Simulate an upgrade: a pre-0.19 ledger sits at the repo root.
+        file_put_contents($root . '/.boost-remote-manifest.json', json_encode(['skills' => ['composer-upgrade']], JSON_THROW_ON_ERROR) . "\n");
+
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+
+        (new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot)),
+        ))->sync($root);
+
+        // The ledger moved into the manifest dir; the root copy is gone.
+        expect($root . '/.boost/remote-manifest.json')->toBeFile('ledger migrated into .boost/')
+            ->and($root . '/.boost-remote-manifest.json')->not->toBeFile('legacy root copy removed');
+        /** @var array{skills: list<string>} $migrated */
+        $migrated = json_decode((string) file_get_contents($root . '/.boost/remote-manifest.json'), true, 512, JSON_THROW_ON_ERROR);
+        expect($migrated)->toBeArray()
+            ->and($migrated['skills'])->toContain('composer-upgrade');
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('0.19.0 .config/boost.php layout: the remote ledger lands under .config/boost/, not the repo root', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-configdir-' . bin2hex(random_bytes(6));
+    mkdir($root . '/.config', 0o755, recursive: true);
+
+    try {
+        file_put_contents(
+            $root . '/.config/boost.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nuse SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);\n",
+        );
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+
+        (new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot)),
+        ))->sync($root);
+
+        expect($root . '/.config/boost/remote-manifest.json')->toBeFile('ledger follows the .config/ layout')
+            ->and($root . '/.boost/remote-manifest.json')->not->toBeFile('not at the root .boost/ layout')
+            ->and($root . '/.boost-remote-manifest.json')->not->toBeFile('not at the repo root');
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('0.19.0: moving boost.php root↔.config carries the remote ledger across layouts (no stale copy, pruning intact)', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-layoutmove-' . bin2hex(random_bytes(6));
+
+    try {
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
+        $build = fn () => new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot)),
+        );
+
+        // Sync 1 — ROOT layout: ledger lands at .boost/remote-manifest.json.
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+        $build()->sync($root);
+        expect($root . '/.boost/remote-manifest.json')->toBeFile();
+
+        // Move boost.php into .config/ — same remote declaration.
+        unlink($root . '/boost.php');
+        mkdir($root . '/.config', 0o755, recursive: true);
+        file_put_contents(
+            $root . '/.config/boost.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nuse SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);\n",
+        );
+
+        // Sync 2 — .config layout: the ledger migrates to .config/boost/, the old
+        // .boost/ copy is dropped, and the skill survives (pruning saw the carried
+        // ledger, so it did NOT mistake the still-declared skill for an orphan).
+        $build()->sync($root);
+        expect($root . '/.config/boost/remote-manifest.json')->toBeFile('ledger migrated to the new layout')
+            ->and($root . '/.boost/remote-manifest.json')->not->toBeFile('stale other-layout ledger dropped')
+            ->and($root . '/.claude/skills/composer-upgrade/SKILL.md')->toBeFile('still-declared skill not pruned across the move');
     } finally {
         rmTreeE2E($root);
         BundleExtractor::recursivelyRemove($cacheRoot);

@@ -123,6 +123,7 @@ final readonly class SyncEngine
         private ?string $configFile = null,
         private SyncManifestWriter $manifestWriter = new SyncManifestWriter(),
         private StaleFileCleaner $staleFileCleaner = new StaleFileCleaner(),
+        private UserScopeManifestWriter $userScopeManifestWriter = new UserScopeManifestWriter(),
     ) {
         $this->injectedVendorMerger = new InjectedVendorMerger($this->skillTagFilter, $this->guidelineTagFilter);
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -241,6 +242,10 @@ final readonly class SyncEngine
             (new UserScopeMigrator())->run($home, $packageName, $skills, $this->agentTargets);
         }
 
+        // Every user-scope path this package emits this sync — the keep set the
+        // clean-slate reap diffs against, and the new manifest's contents.
+        /** @var array<string, true> $emittedPaths */
+        $emittedPaths = [];
         foreach ($this->agentTargets as $target) {
             foreach ($target->plan($skills, []) as $pending) {
                 $rewritten = $this->rewriteForUserScope($pending->relativePath, $packageName);
@@ -248,6 +253,7 @@ final readonly class SyncEngine
                     continue;
                 }
 
+                $emittedPaths[$rewritten] = true;
                 $this->writeAndPrune(
                     $home,
                     new PendingWrite($rewritten, $pending->content),
@@ -259,6 +265,46 @@ final readonly class SyncEngine
             }
         }
 
+        // Ownership reconcile (0.19.0): the user-scope counterpart of the project
+        // reap. Gated on a CLEAN run — a write error makes a still-needed path
+        // look "absent this run", so reaping or rewriting the manifest over a
+        // transient failure could delete a live file. On failure the prior
+        // manifest stays last-known-good for the next clean run.
+        if ($errors === []) {
+            $priorManifest = UserScopeManifest::fromFile(UserScopeManifest::pathFor($home, $packageName));
+
+            // Validate delete candidates against the FULL agent catalog so a
+            // dropped skill's copies are reapable under every agent — including
+            // ones this (possibly narrowed) engine does not drive.
+            $slugRoots = self::userScopeSlugRootsForSlug(self::packageSuffix($packageName));
+
+            // The keep set is keyed by SKILL, not by exact emitted path: take each
+            // path the active targets emit, reduce it to its per-skill suffix
+            // (`<skillName>/<file>`, identical across agents), and re-expand across
+            // every agent root. A still-shipped skill is then kept on EVERY agent
+            // (so a narrowed engine never over-deletes an inactive agent's live
+            // copy), while a dropped skill is kept on NONE (so its stale copies
+            // are reaped under every agent, active or not) — resolving both codex
+            // 0.19.0 findings at once.
+            $keep = $this->userScopeKeepAcrossAgents($emittedPaths, $packageName);
+
+            // Clean-slate: reap prior-recorded paths whose skill this package no
+            // longer emits (a dropped/renamed skill), sha-gated + slug-validated.
+            // The next sync re-reaps any retain-on-fail leftover, so no retain
+            // bookkeeping here.
+            $cleanSlate = (new UserScopeReaper())->reap($home, $slugRoots, $priorManifest, $keep, $checkOnly);
+            foreach ($cleanSlate['writes'] as $reaped) {
+                $writes[] = $reaped;
+            }
+
+            if (! $checkOnly) {
+                $writeError = $this->userScopeManifestWriter->write($home, $packageName, $packageRoot, $emittedPaths, $priorManifest);
+                if ($writeError !== null) {
+                    $errors[] = $writeError;
+                }
+            }
+        }
+
         return new UserScopeResult(
             packageName: $packageName,
             homeRoot: $home,
@@ -266,6 +312,45 @@ final readonly class SyncEngine
             errors: $errors,
             check: $checkOnly,
         );
+    }
+
+    /**
+     * The clean-slate reaper's keep set, keyed by SKILL rather than exact path —
+     * the heavy expansion lives in {@see UserScopeReaper::keepAcrossAgents}; this
+     * only gathers the active vs full slug roots it diffs against.
+     *
+     * @param  array<string, true>  $emittedPaths  active-target emissions this sync
+     * @return array<string, true>  full-path keep set spanning every agent root
+     */
+    private function userScopeKeepAcrossAgents(array $emittedPaths, string $packageName): array
+    {
+        $slug = self::packageSuffix($packageName);
+
+        $activeRoots = [];
+        foreach ($this->agentTargets as $target) {
+            $activeRoots[] = $target->skillsDirectoryRelative() . '/' . $slug;
+        }
+
+        return UserScopeReaper::keepAcrossAgents($emittedPaths, $activeRoots, self::userScopeSlugRootsForSlug($slug));
+    }
+
+    /**
+     * Slug roots from a bare `<vendor__pkg>` slug across the FULL static agent
+     * catalog — used by reconcile-on-REMOVE, which keys off the manifest filename
+     * stem rather than a live package name, and must reap every agent's copy of a
+     * package that is gone (a removed/dropped package may have written for agents
+     * not active in the reconciling run).
+     *
+     * @return list<string>
+     */
+    public static function userScopeSlugRootsForSlug(string $slug): array
+    {
+        $roots = [];
+        foreach (self::allAgentTargets() as $target) {
+            $roots[] = $target->skillsDirectoryRelative() . '/' . $slug;
+        }
+
+        return array_values(array_unique($roots));
     }
 
     /**
@@ -630,6 +715,7 @@ final readonly class SyncEngine
             $config,
             $resolvedSkills,
             $checkOnly,
+            $inConfigDir,
         );
 
         // Snapshot prior boost-managed gitignore patterns BEFORE updateGitignore
@@ -1061,19 +1147,13 @@ final readonly class SyncEngine
             }
         }
 
-        // The remote-skill manifest lives at the project root once any remote
-        // source is declared. Keep it out of VCS so users don't fight merge
-        // noise — it's auto-regenerated by every sync.
-        if ($config->remoteSkills !== []) {
-            $patterns[] = '/' . RemoteOrphanPruner::MANIFEST_FILE;
-        }
-
-        // Ignore the sync ownership manifest dir. Added ONLY when this
-        // sync will actually write a manifest ($includeManifestDir) — so an
-        // otherwise-empty project never gets a `.boost/` line for a dir that
-        // won't exist. enumerateManagedFiles() skips this dir so the stale-
-        // cleanup pass never deletes the manifest it relies on.
-        if ($includeManifestDir) {
+        // Ignore the sync ownership manifest dir. Added when this sync will write
+        // a manifest ($includeManifestDir) OR any remote source is declared — the
+        // remote-skill orphan ledger now lives inside this dir (0.19.0+), so its
+        // presence alone requires the dir be ignored even if no ownership manifest
+        // is written. enumerateManagedFiles() skips this dir so the stale-cleanup
+        // pass never deletes the manifest (or ledger) it relies on.
+        if ($includeManifestDir || $config->remoteSkills !== []) {
             $patterns[] = SyncManifest::dirFor($inConfigDir) . '/';
         }
 

@@ -5,6 +5,7 @@ namespace SanderMuller\BoostCore\Skills\Remote;
 use JsonException;
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Sync\FilteredSkillPruner;
+use SanderMuller\BoostCore\Sync\SyncManifest;
 use SanderMuller\BoostCore\Sync\WriteAction;
 use SanderMuller\BoostCore\Sync\WrittenFile;
 
@@ -14,10 +15,13 @@ use SanderMuller\BoostCore\Sync\WrittenFile;
  *
  * Pruning needs a record of what was previously remote-managed — the on-disk
  * `.{agent}/skills/<name>/` layout alone cannot tell remote-sourced skills
- * apart from host- or vendor-sourced ones. The project-root
- * `.boost-remote-manifest.json` file is that record: each successful sync
- * writes the currently-resolved remote skill names; the next sync diffs
- * prev-vs-current and prunes the gap.
+ * apart from host- or vendor-sourced ones. The ledger
+ * `<.boost|.config/boost>/remote-manifest.json` is that record: each successful
+ * sync writes the currently-resolved remote skill names; the next sync diffs
+ * prev-vs-current and prunes the gap. The ledger lives inside the active sync-
+ * manifest dir (0.19.0+) so it follows the root↔`.config/` layout and stays out
+ * of the repo root; a pre-0.19 root-level `.boost-remote-manifest.json` is
+ * migrated into that dir on the next real sync.
  *
  * Delete-safety contract — provenance alone is not enough, so each delete
  * holds only when ALL of:
@@ -38,7 +42,28 @@ use SanderMuller\BoostCore\Sync\WrittenFile;
  */
 final class RemoteOrphanPruner
 {
+    /**
+     * Pre-0.19 root-level ledger location. Retained only as the migration source
+     * (read as a fallback, then moved into the manifest dir on the next real
+     * sync) — never written to any more.
+     */
     public const MANIFEST_FILE = '.boost-remote-manifest.json';
+
+    /**
+     * The ledger basename inside the active sync-manifest dir
+     * (`.boost/` or `.config/boost/`).
+     */
+    public const MANIFEST_BASENAME = 'remote-manifest.json';
+
+    /**
+     * Absolute path of the orphan ledger for the active layout — inside the
+     * sync-manifest dir so it follows root↔`.config/` and never litters the repo
+     * root.
+     */
+    public static function manifestPathFor(string $projectRoot, bool $inConfigDir): string
+    {
+        return rtrim($projectRoot, '/') . '/' . SyncManifest::dirFor($inConfigDir) . '/' . self::MANIFEST_BASENAME;
+    }
 
     /**
      * Diff prev manifest against the names that should be protected this
@@ -59,8 +84,9 @@ final class RemoteOrphanPruner
         array $agentTargets,
         array $protectedNames,
         bool $checkOnly,
+        bool $inConfigDir = false,
     ): array {
-        $prevNames = $this->readManifest($projectRoot);
+        $prevNames = $this->readManifest($projectRoot, $inConfigDir);
         if ($prevNames === []) {
             return [];
         }
@@ -95,14 +121,19 @@ final class RemoteOrphanPruner
      *
      * @param  list<string>  $remoteSkillNames  every name declared in `withRemoteSkills(...)` this sync
      */
-    public function writeManifest(string $projectRoot, array $remoteSkillNames): void
+    public function writeManifest(string $projectRoot, array $remoteSkillNames, bool $inConfigDir = false): void
     {
-        $path = $projectRoot . '/' . self::MANIFEST_FILE;
+        $path = self::manifestPathFor($projectRoot, $inConfigDir);
 
         if ($remoteSkillNames === []) {
             if (is_file($path)) {
                 @unlink($path);
             }
+
+            // Nothing declared → no ledger state to preserve, so the stale copies
+            // (pre-0.19 root + the other 0.19 layout) are safe to drop alongside
+            // the cleared active location.
+            $this->removeStaleLedgers($projectRoot, $inConfigDir);
 
             return;
         }
@@ -116,10 +147,42 @@ final class RemoteOrphanPruner
                 JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR,
             );
         } catch (JsonException) {
-            return;
+            return;   // legacy ledger preserved — nothing was migrated
         }
 
-        @file_put_contents($path, $json . "\n");
+        $dir = dirname($path);
+        if (! is_dir($dir) && ! @mkdir($dir, 0o755, true) && ! is_dir($dir)) {
+            return;   // can't create the dir → keep the legacy ledger for retry
+        }
+
+        if (@file_put_contents($path, $json . "\n") === false) {
+            return;   // write failed → keep the legacy ledger for retry
+        }
+
+        // Only now that the new ledger is persisted is it safe to drop the
+        // migrated stale copies — never delete them before the replacement exists,
+        // or a read-only/full manifest dir would leave NO ledger and silently
+        // disable orphan pruning (codex 0.19.0 P1).
+        $this->removeStaleLedgers($projectRoot, $inConfigDir);
+    }
+
+    /**
+     * Drop ledgers left at a location NOT active this sync — the pre-0.19 root
+     * file and the OTHER 0.19 layout (root `.boost/` when active is `.config/`,
+     * or vice versa) — so a layout move never leaves a stale ledger behind. Only
+     * the file is removed; the other-layout dir is owned by the sync manifest,
+     * which prunes the dir itself.
+     */
+    private function removeStaleLedgers(string $projectRoot, bool $inConfigDir): void
+    {
+        foreach ([
+            rtrim($projectRoot, '/') . '/' . self::MANIFEST_FILE,
+            self::manifestPathFor($projectRoot, ! $inConfigDir),
+        ] as $stale) {
+            if (is_file($stale)) {
+                @unlink($stale);
+            }
+        }
     }
 
     private function pruneOne(
@@ -214,11 +277,27 @@ final class RemoteOrphanPruner
     /**
      * @return list<string>
      */
-    private function readManifest(string $projectRoot): array
+    private function readManifest(string $projectRoot, bool $inConfigDir): array
     {
-        $path = $projectRoot . '/' . self::MANIFEST_FILE;
+        $path = self::manifestPathFor($projectRoot, $inConfigDir);
         if (! is_file($path)) {
-            return [];
+            // Fallback chain for a not-yet-migrated ledger, so orphan pruning keeps
+            // working on the first sync after a layout move (the same sync then
+            // migrates it into the active dir):
+            //   1. the OTHER 0.19 layout (root `.boost/` ↔ `.config/boost/`);
+            //   2. the pre-0.19 root-level `.boost-remote-manifest.json`.
+            $otherLayout = self::manifestPathFor($projectRoot, ! $inConfigDir);
+            $legacy = rtrim($projectRoot, '/') . '/' . self::MANIFEST_FILE;
+
+            $path = match (true) {
+                is_file($otherLayout) => $otherLayout,
+                is_file($legacy) => $legacy,
+                default => null,
+            };
+
+            if ($path === null) {
+                return [];
+            }
         }
 
         $raw = @file_get_contents($path);

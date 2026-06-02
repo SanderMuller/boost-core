@@ -27,7 +27,11 @@ final readonly class UserScopeResult
     public function hasDrift(): bool
     {
         foreach ($this->writes as $write) {
-            if ($write->action === WriteAction::WOULD_WRITE) {
+            // WOULD_DELETE counts too: a `--check` run whose only pending change
+            // is a clean-slate / reconcile reap (a dropped or removed skill's
+            // user-scope copy) is still drift — otherwise the CLI prints "No
+            // drift" and CI/operators miss the pending cleanup (codex 0.19.0).
+            if ($write->action === WriteAction::WOULD_WRITE || $write->action === WriteAction::WOULD_DELETE) {
                 return true;
             }
         }

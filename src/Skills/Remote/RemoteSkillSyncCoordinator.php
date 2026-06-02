@@ -144,6 +144,7 @@ final readonly class RemoteSkillSyncCoordinator
         BoostConfig $config,
         array $resolvedSkills,
         bool $checkOnly,
+        bool $inConfigDir = false,
     ): array {
         $declaredRemoteNames = $this->collectDeclaredRemoteNames($config);
 
@@ -164,10 +165,11 @@ final readonly class RemoteSkillSyncCoordinator
             $agentTargets,
             $protectedNames,
             $checkOnly,
+            $inConfigDir,
         );
 
         if (! $checkOnly) {
-            $this->orphanPruner->writeManifest($projectRoot, $declaredRemoteNames);
+            $this->orphanPruner->writeManifest($projectRoot, $declaredRemoteNames, $inConfigDir);
         }
 
         return $writes;

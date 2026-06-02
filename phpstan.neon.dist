@@ -49,7 +49,7 @@ parameters:
         # allow every "internal {class,enum,interface,trait}" usage under tests/ only.
         # External consumers still get the @internal signal; src→src use is same-root.
         -
-            message: '#internal (class|enum|interface|trait)#'
+            message: '#internal (class|enum|interface|trait|method|property|constant|function)#'
             path: tests/*
             reportUnmatched: false
         # Pest's `$this->foo` in beforeEach binds dynamic properties on the test scope.

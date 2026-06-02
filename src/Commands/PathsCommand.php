@@ -20,6 +20,7 @@ final class PathsCommand extends BoostBaseCommand
             ->setName('boost:paths')
             ->setDescription('List path globs boost-core manages (vendor-skill-reachable).')
             ->addWorkingDirOption()
+            ->addConfigOption()
             ->addOption('managed', null, InputOption::VALUE_NONE, 'List the managed-path globs (default).')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Emit JSON envelope for tooling.');
     }
@@ -29,7 +30,7 @@ final class PathsCommand extends BoostBaseCommand
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
 
-        $config = $this->loadConfig($io, $projectRoot);
+        $config = $this->loadConfig($io, $projectRoot, $this->configFileOption($input));
         if (! $config instanceof BoostConfig) {
             return self::FAILURE;
         }

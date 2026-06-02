@@ -31,6 +31,7 @@ final class TagsCommand extends BoostBaseCommand
             ->setName('boost:tags')
             ->setDescription('Discover skill tags — what installed skills declare, what is filtered out, and the tags to add to withTags().');
         $this->addWorkingDirOption();
+        $this->addConfigOption();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -40,7 +41,7 @@ final class TagsCommand extends BoostBaseCommand
 
         $io->title('boost-core tags');
 
-        $config = $this->loadConfig($io, $projectRoot);
+        $config = $this->loadConfig($io, $projectRoot, $this->configFileOption($input));
         if (! $config instanceof BoostConfig) {
             return self::FAILURE;
         }

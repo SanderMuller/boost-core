@@ -38,6 +38,10 @@ final readonly class BoostConfig
      * @param  list<RemoteSkillSource>  $remoteSkills  Non-Composer skill sources (GitHub `.skill` bundles or repo subdirs)
      * @param  list<SkillRenderer>  $skillRenderers  Registered renderers; always carries the implicit PassthroughRenderer last unless a user-registered renderer claims `md`
      * @param  array<string, mixed>  $conventions  Operator-declared Project Conventions slot values (NEW in 0.9.0). Renders into CLAUDE.md's marker-bounded region at sync time. Defaults to `[]` (no conventions declared) — back-compat with consumers who construct BoostConfig positionally.
+     *
+     * @internal Build via {@see BoostConfig::configure()}. The positional constructor is
+     *           engine-internal and NOT covered by the 1.0 semver promise — fields may be
+     *           added (always optional-with-default) without a major bump.
      */
     public function __construct(
         public array $agents,

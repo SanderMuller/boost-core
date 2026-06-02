@@ -30,7 +30,20 @@ use Symfony\Component\Console\Application;
         }
     }
 
-    $app = new Application('boost', '0.1.0-dev');
+    // Resolve the real installed version so `boost --version` is accurate (it
+    // previously hardcoded a placeholder). InstalledVersions is available via the
+    // autoload required above; fall back to 'dev' for exotic checkouts where the
+    // package isn't registered under its Composer name.
+    $version = 'dev';
+    if (class_exists(\Composer\InstalledVersions::class)) {
+        try {
+            $version = \Composer\InstalledVersions::getPrettyVersion('sandermuller/boost-core') ?? 'dev';
+        } catch (\OutOfBoundsException) {
+            $version = 'dev';
+        }
+    }
+
+    $app = new Application('boost', $version);
 
     $commands = [];
     foreach (CommandRegistry::commands() as $command) {

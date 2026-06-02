@@ -24,6 +24,7 @@ final class SlotsCommand extends BoostBaseCommand
             ->setName('boost:slots')
             ->setDescription('List conventions slots across allowlisted vendors (origin-traced).')
             ->addWorkingDirOption()
+            ->addConfigOption()
             ->addOption('vendor', null, InputOption::VALUE_REQUIRED, 'Filter to one vendor.')
             ->addOption('missing', null, InputOption::VALUE_NONE, 'Show only required-but-unfilled slots.')
             ->addOption('filled', null, InputOption::VALUE_NONE, 'Show only slots with a current value.')
@@ -43,7 +44,7 @@ final class SlotsCommand extends BoostBaseCommand
         }
 
         $projectRoot = $this->resolveProjectRoot($input);
-        $config = $this->loadConfig($io, $projectRoot);
+        $config = $this->loadConfig($io, $projectRoot, $this->configFileOption($input));
         if (! $config instanceof BoostConfig) {
             return self::FAILURE;
         }

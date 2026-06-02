@@ -2,10 +2,7 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
-use FilesystemIterator;
 use LogicException;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
@@ -50,7 +47,6 @@ use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
-use SplFileInfo;
 use Throwable;
 
 /**
@@ -125,6 +121,8 @@ final readonly class SyncEngine
         // Explicit config-file override (CLI `--config`). Null → BoostConfigPath
         // auto-discovers root vs .config/boost.php. Used at every config load.
         private ?string $configFile = null,
+        private SyncManifestWriter $manifestWriter = new SyncManifestWriter(),
+        private StaleFileCleaner $staleFileCleaner = new StaleFileCleaner(),
     ) {
         $this->injectedVendorMerger = new InjectedVendorMerger($this->skillTagFilter, $this->guidelineTagFilter);
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -559,7 +557,7 @@ final readonly class SyncEngine
         // identically under `--check` (file still present) and a real sync (already
         // pruned by the time diagnostics are assembled). Late capture would make
         // check report it and real not: a check≠real divergence.
-        $staleManifestDiagnostics = $this->staleManifestDiagnostics($projectRoot, $inConfigDir, $gitignoreManaged);
+        $staleManifestDiagnostics = $this->manifestWriter->staleManifestDiagnostics($projectRoot, $inConfigDir, $gitignoreManaged);
 
         // Load the PRIOR ownership manifest (state at sync start). All
         // destructive decisions (empty-guard clear, orphan reap) read this
@@ -638,7 +636,7 @@ final readonly class SyncEngine
         // overwrites them. cleanupStalePaths uses this manifest to distinguish
         // boost-emitted dirs (safe to delete) from operator-authored content.
         $priorManagedPatterns = $this->readPriorGitignorePatterns($projectRoot);
-        $priorManagedFiles = $this->enumerateManagedFiles($projectRoot, $priorManagedPatterns);
+        $priorManagedFiles = $this->staleFileCleaner->enumerateManagedFiles($projectRoot, $priorManagedPatterns);
 
         // Will this sync write a `.boost/manifest.json`? (Manifest is non-empty
         // when boost emits guidance/skills/commands, or there's a prior to
@@ -692,7 +690,7 @@ final readonly class SyncEngine
         // were already kept-the-block by the gate; surface them as errors.
         $conventionsErrors = [...$conventionsErrors, ...$guidanceResult['conventionsErrors']];
 
-        $cleanupResult = $this->cleanupStalePaths($projectRoot, $config, $checkOnly);
+        $cleanupResult = $this->staleFileCleaner->cleanupStalePaths($projectRoot, $config, $checkOnly, self::RETIRED_COPILOT_PATHS);
         $writes = [...$writes, ...$cleanupResult['writes']];
 
         // Generic stale-file cleanup — clean-slate model. Any file that
@@ -735,7 +733,7 @@ final readonly class SyncEngine
         // excludes those paths from stale-file classification.
         // ($wrapperEmits already computed above to feed the gitignore pass.)
         if (! $hasAnyError) {
-            $writes = $this->cleanupStaleManagedFiles(
+            $writes = $this->staleFileCleaner->cleanupStaleManagedFiles(
                 $projectRoot,
                 $priorManagedFiles,
                 $writes,
@@ -791,7 +789,21 @@ final readonly class SyncEngine
                 );
             }
 
-            $this->writeSyncManifest($projectRoot, $guidanceResult['ownedGuidancePaths'], $wrapperEmits['paths'], $emitterResults, $priorManifest, $reap['retained'], $ownableEmitterPaths, $inConfigDir);
+            $this->manifestWriter->write(
+                $projectRoot,
+                $guidanceResult['ownedGuidancePaths'],
+                $wrapperEmits['paths'],
+                $emitterResults,
+                $priorManifest,
+                $reap['retained'],
+                $ownableEmitterPaths,
+                $inConfigDir,
+                // The engine owns gitignore/cleanup enumeration; hand the writer the
+                // current on-disk managed files (the just-written block — this is the
+                // success path, so updateGitignore already ran) so it records skill/
+                // command emission targets without calling back into the engine.
+                $this->staleFileCleaner->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)),
+            );
         }
 
         // Diagnostic surface for the render-fail-then-write safety gate:
@@ -856,279 +868,6 @@ final readonly class SyncEngine
     }
 
     /**
-     * Remove paths boost-core retired entirely. boost-core IS the owner of
-     * category-3 AI-agent paths (`.github/copilot-instructions.md`,
-     * `.github/skills/`, agent-spec files, etc.). Operator-side influence
-     * runs through `.ai/` sources, allowlisted vendor packages, remote
-     * skills, and `boost.php` config — NOT through hand-editing emission
-     * targets. When boost-core retires an emission path, the file is
-     * boost-emitted output that no longer has a refresh path; delete it.
-     *
-     * Trigger conditions named explicitly:
-     *  1. The agent owning the path is in the active agent set (e.g.,
-     *     `.github/*` cleanup requires `Agent::COPILOT` — a project that
-     *     never had Copilot active has no boost-emitted content at those
-     *     paths, so cleanup would be wrong).
-     *  2. The path is in the retired-paths registry (hardcoded list of
-     *     paths boost-core has emitted to in past versions but no longer
-     *     emits in the current version).
-     *  3. The path exists on disk.
-     *
-     * All three must hold; meeting all three means the file is
-     * unambiguously boost-emitted historical output. Delete unconditionally.
-     *
-     * Reports drift via `WrittenFile` entries (DELETED / WOULD_DELETE) so
-     * `boost sync --check` and CI surface the upcoming cleanup as
-     * countWouldChange > 0 + hasDrift() = true.
-     *
-     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>}
-     */
-    private function cleanupStalePaths(string $projectRoot, BoostConfig $config, bool $checkOnly): array
-    {
-        if (! $config->hasAgent(Agent::COPILOT)) {
-            return ['writes' => [], 'diagnostics' => []];
-        }
-
-        $writes = [];
-        $diagnostics = [];
-
-        foreach (self::RETIRED_COPILOT_PATHS as $relativePath) {
-            $absolute = $projectRoot . '/' . $relativePath;
-            if (! file_exists($absolute) && ! is_link($absolute)) {
-                continue;
-            }
-
-            $failures = [];
-            $write = $this->cleanupPath($absolute, $relativePath, $checkOnly, $failures);
-
-            // When @-suppressed fs operations leave residual paths (permission
-            // denied, open file descriptor, race with re-emission), surface it.
-            //
-            // On failure, do NOT mark this path as DELETED in $writes (would
-            // poison SyncResult::hasDrift() + the "deleted=" summary count
-            // for wrapper-side consumers reading the write log — both would
-            // report cleanup success while the path persists on disk). Do
-            // NOT emit the "removed" INFO either (contradicts the warning we
-            // surface next). Only the actionable warning fires.
-            if ($failures === []) {
-                $writes[] = $write;
-                $diagnostics[] = Diagnostic::info(null, $this->cleanupMessage($relativePath, $checkOnly));
-
-                continue;
-            }
-
-            $diagnostics[] = Diagnostic::warning(
-                null,
-                sprintf(
-                    'Cleanup of `%s` left %d residual path(s) on disk — drift will persist until removed manually. Likely cause: permission denied, open file descriptor, or concurrent re-emission. Residual: %s',
-                    $relativePath,
-                    count($failures),
-                    implode(', ', array_slice($failures, 0, 5)) . (count($failures) > 5 ? sprintf(' (+%d more)', count($failures) - 5) : ''),
-                ),
-            );
-        }
-
-        return ['writes' => $writes, 'diagnostics' => $diagnostics];
-    }
-
-    /**
-     * @param  list<string>  $failures  Paths that could not be removed (by ref)
-     */
-    private function cleanupPath(string $absolute, string $relative, bool $checkOnly, array &$failures): WrittenFile
-    {
-        if (! $checkOnly) {
-            if (is_link($absolute)) {
-                if (! @unlink($absolute)) {
-                    $failures[] = $absolute;
-                }
-            } elseif (is_dir($absolute)) {
-                $this->deleteRecursive($absolute, $failures);
-            } elseif (! @unlink($absolute)) {
-                $failures[] = $absolute;
-            }
-        }
-
-        return new WrittenFile(
-            relativePath: $relative,
-            absolutePath: $absolute,
-            action: $checkOnly ? WriteAction::WOULD_DELETE : WriteAction::DELETED,
-        );
-    }
-
-    private function cleanupMessage(string $relativePath, bool $checkOnly): string
-    {
-        $verb = $checkOnly ? 'would remove' : 'removed';
-
-        return sprintf(
-            'Cleanup: %s retired boost-core path `%s`. boost-core generates this file, so once no emitter still produces it, sync removes it. Do not edit these files by hand; boost rewrites them on every sync. To change what gets emitted, edit your `.ai/` sources, allowlisted vendors (`withAllowedVendors`), remote skills (`withRemoteSkills`), or `boost.php`. If you wrote content here yourself, recover it from git before the next sync.',
-            $verb,
-            $relativePath,
-        );
-    }
-
-    /**
-     * Enumerate every file currently on disk under any of the given
-     * boost-managed gitignore patterns. Used by the clean-slate post-sync
-     * pass: anything in this list NOT rewritten by the current sync is
-     * stale and gets deleted.
-     *
-     * Patterns ending with `/` are treated as directories — recursed.
-     * Other patterns are treated as single file paths. Wildcard / glob
-     * patterns are skipped (boost-managed gitignore only uses directory +
-     * file patterns).
-     *
-     * Symlinks at the pattern root are skipped — never followed, never
-     * deleted. Matches `FileWriter::anySegmentIsSymlink()` safety contract.
-     *
-     * @param  list<string>  $patterns
-     * @return list<string>  relative file paths inside any pattern
-     */
-    private function enumerateManagedFiles(string $projectRoot, array $patterns): array
-    {
-        $files = [];
-        foreach ($patterns as $pattern) {
-            if ($pattern === '') {
-                continue;
-            }
-
-            // The sync manifest dir is engine-internal state owned by
-            // SyncManifest itself — never a stale-cleanup target. Skip it so the
-            // cleanup pass doesn't delete the manifest it's about to rely on.
-            // Both the root `.boost` and the `.config/boost` (config-dir layout)
-            // variants are skipped regardless of mode — neither is ever a real
-            // managed output.
-            if (rtrim($pattern, '/') === SyncManifest::DIR) {
-                continue;
-            }
-
-            if (rtrim($pattern, '/') === SyncManifest::CONFIG_DIR) {
-                continue;
-            }
-
-            if (str_contains($pattern, '*')) {
-                continue;
-            }
-
-            if (str_contains($pattern, '?')) {
-                continue;
-            }
-
-            $relative = rtrim($pattern, '/');
-            $absolute = $projectRoot . '/' . $relative;
-
-            if (is_link($absolute)) {
-                continue;
-            }
-
-            if (is_file($absolute)) {
-                $files[] = $relative;
-
-                continue;
-            }
-
-            if (! is_dir($absolute)) {
-                continue;
-            }
-
-            $iter = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($absolute, FilesystemIterator::SKIP_DOTS),
-                RecursiveIteratorIterator::LEAVES_ONLY,
-            );
-            /** @var SplFileInfo $file */
-            foreach ($iter as $file) {
-                if (! $file->isFile()) {
-                    continue;
-                }
-
-                if ($file->isLink()) {
-                    continue;
-                }
-
-                $files[] = $relative . '/' . str_replace('\\', '/', substr($file->getPathname(), strlen($absolute) + 1));
-            }
-        }
-
-        return $files;
-    }
-
-    /**
-     * Delete files that were inside boost-managed patterns BEFORE this sync
-     * but weren't rewritten this run. The clean-slate model: anything
-     * boost-core no longer publishes is stale. Removes per-file then walks
-     * up to clean empty parent directories so a directory that lost every
-     * file disappears entirely.
-     *
-     * Skips files already deleted by other prune passes (FilteredSkillPruner,
-     * RemoteOrphanPruner) — `file_exists()` returns false on already-gone
-     * files, no double DELETED records.
-     *
-     * @param  list<string>  $priorManagedFiles
-     * @param  list<WrittenFile>  $writes
-     * @param  array<string, string>  $wrapperExcludedPaths  paths
-     *   declared by `BoostWrapper` classes from installed wrapper packages —
-     *   excluded from "stale-to-delete" classification so bare-CLI doesn't
-     *   false-positive-flag wrapper-injected files for deletion.
-     * @return list<WrittenFile>
-     */
-    private function cleanupStaleManagedFiles(string $projectRoot, array $priorManagedFiles, array $writes, bool $checkOnly, array $wrapperExcludedPaths = []): array
-    {
-        $writtenPaths = [];
-        foreach ($writes as $w) {
-            $writtenPaths[$w->relativePath] = true;
-        }
-
-        foreach ($priorManagedFiles as $relativePath) {
-            if (isset($writtenPaths[$relativePath])) {
-                continue;
-            }
-
-            // Wrapper-claimed paths get preserved. Wrapper-driven sync rewrites
-            // them on next invocation; bare-CLI must NOT delete. Both exact-file
-            // and directory-prefix match: a wrapper claim of `.agents/skills/foo`
-            // (directory) should preserve every file under it. Without
-            // prefix-match, wrapper dir claims would only preserve the dir entry
-            // itself (which wouldn't be in priorManagedFiles anyway) while
-            // children get false-positive-deleted.
-            $canonicalRelative = ManagedFileOps::canonicalizeWrapperPath($relativePath);
-            if (ManagedFileOps::isUnderWrapperClaim($canonicalRelative, $wrapperExcludedPaths)) {
-                continue;
-            }
-
-            $absolute = $projectRoot . '/' . $relativePath;
-            if (! file_exists($absolute) && ! is_link($absolute)) {
-                continue;
-            }
-
-            if (! $checkOnly) {
-                @unlink($absolute);
-                ManagedFileOps::removeEmptyParentDirs($projectRoot, $absolute);
-            }
-
-            $writes[] = new WrittenFile(
-                relativePath: $relativePath,
-                absolutePath: $absolute,
-                action: $checkOnly ? WriteAction::WOULD_DELETE : WriteAction::DELETED,
-            );
-        }
-
-        return $writes;
-    }
-
-    /**
-     * Guideline files (CLAUDE.md / AGENTS.md / GEMINI.md / similar) use
-     * ManagedRegion + are operator-tracked, never wholesale-replaced. Adding
-     * them to the gitignore-managed manifest would route them through
-     * cleanupStaleManagedFiles which would delete the WHOLE file when stale,
-     * destroying operator content outside boost-core's markers. Filter at
-     * the gitignore-pattern emit point so wrapper-returned guideline-file
-     * paths are silently dropped from the managed manifest.
-     */
-    private function isGuidelineFilePath(string $relativePath): bool
-    {
-        return in_array($relativePath, ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md'], true);
-    }
-
-    /**
      * Extract the patterns boost-core previously gitignored, by reading
      * the managed block in `.gitignore`. Used by `cleanupStalePaths()` to
      * distinguish boost-emitted directories (safe to delete) from
@@ -1171,67 +910,6 @@ final readonly class SyncEngine
         }
 
         return $patterns;
-    }
-
-    /**
-     * @param  list<string>  $failures  Paths that could not be removed (by ref)
-     */
-    private function deleteRecursive(string $path, array &$failures = []): void
-    {
-        // is_link() must be checked BEFORE is_dir() — PHP's is_dir() follows
-        // symlinks and reports a symlink-to-directory as a directory, which
-        // would route us into @rmdir($path). rmdir requires a real directory
-        // and fails on a symlink, leaving residual drift. The engine can
-        // encounter such symlinks (e.g. a skills dir symlinked into vendor
-        // content) when cleaning a retired registry path.
-        if (is_link($path)) {
-            if (! @unlink($path)) {
-                $failures[] = $path;
-            }
-
-            return;
-        }
-
-        if (! is_dir($path)) {
-            if (! @unlink($path)) {
-                $failures[] = $path;
-            }
-
-            return;
-        }
-
-        // RecursiveDirectoryIterator::hasChildren() defaults to
-        // $allowLinks=false, so the iterator never descends INTO yielded
-        // symlinks (which would otherwise walk vendor content through the
-        // symlink target). Symlinks ARE yielded as top-level entries inside
-        // their parent dir so the loop body can unlink them — see the
-        // isLink() branch below.
-        $iter = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST,
-        );
-        /** @var SplFileInfo $file */
-        foreach ($iter as $file) {
-            $pathname = $file->getPathname();
-            // Same is_link-before-is_dir ordering as the top of this method.
-            // SplFileInfo::isDir() follows symlinks; a symlink-to-dir yielded
-            // by the iterator would route into @rmdir without this guard.
-            if ($file->isLink()) {
-                $ok = @unlink($pathname);
-            } elseif ($file->isDir()) {
-                $ok = @rmdir($pathname);
-            } else {
-                $ok = @unlink($pathname);
-            }
-
-            if (! $ok) {
-                $failures[] = $pathname;
-            }
-        }
-
-        if (! @rmdir($path)) {
-            $failures[] = $path;
-        }
     }
 
     /**
@@ -1364,231 +1042,6 @@ final readonly class SyncEngine
     }
 
     /**
-     * Write the ownership manifest to `.boost/manifest.json`. Records
-     * every emission target boost owns after this sync:
-     *  - GUIDANCE files boost wrote with non-empty content (sha-gated ownership
-     *    — a later sync proves ownership only if the on-disk sha still matches);
-     *  - SKILL / COMMAND emission targets currently on disk (the gitignored
-     *    managed files), tagged engine- or wrapper-provenance.
-     *
-     * Source dirs (`.ai/`, `resources/boost/`) can never appear — boost only
-     * writes emission targets, and SyncManifest::withEntry() rejects source
-     * prefixes defensively (the dual-role-publisher invariant).
-     *
-     * Record LIVE FileEmitter outputs (category `file`, provenance
-     * `emitter:<fqcn>`) so a later sync can reap them when the emitter goes
-     * dormant — and attribute a dormant vs DISABLED/errored emitter via the FQCN
-     * in provenance. Records ONLY WROTE/UNCHANGED results that boost is allowed
-     * to OWN — `$ownableEmitterPaths`, computed in runOneEmitter as "created
-     * fresh OR already owned". A first-time takeover of a
-     * pre-existing non-owned file, and a coincidentally-identical pre-existing
-     * file, are both absent from that set → never recorded → never reaped.
-     *
-     * @param  list<EmitterResult>  $emitterResults
-     * @param  array<string, true>  $ownableEmitterPaths
-     */
-    private function recordEmitterOutputs(SyncManifest $manifest, string $projectRoot, array $emitterResults, array $ownableEmitterPaths): SyncManifest
-    {
-        foreach ($emitterResults as $emitterResult) {
-            if ($emitterResult->relativePath === null) {
-                continue;
-            }
-
-            if (! in_array($emitterResult->action, [EmitterAction::WROTE, EmitterAction::UNCHANGED], true)) {
-                continue;
-            }
-
-            if (! isset($ownableEmitterPaths[$emitterResult->relativePath])) {
-                continue;
-            }
-
-            $sha = ManagedFileOps::fileSha($projectRoot, $emitterResult->relativePath);
-            if ($sha === null) {
-                continue;
-            }
-
-            $manifest = $manifest->withEntry(
-                $emitterResult->relativePath,
-                $sha,
-                SyncManifest::CATEGORY_FILE,
-                SyncManifest::PROVENANCE_EMITTER_PREFIX . $emitterResult->fqcn,
-            );
-        }
-
-        return $manifest;
-    }
-
-    /**
-     * @param  list<string>  $ownedGuidancePaths  relative paths from writeGuidanceFiles
-     * @param  array<string, string>  $wrapperPaths  wrapper-claimed emit path => owning package
-     * @param  list<EmitterResult>  $emitterResults  FileEmitter outcomes this sync
-     * @param  list<string>  $retainedOrphans  reap targets whose delete FAILED — carry their PRIOR ownership forward so a later sync retries
-     * @param  array<string, true>  $ownableEmitterPaths  emitter outputs boost may own
-     */
-    private function writeSyncManifest(string $projectRoot, array $ownedGuidancePaths, array $wrapperPaths, array $emitterResults, SyncManifest $priorManifest, array $retainedOrphans = [], array $ownableEmitterPaths = [], bool $inConfigDir = false): void
-    {
-        $manifest = SyncManifest::empty();
-
-        foreach ($ownedGuidancePaths as $relativePath) {
-            $sha = ManagedFileOps::fileSha($projectRoot, $relativePath);
-            if ($sha !== null) {
-                $manifest = $manifest->withEntry($relativePath, $sha, SyncManifest::CATEGORY_GUIDANCE, SyncManifest::PROVENANCE_ENGINE);
-            }
-        }
-
-        $manifest = $this->recordEmitterOutputs($manifest, $projectRoot, $emitterResults, $ownableEmitterPaths);
-
-        // Skill / command emission targets currently on disk. readPriorGitignore
-        // here reads the JUST-WRITTEN managed block (this is the success path,
-        // so updateGitignore already ran); enumerateManagedFiles skips `.boost/`.
-        foreach ($this->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)) as $relativePath) {
-            $category = match (true) {
-                str_contains($relativePath, '/skills/') => 'skill',
-                str_contains($relativePath, '/commands/') => 'command',
-                default => null,
-            };
-            if ($category === null) {
-                continue;   // not a skill/command emission target (e.g. a manifest file) — skip
-            }
-
-            $sha = ManagedFileOps::fileSha($projectRoot, $relativePath);
-            if ($sha === null) {
-                continue;
-            }
-
-            // Wrapper-claimed paths carry `wrapper:<vendor/package>` provenance
-            // (the owning package from WrapperEmitDiscovery) so callers can tell
-            // wrappers apart; engine-native paths are `engine`.
-            $provenance = isset($wrapperPaths[$relativePath])
-                ? 'wrapper:' . $wrapperPaths[$relativePath]
-                : SyncManifest::PROVENANCE_ENGINE;
-            $manifest = $manifest->withEntry($relativePath, $sha, $category, $provenance);
-        }
-
-        // Carry forward the PRIOR ownership of any orphan whose reap delete
-        // failed this run. Without this the entry would simply
-        // be absent from the new manifest, dropping ownership of a file that is
-        // still on disk — the next sync wouldn't know to retry. Re-add verbatim
-        // from the prior manifest so the retry path stays alive.
-        foreach ($retainedOrphans as $relativePath) {
-            $entry = $priorManifest->entries[$relativePath] ?? null;
-            if ($entry === null) {
-                continue;
-            }
-
-            $manifest = $manifest->withEntry($relativePath, $entry['sha256'], $entry['category'], $entry['provenance'], $entry['scope']);
-        }
-
-        // Don't materialize the manifest dir for a project boost emits nothing
-        // into — but DO update an existing manifest down to empty if everything was
-        // removed (keeps it honest rather than leaving stale ownership). In
-        // `.config/` layout the manifest lives at `.config/boost/`.
-        $manifestPath = $projectRoot . '/' . SyncManifest::relativePathFor($inConfigDir);
-        if ($manifest->isEmpty() && ! is_file($manifestPath)) {
-            // Nothing to write — but still shed a manifest left at the OTHER
-            // layout's location (a prior root↔.config migration): it's now
-            // unignored (the managed block lists the active dir) and would
-            // otherwise be re-read as ownership on the next sync. Its entries
-            // reflect a state boost no longer emits, so dropping them converges.
-            $this->removeStaleLayoutManifest($projectRoot, $inConfigDir);
-
-            return;
-        }
-
-        $dir = $projectRoot . '/' . SyncManifest::dirFor($inConfigDir);
-        if (! is_dir($dir)) {
-            @mkdir($dir, 0o755, true);
-        }
-
-        // The manifest dir is ignored via the managed .gitignore block (added in
-        // updateGitignore when $willWriteManifest), so the regenerable manifest
-        // never dirties the working tree. No self-contained .gitignore here —
-        // that would itself be an untracked file.
-        @file_put_contents($manifestPath, $manifest->toJson('boost-core'));
-
-        // Migration cleanup: after a root↔.config migration the OTHER layout's
-        // manifest is now unignored (the managed block lists the active dir only)
-        // and would surface as untracked AND be re-read as ownership next sync. Its
-        // ownership was already carried forward via fromProjectRoot's fallback, so
-        // remove the stale boost-owned manifest (+ its dir if empty); never touch
-        // operator content.
-        $this->removeStaleLayoutManifest($projectRoot, $inConfigDir);
-    }
-
-    /**
-     * Delete a manifest left at the layout NOT in use this sync — root `.boost/`
-     * when the active layout is `.config/`, or `.config/boost/` when the active
-     * layout is root — handling both migration directions. Boost-owned regenerable
-     * state only: removes the manifest file + the dir if it is now empty (an
-     * operator's own files under `.config/boost/` keep the dir, untouched).
-     */
-    private function removeStaleLayoutManifest(string $projectRoot, bool $inConfigDir): void
-    {
-        $relative = $this->staleLayoutManifestPath($projectRoot, $inConfigDir);
-        if ($relative === null) {
-            return;
-        }
-
-        @unlink($projectRoot . '/' . $relative);
-        $staleDirAbs = $projectRoot . '/' . SyncManifest::dirFor(! $inConfigDir);
-        if (is_dir($staleDirAbs) && $this->isEmptyDir($staleDirAbs)) {
-            @rmdir($staleDirAbs);
-        }
-    }
-
-    /**
-     * The project-relative path of a manifest left at the layout NOT in use this
-     * sync (root `.boost/` when active is `.config/`, or vice versa), or null when
-     * none exists. Read-only — the single detector shared by the prune
-     * ({@see removeStaleLayoutManifest}) and the `--check` advisory.
-     */
-    private function staleLayoutManifestPath(string $projectRoot, bool $inConfigDir): ?string
-    {
-        $relative = SyncManifest::relativePathFor(! $inConfigDir);
-
-        return is_file($projectRoot . '/' . $relative) ? $relative : null;
-    }
-
-    /**
-     * Advisory for a stale OTHER-layout manifest a sync would prune after a
-     * root↔.config migration — surfaced so `boost sync --check` reports the same
-     * one-time cleanup a real sync performs (check==real). Empty when gitignore
-     * isn't managed (the manifest machinery is off) or none is present. Warning-
-     * level: regenerable engine state, never fails the build.
-     *
-     * @return list<Diagnostic>
-     */
-    private function staleManifestDiagnostics(string $projectRoot, bool $inConfigDir, bool $gitignoreManaged): array
-    {
-        if (! $gitignoreManaged) {
-            return [];
-        }
-
-        $relative = $this->staleLayoutManifestPath($projectRoot, $inConfigDir);
-        if ($relative === null) {
-            return [];
-        }
-
-        return [
-            Diagnostic::warning(null, sprintf(
-                'Stale boost-owned sync manifest at `%s` from a previous config layout — boost-core prunes it on sync (the manifest now lives under `%s/`). Regenerable engine state; safe.',
-                $relative,
-                SyncManifest::dirFor($inConfigDir),
-            )),
-        ];
-    }
-
-    private function isEmptyDir(string $dir): bool
-    {
-        $entries = @scandir($dir);
-        if ($entries === false) {
-            return false;
-        }
-
-        return array_values(array_diff($entries, ['.', '..'])) === [];
-    }
-
-    /**
      * @param  list<string>  $wrapperClaimedPaths  paths declared by
      *   `BoostWrapper` classes from installed wrapper packages — included in
      *   the managed `.gitignore` block so bare-CLI sync doesn't drop wrapper-
@@ -1642,7 +1095,7 @@ final readonly class SyncEngine
         // that surface.
         foreach ($wrapperClaimedPaths as $wrapperPath) {
             $normalized = ltrim($wrapperPath, '/');
-            if ($this->isGuidelineFilePath($normalized)) {
+            if ($this->staleFileCleaner->isGuidelineFilePath($normalized)) {
                 continue;
             }
 

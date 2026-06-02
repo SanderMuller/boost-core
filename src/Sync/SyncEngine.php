@@ -554,6 +554,13 @@ final readonly class SyncEngine
 
         $gitignoreManaged = $config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false;
 
+        // Build the stale-OTHER-layout-manifest advisory (a prior root↔.config
+        // migration) NOW, BEFORE writeSyncManifest prunes it — so it reports
+        // identically under `--check` (file still present) and a real sync (already
+        // pruned by the time diagnostics are assembled). Late capture would make
+        // check report it and real not: a check≠real divergence.
+        $staleManifestDiagnostics = $this->staleManifestDiagnostics($projectRoot, $inConfigDir, $gitignoreManaged);
+
         // Load the PRIOR ownership manifest (state at sync start). All
         // destructive decisions (empty-guard clear, orphan reap) read this
         // prior snapshot; the NEW manifest is written only after a successful
@@ -840,6 +847,7 @@ final readonly class SyncEngine
                 ...$emitterDiagnostics,
                 ...$reapDiagnostics,
                 ...$keepReasonDiagnostics,
+                ...$staleManifestDiagnostics,
             ],
             conventionsBlockKept: $guidanceResult['conventionsBlockKept'],
             conventionsKeepReasons: $guidanceResult['conventionsKeepReasons'],
@@ -1516,17 +1524,58 @@ final readonly class SyncEngine
      */
     private function removeStaleLayoutManifest(string $projectRoot, bool $inConfigDir): void
     {
-        $staleDir = $inConfigDir ? SyncManifest::DIR : SyncManifest::CONFIG_DIR;
-        $stalePath = $projectRoot . '/' . $staleDir . '/manifest.json';
-        if (! is_file($stalePath)) {
+        $relative = $this->staleLayoutManifestPath($projectRoot, $inConfigDir);
+        if ($relative === null) {
             return;
         }
 
-        @unlink($stalePath);
-        $staleDirAbs = $projectRoot . '/' . $staleDir;
+        @unlink($projectRoot . '/' . $relative);
+        $staleDirAbs = $projectRoot . '/' . SyncManifest::dirFor(! $inConfigDir);
         if (is_dir($staleDirAbs) && $this->isEmptyDir($staleDirAbs)) {
             @rmdir($staleDirAbs);
         }
+    }
+
+    /**
+     * The project-relative path of a manifest left at the layout NOT in use this
+     * sync (root `.boost/` when active is `.config/`, or vice versa), or null when
+     * none exists. Read-only — the single detector shared by the prune
+     * ({@see removeStaleLayoutManifest}) and the `--check` advisory.
+     */
+    private function staleLayoutManifestPath(string $projectRoot, bool $inConfigDir): ?string
+    {
+        $relative = SyncManifest::relativePathFor(! $inConfigDir);
+
+        return is_file($projectRoot . '/' . $relative) ? $relative : null;
+    }
+
+    /**
+     * Advisory for a stale OTHER-layout manifest a sync would prune after a
+     * root↔.config migration — surfaced so `boost sync --check` reports the same
+     * one-time cleanup a real sync performs (check==real). Empty when gitignore
+     * isn't managed (the manifest machinery is off) or none is present. Warning-
+     * level: regenerable engine state, never fails the build.
+     *
+     * @return list<Diagnostic>
+     */
+    private function staleManifestDiagnostics(string $projectRoot, bool $inConfigDir, bool $gitignoreManaged): array
+    {
+        if (! $gitignoreManaged) {
+            return [];
+        }
+
+        $relative = $this->staleLayoutManifestPath($projectRoot, $inConfigDir);
+        if ($relative === null) {
+            return [];
+        }
+
+        return [
+            Diagnostic::warning(null, sprintf(
+                'Stale boost-owned sync manifest at `%s` from a previous config layout — boost-core prunes it on sync (the manifest now lives under `%s/`). Regenerable engine state; safe.',
+                $relative,
+                SyncManifest::dirFor($inConfigDir),
+            )),
+        ];
     }
 
     private function isEmptyDir(string $dir): bool

@@ -841,3 +841,48 @@ it('doctor: surfaces an unrenderable ALLOWLISTED-VENDOR source, matching what sy
         doctorCleanup($vendor);
     }
 });
+
+it('0.18.1 doctor: reports the runtime manifest at root .boost/ for the default layout', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $command = new DoctorCommand(injectedPackages: new InstalledPackages([]));
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->toContain('Runtime manifest: .boost/manifest.json');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.18.1 doctor: reports the runtime manifest at .config/boost/ for the .config/ layout', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-doctor-cfg-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/.config', 0o755, recursive: true);
+    mkdir($dir . '/vendor', 0o755, recursive: true);
+    file_put_contents(
+        $dir . '/.config/boost.php',
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE]);\n",
+    );
+    try {
+        $command = new DoctorCommand(injectedPackages: new InstalledPackages([]));
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->toContain('Runtime manifest: .config/boost/manifest.json');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.18.1 doctor: omits the runtime-manifest line when gitignore management is disabled (codex P3 — no manifest is used)', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withGitignoreManagement(false)');
+    try {
+        $command = new DoctorCommand(injectedPackages: new InstalledPackages([]));
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->not->toContain('Runtime manifest:');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

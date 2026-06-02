@@ -10,9 +10,11 @@ use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
 use SanderMuller\BoostCore\Discovery\PathRepoDetector;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
+use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Skills\UnrenderableSourceScanner;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
+use SanderMuller\BoostCore\Sync\SyncManifest;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -91,6 +93,16 @@ final class DoctorCommand extends BoostBaseCommand
         }
 
         $io->success(sprintf('boost.php at %s parses cleanly.', $configFile->path));
+
+        // Where the gitignored runtime manifest lives — follows the config layout
+        // (`.config/boost/` when boost.php is under `.config/`, else root `.boost/`),
+        // so operators on the `.config/` layout can confirm placement at a glance.
+        // Only shown when manifest handling is actually active: with gitignore
+        // management off (`withGitignoreManagement(false)` / `BOOST_SKIP_GITIGNORE`)
+        // boost-core never reads or writes a manifest, so naming a path would mislead.
+        if ($config->manageGitignore && getenv(Env::SKIP_GITIGNORE) === false) {
+            $io->writeln(sprintf('Runtime manifest: <info>%s/manifest.json</info>', SyncManifest::dirFor($configFile->inConfigDir)));
+        }
 
         $this->reportEntryPointMismatch($io);
         $this->reportAgents($io, $config);

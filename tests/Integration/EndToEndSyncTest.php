@@ -3418,3 +3418,38 @@ it('0.18.0 reverse migration: moving .config/boost.php back to root carries owne
         rmTreeE2E($root);
     }
 });
+
+it('0.18.1 --check reports (but does NOT remove) a stale old-layout manifest a real sync would prune (check==real)', function (): void {
+    $root = makeEndToEndProject();
+    mkdir($root . '/.config', 0o755, recursive: true);
+    mkdir($root . '/.boost', 0o755, recursive: true);
+    try {
+        file_put_contents(
+            $root . '/.config/boost.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);\n",
+        );
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\ndescription: A foo skill.\n---\n# Foo body\n");
+        // A pre-migration manifest at the legacy root location.
+        file_put_contents($root . '/.boost/manifest.json', json_encode([
+            'version' => 1,
+            'generator' => 'boost-core',
+            'emitted' => ['CLAUDE.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+        ], JSON_THROW_ON_ERROR));
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root, checkOnly: true);
+
+        // --check must SURFACE the stale manifest a real sync would prune…
+        $stale = array_filter(
+            $result->diagnostics,
+            static fn (Diagnostic $d): bool => str_contains($d->message, '.boost/manifest.json')
+                && str_contains(strtolower($d->message), 'stale'),
+        );
+        expect($stale)->not->toBeEmpty('check mode must report the stale old-layout manifest');
+
+        // …but must NOT actually remove it (check is read-only).
+        expect($root . '/.boost/manifest.json')->toBeFile();
+        expect($result->errors)->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+    }
+});

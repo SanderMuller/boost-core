@@ -446,7 +446,7 @@ it('ships a tagged vendor skill once the consumer declares the tag', function ()
             "return BoostConfig::configure()\n"
             . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
             . '    ->withAllowedVendors(["acme/jira-pack"])' . "\n"
-            . '    ->withTags("jira");',
+            . '    ->withTags(["jira"]);',
         );
 
         $result = SyncEngine::default(new InstalledPackages(['acme/jira-pack' => $pkg]))->sync($root);
@@ -468,7 +468,7 @@ it('fails closed: a vendor skill with malformed metadata.boost-tags ships nowher
             "return BoostConfig::configure()\n"
             . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
             . '    ->withAllowedVendors(["acme/bad-pack"])' . "\n"
-            . '    ->withTags("php");',
+            . '    ->withTags(["php"]);',
         );
 
         $result = SyncEngine::default(new InstalledPackages(['acme/bad-pack' => $pkg]))->sync($root);
@@ -513,7 +513,7 @@ it('prunes a previously-synced skill that a re-sync now tag-filters out', functi
             "return BoostConfig::configure()\n"
             . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
             . '    ->withAllowedVendors(["acme/jira-pack"])' . "\n"
-            . '    ->withTags("jira");',
+            . '    ->withTags(["jira"]);',
         );
         SyncEngine::default($packages)->sync($root);
         expect(file_exists($root . '/.claude/skills/jira-skill/SKILL.md'))->toBeTrue();
@@ -546,7 +546,7 @@ it('check mode reports a would-be prune as drift without deleting', function ():
             "return BoostConfig::configure()\n"
             . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
             . '    ->withAllowedVendors(["acme/jira-pack"])' . "\n"
-            . '    ->withTags("jira");',
+            . '    ->withTags(["jira"]);',
         );
         SyncEngine::default($packages)->sync($root);
 
@@ -653,7 +653,7 @@ it('0.13.0: records a host guideline shadow ONLY when the vendor copy is tag-ELI
             ->toBeEmpty();
 
         // Case A — tag declared → vendor copy tag-eligible → genuine shadow.
-        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/ops-pack'])\n    ->withTags('database');");
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/ops-pack'])\n    ->withTags(['database']);");
         $tagged = SyncEngine::default($packages)->sync($root);
         expect($tagged->hostGuidelineShadows)->toBe([['guideline' => 'release-automation', 'shadowedVendor' => 'acme/ops-pack']]);
     } finally {
@@ -699,7 +699,7 @@ it('tag-filters a vendor guideline by its .boost-tags.yaml manifest entry', func
             "return BoostConfig::configure()\n"
             . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
             . '    ->withAllowedVendors(["acme/db-pack"])' . "\n"
-            . '    ->withTags("database");',
+            . '    ->withTags(["database"]);',
         );
         $result = SyncEngine::default($packages)->sync($root);
 
@@ -752,7 +752,7 @@ it('tagFilteredSkillsCount stays zero when withTags is declared — intentional 
         // Consumer declared `withTags('php')` — `jira-triage` is still filtered
         // out (tag mismatch) but the consumer has clearly considered filtering;
         // no nudge fires.
-        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/jira-pack'])\n    ->withTags('php');");
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/jira-pack'])\n    ->withTags(['php']);");
 
         $packages = new InstalledPackages(['acme/jira-pack' => new PackageInfo('acme/jira-pack', '1.0.0', $vendor)]);
         $result = SyncEngine::default($packages)->sync($root);
@@ -1252,7 +1252,7 @@ it('tag-filters injected vendor skills using the same subset rule as scanned ven
             $root,
             "return BoostConfig::configure()\n"
             . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
-            . '    ->withTags("php");',
+            . '    ->withTags(["php"]);',
         );
 
         $injected = [
@@ -1500,7 +1500,7 @@ it('tag-filters injected vendor guidelines using the same subset rule', function
             $root,
             "return BoostConfig::configure()\n"
             . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
-            . '    ->withTags("php");',
+            . '    ->withTags(["php"]);',
         );
 
         $injected = [

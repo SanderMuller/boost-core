@@ -30,7 +30,7 @@ function tagSkill(string $name, array $tags = [], bool $tagsValid = true, ?strin
 function tagConfig(array $tags = [], array $excluded = []): BoostConfig
 {
     return BoostConfig::configure()
-        ->withTags(...$tags)
+        ->withTags($tags)
         ->withExcludedSkills($excluded)
         ->build('/project');
 }

@@ -72,7 +72,7 @@ it('starts with empty tags and exclude lists', function (): void {
 
 it('withTags accepts Tag enum cases and raw strings, normalized and deduped', function (): void {
     $config = (new BoostConfigBuilder())
-        ->withTags(Tag::Php, 'JIRA', '  laravel  ', 'php')
+        ->withTags([Tag::Php, 'JIRA', '  laravel  ', 'php'])
         ->build('/x');
 
     expect($config->tags)->toBe(['php', 'jira', 'laravel'])
@@ -82,7 +82,7 @@ it('withTags accepts Tag enum cases and raw strings, normalized and deduped', fu
 
 it('withTags drops values that normalize to empty', function (): void {
     $config = (new BoostConfigBuilder())
-        ->withTags('php', '   ', '')
+        ->withTags(['php', '   ', ''])
         ->build('/x');
 
     expect($config->tags)->toBe(['php']);

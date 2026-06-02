@@ -275,7 +275,7 @@ use SanderMuller\BoostCore\Enums\Tag;
 
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE])
-    ->withTags(Tag::Php, Tag::Jira)        // Tag enum cases or raw strings
+    ->withTags([Tag::Php, Tag::Jira])        // Tag enum cases or raw strings
     ->withExcludedSkills(['acme/pack:unwanted-skill'])
     ->withExcludedGuidelines(['acme/pack:unwanted-guideline']);
 ```

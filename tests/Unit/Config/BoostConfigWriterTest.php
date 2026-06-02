@@ -214,7 +214,7 @@ PHP);
     }
 });
 
-it('inserts withTags with a mix of Tag::* and raw string args (variadic, not array)', function (): void {
+it('inserts withTags as an array of mixed Tag::* and raw-string entries', function (): void {
     $path = tempConfigPath(<<<'PHP'
 <?php
 declare(strict_types=1);
@@ -229,9 +229,10 @@ PHP);
     try {
         (new BoostConfigWriter())->update($path, [], [], [], ['php', 'custom-org-tag']);
 
-        $written = file_get_contents($path);
+        $written = (string) file_get_contents($path);
         // `php` matches Tag::Php → emitted as `Tag::Php`; `custom-org-tag` stays a string.
-        expect($written)->toContain("->withTags(Tag::Php, 'custom-org-tag')");
+        // The array is pretty-printed multi-line, so compare whitespace-insensitively.
+        expect(preg_replace('/\s+/', '', $written))->toContain("->withTags([Tag::Php,'custom-org-tag',])");
 
         $config = (new BoostConfigLoader())->load(dirname($path), $path);
         expect($config->tags)->toEqual(['php', 'custom-org-tag']);
@@ -277,7 +278,7 @@ PHP);
     try {
         (new BoostConfigWriter())->update($path, [], [], [], ['laravel']);
         $written = (string) file_get_contents($path);
-        expect($written)->toContain('->withTags(Tag::Laravel)')
+        expect(preg_replace('/\s+/', '', $written))->toContain('->withTags([Tag::Laravel,])')
             ->and($written)->not->toContain('old-tag');
     } finally {
         @unlink($path);
@@ -349,7 +350,7 @@ PHP);
         // `php` → Tag::Php, `jira` → Tag::Jira (both enum cases),
         // `org-internal` stays a raw string. Uppercase JIRA must not
         // appear (dedupe + normalize) and Jira must appear exactly once.
-        expect($written)->toContain("->withTags(Tag::Php, Tag::Jira, 'org-internal')")
+        expect(preg_replace('/\s+/', '', $written))->toContain("->withTags([Tag::Php,Tag::Jira,'org-internal',])")
             ->and(substr_count($written, 'JIRA'))->toBe(0);
 
         $config = (new BoostConfigLoader())->load(dirname($path), $path);

@@ -86,7 +86,7 @@ it('round-trips withTags and withExcludedSkills through a boost.php', function (
         use SanderMuller\BoostCore\Enums\Tag;
 
         return BoostConfig::configure()
-            ->withTags(Tag::Php, 'jira')
+            ->withTags([Tag::Php, 'jira'])
             ->withExcludedSkills(['acme/pack:unwanted']);
         PHP);
 

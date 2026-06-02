@@ -75,7 +75,7 @@ it('0.10.0 diagnostic split case 3: declared-but-unused tags + project-boost-lar
     $dir = tagsTempProject();
     file_put_contents(
         $dir . '/boost.php',
-        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withTags('php', 'filament', 'livewire');\n",
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withTags(['php', 'filament', 'livewire']);\n",
     );
     $sibling = sys_get_temp_dir() . '/sibling-pbl-tags-' . bin2hex(random_bytes(8));
     mkdir($sibling, 0o755, recursive: true);
@@ -115,7 +115,7 @@ it('0.10.0 diagnostic split case 2: declared-but-unused tags + project-boost-lar
     $dir = tagsTempProject();
     file_put_contents(
         $dir . '/boost.php',
-        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withTags('php', 'future-only-tag');\n",
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withTags(['php', 'future-only-tag']);\n",
     );
 
     try {

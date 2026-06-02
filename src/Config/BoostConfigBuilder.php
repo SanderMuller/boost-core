@@ -120,10 +120,13 @@ final class BoostConfigBuilder
 
     /**
      * Declare the project's skill tags. A vendor skill ships only when every
-     * tag in its `metadata.boost-tags` is declared here. Accepts {@see Tag}
-     * enum cases (autocomplete) and/or raw strings (the vocabulary is open).
+     * tag in its `metadata.boost-tags` is declared here. Accepts a list of
+     * {@see Tag} enum cases (autocomplete) and/or raw strings (the vocabulary
+     * is open) — e.g. `withTags([Tag::Php, 'jira'])`.
+     *
+     * @param  list<Tag|string>  $tags
      */
-    public function withTags(Tag|string ...$tags): self
+    public function withTags(array $tags): self
     {
         $normalized = array_map(
             static fn (Tag|string $tag): string => Tag::normalize($tag instanceof Tag ? $tag->value : $tag),

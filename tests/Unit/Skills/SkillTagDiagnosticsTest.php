@@ -31,7 +31,7 @@ function diagSkill(string $name, array $tags = [], bool $tagsValid = true, ?stri
 function diagConfig(array $tags = [], array $excluded = [], array $excludedGuidelines = []): BoostConfig
 {
     return BoostConfig::configure()
-        ->withTags(...$tags)
+        ->withTags($tags)
         ->withExcludedSkills($excluded)
         ->withExcludedGuidelines($excludedGuidelines)
         ->build('/project');

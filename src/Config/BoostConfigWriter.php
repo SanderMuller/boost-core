@@ -83,7 +83,7 @@ final readonly class BoostConfigWriter
      *                                   — the install picker passes null when there's nothing to pick
      *                                   so it can't accidentally clear a hand-curated tag list.
      *                                   `[]` = remove `withTags(...)` entirely (operator unchecked everything).
-     *                                   Non-empty = write `withTags(<args>)` with each entry rendered as
+     *                                   Non-empty = write `withTags([<entries>])` with each entry rendered as
      *                                   `Tag::CaseName` when it matches a `Tag` enum case, raw string otherwise.
      *
      * @throws BoostConfigWriteException
@@ -162,7 +162,7 @@ final readonly class BoostConfigWriter
             if ($tags === []) {
                 $this->removeFromChain($return, 'withTags');
             } else {
-                $this->setOrInsertVariadic($return, 'withTags', $this->tagsToArgs($tags, $tagAlias));
+                $this->setOrInsert($return, 'withTags', $this->tagsToArray($tags, $tagAlias));
             }
         }
 
@@ -483,39 +483,6 @@ final readonly class BoostConfigWriter
     }
 
     /**
-     * Variadic-args sibling of `setOrInsert`. `withTags(Tag::Php, 'jira')`
-     * shape: each tag is a positional Arg, not an array.
-     *
-     * @param  list<Arg>  $args
-     */
-    private function setOrInsertVariadic(Return_ $return, string $methodName, array $args): void
-    {
-        $chain = $return->expr;
-        if (! $chain instanceof MethodCall) {
-            return;
-        }
-
-        $target = $this->findMethodInChain($chain, $methodName);
-        if ($target instanceof MethodCall) {
-            $target->args = $args;
-
-            return;
-        }
-
-        $current = $chain;
-        while ($current->var instanceof MethodCall) {
-            $current = $current->var;
-        }
-
-        $original = $current->var; // StaticCall
-        $current->var = new MethodCall(
-            var: $original,
-            name: new Identifier($methodName),
-            args: $args,
-        );
-    }
-
-    /**
      * Splice a `withX(...)` call out of the chain when present. Used when
      * the picker's empty selection should clear the existing call entirely
      * (e.g. operator unchecked every tag → no `withTags(...)` at all).
@@ -555,9 +522,8 @@ final readonly class BoostConfigWriter
      * normalizes both into the same lowercase string.
      *
      * @param  list<string>  $tags
-     * @return list<Arg>
      */
-    private function tagsToArgs(array $tags, ?string $tagAlias): array
+    private function tagsToArray(array $tags, ?string $tagAlias): Array_
     {
         // Defensive normalization — mirror `Tag::normalize()` (trim +
         // lowercase) and drop empties + dupes so the written file
@@ -566,7 +532,7 @@ final readonly class BoostConfigWriter
         // (the builder normalizes on the read side), causing
         // write/read drift on a subsequent boost install.
         $seen = [];
-        $args = [];
+        $items = [];
         foreach ($tags as $tag) {
             $normalized = strtolower(trim($tag));
             if ($normalized === '') {
@@ -578,10 +544,10 @@ final readonly class BoostConfigWriter
             }
 
             $seen[$normalized] = true;
-            $args[] = new Arg($this->tagToExpr($normalized, $tagAlias));
+            $items[] = new ArrayItem($this->tagToExpr($normalized, $tagAlias));
         }
 
-        return $args;
+        return new Array_($items, ['kind' => Array_::KIND_SHORT]);
     }
 
     private function tagToExpr(string $tag, ?string $tagAlias): String_|ClassConstFetch

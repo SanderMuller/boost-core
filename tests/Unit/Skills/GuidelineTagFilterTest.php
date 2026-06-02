@@ -29,7 +29,7 @@ function gtfGuideline(string $name, array $tags = [], bool $tagsValid = true): G
 function gtfConfig(array $tags = [], array $excludedGuidelines = []): BoostConfig
 {
     return BoostConfig::configure()
-        ->withTags(...$tags)
+        ->withTags($tags)
         ->withExcludedGuidelines($excludedGuidelines)
         ->build('/project');
 }

@@ -307,7 +307,7 @@ final class InstallCommand extends BoostBaseCommand
                 // Skill tags: a vendor skill ships only when every tag in its
                 // `metadata.boost-tags` is declared here. Unset = receive every
                 // (untagged) skill. Accepts Tag enum cases or raw strings.
-                // ->withTags(Tag::Php, Tag::Laravel)
+                // ->withTags([Tag::Php, Tag::Laravel])
 
                 // Exclude specific vendor skills regardless of tags.
                 // Each entry is a `vendor/package:skill-name` string.

@@ -113,3 +113,100 @@ it('toJson emits version + generatedBy + an object (not array) for empty emitted
         ->toContain('"emitted": {}')
         ->toEndWith("\n");
 });
+
+it('0.18.0 dirFor/relativePathFor: root layout uses .boost, config-dir layout uses .config/boost', function (): void {
+    expect(SyncManifest::dirFor(false))->toBe('.boost')
+        ->and(SyncManifest::dirFor(true))->toBe('.config/boost')
+        ->and(SyncManifest::relativePathFor(false))->toBe('.boost/manifest.json')
+        ->and(SyncManifest::relativePathFor(true))->toBe('.config/boost/manifest.json');
+});
+
+it('0.18.0 config-dir read: prefers .config/boost/manifest.json over a legacy root .boost copy', function (): void {
+    $root = manifestTempRoot();
+    mkdir($root . '/.config/boost', 0o755, recursive: true);
+    mkdir($root . '/.boost', 0o755, recursive: true);
+    file_put_contents($root . '/.config/boost/manifest.json', json_encode([
+        'version' => 1, 'generator' => 'boost-core',
+        'emitted' => ['CONFIG.md' => ['sha256' => 'aaa', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+    ], JSON_THROW_ON_ERROR));
+    file_put_contents($root . '/.boost/manifest.json', json_encode([
+        'version' => 1, 'generator' => 'boost-core',
+        'emitted' => ['ROOT.md' => ['sha256' => 'bbb', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+    ], JSON_THROW_ON_ERROR));
+    try {
+        $manifest = SyncManifest::fromProjectRoot($root, inConfigDir: true);
+        expect($manifest->has('CONFIG.md'))->toBeTrue('config-dir manifest is authoritative')
+            ->and($manifest->has('ROOT.md'))->toBeFalse('legacy root copy is not read when config-dir present');
+    } finally {
+        rmTreeManifest($root);
+    }
+});
+
+it('0.18.0 config-dir read: falls back to legacy root .boost/manifest.json when config-dir copy is absent (migration carry-forward)', function (): void {
+    $root = manifestTempRoot();
+    mkdir($root . '/.boost', 0o755, recursive: true);
+    file_put_contents($root . '/.boost/manifest.json', json_encode([
+        'version' => 1, 'generator' => 'boost-core',
+        'emitted' => ['ROOT.md' => ['sha256' => 'bbb', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+    ], JSON_THROW_ON_ERROR));
+    try {
+        $manifest = SyncManifest::fromProjectRoot($root, inConfigDir: true);
+        expect($manifest->has('ROOT.md'))->toBeTrue('ownership carried forward from the legacy root manifest');
+    } finally {
+        rmTreeManifest($root);
+    }
+});
+
+it('0.18.0 root layout: falls back to a .config/boost manifest (reverse migration carry-forward, codex P2)', function (): void {
+    // Moving .config/boost.php back to root must not forget prior ownership: with
+    // no root .boost/manifest.json yet, fromProjectRoot(false) reads the leftover
+    // .config/boost copy so the first post-migration sync carries ownership forward.
+    $root = manifestTempRoot();
+    mkdir($root . '/.config/boost', 0o755, recursive: true);
+    file_put_contents($root . '/.config/boost/manifest.json', json_encode([
+        'version' => 1, 'generator' => 'boost-core',
+        'emitted' => ['CONFIG.md' => ['sha256' => 'aaa', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+    ], JSON_THROW_ON_ERROR));
+    try {
+        expect(SyncManifest::fromProjectRoot($root)->has('CONFIG.md'))->toBeTrue('root layout falls back to .config/boost when root manifest absent');
+    } finally {
+        rmTreeManifest($root);
+    }
+});
+
+it('0.18.0 root layout: prefers the root .boost manifest over a leftover .config/boost copy', function (): void {
+    $root = manifestTempRoot();
+    mkdir($root . '/.config/boost', 0o755, recursive: true);
+    mkdir($root . '/.boost', 0o755, recursive: true);
+    file_put_contents($root . '/.boost/manifest.json', json_encode([
+        'version' => 1, 'generator' => 'boost-core',
+        'emitted' => ['ROOT.md' => ['sha256' => 'bbb', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+    ], JSON_THROW_ON_ERROR));
+    file_put_contents($root . '/.config/boost/manifest.json', json_encode([
+        'version' => 1, 'generator' => 'boost-core',
+        'emitted' => ['CONFIG.md' => ['sha256' => 'aaa', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+    ], JSON_THROW_ON_ERROR));
+    try {
+        $manifest = SyncManifest::fromProjectRoot($root);
+        expect($manifest->has('ROOT.md'))->toBeTrue('active root manifest is authoritative')
+            ->and($manifest->has('CONFIG.md'))->toBeFalse();
+    } finally {
+        rmTreeManifest($root);
+    }
+});
+
+function rmTreeManifest(string $path): void
+{
+    if (! is_dir($path)) {
+        return;
+    }
+
+    /** @var array<int, string> $entries */
+    $entries = array_diff((array) scandir($path), ['.', '..']);
+    foreach ($entries as $entry) {
+        $full = $path . '/' . $entry;
+        is_dir($full) ? rmTreeManifest($full) : unlink($full);
+    }
+
+    rmdir($path);
+}

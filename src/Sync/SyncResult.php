@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Sync;
 
 use SanderMuller\BoostCore\Conventions\Diagnostic;
+use SanderMuller\BoostCore\Conventions\KeepReason;
 
 final readonly class SyncResult
 {
@@ -31,6 +32,19 @@ final readonly class SyncResult
      *         layer (schema parse failures, validation diagnostics, scaffold
      *         warnings). Never triggers sync/where exit FAILURE; the
      *         `errors` channel carries fatal-failure semantics.
+     * @param  bool  $conventionsBlockKept  Whether this sync KEPT the `## Project
+     *         Conventions` block (vs dropped it on proof of full migration). False
+     *         when there is no schema / nothing to render.
+     * @param  list<KeepReason>  $conventionsKeepReasons  Why the block was kept —
+     *         one entry per tripping artifact (a skill / guidance file carrying a
+     *         legacy `$.<root>` ref, unresolved token, or prose pointer), or a
+     *         single no-migration-yet note. Empty when the block dropped.
+     * @param  bool  $conventionsEvaluated  Whether the drop gate actually RAN this
+     *         sync. False when the sync aborted before guidance assembly (a skill
+     *         collision early-return) or a guideline render failure skipped the
+     *         guidance write — in which case `conventionsBlockKept` is the default
+     *         false but says nothing, so a reader must treat the block state as
+     *         unknown rather than "dropped".
      */
     public function __construct(
         public array $writes,
@@ -41,6 +55,9 @@ final readonly class SyncResult
         public array $hostShadows = [],
         public array $hostGuidelineShadows = [],
         public array $diagnostics = [],
+        public bool $conventionsBlockKept = false,
+        public array $conventionsKeepReasons = [],
+        public bool $conventionsEvaluated = false,
     ) {}
 
     public function hasDrift(): bool

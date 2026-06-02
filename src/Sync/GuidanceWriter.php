@@ -8,6 +8,7 @@ use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\ConventionsPass;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\GuidanceComposer;
+use SanderMuller\BoostCore\Conventions\KeepReason;
 use SanderMuller\BoostCore\Skills\Guideline;
 
 /**
@@ -33,14 +34,17 @@ final readonly class GuidanceWriter
 
     /**
      * @param  list<Guideline>  $resolvedGuidelines
-     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>, ownedGuidancePaths: list<string>, conventionsErrors: list<string>}
+     * @param  list<KeepReason>  $skillKeepReasons  conventions keep-reasons already collected from skills
+     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>, ownedGuidancePaths: list<string>, conventionsErrors: list<string>, conventionsKeepReasons: list<KeepReason>, conventionsBlockKept: bool, conventionsEvaluated: bool}
      *   `ownedGuidancePaths` = relative paths boost wrote with NON-empty content
      *   this sync (boost-owned guidance), for recording in the new manifest so a
      *   later empty sync can prove ownership + converge. Excludes preserved
      *   operator files and empty/cleared files. `conventionsErrors` = guidance-side
      *   render-class token errors (fail --check), from the ConventionsPass gate.
+     *   `conventionsKeepReasons` / `conventionsBlockKept` = why the `## Project
+     *   Conventions` block was kept (empty + false when dropped).
      */
-    public function write(string $projectRoot, BoostConfig $config, array $resolvedGuidelines, bool $checkOnly, bool $skipGuidelineWrites, SyncManifest $priorManifest, ConventionsPass $conventionsPass, bool $skillRequiresRuntime, bool $skillInlinedAny): array
+    public function write(string $projectRoot, BoostConfig $config, array $resolvedGuidelines, bool $checkOnly, bool $skipGuidelineWrites, SyncManifest $priorManifest, ConventionsPass $conventionsPass, bool $skillRequiresRuntime, bool $skillInlinedAny, array $skillKeepReasons = []): array
     {
         /** @var list<WrittenFile> $writes */
         $writes = [];
@@ -68,19 +72,20 @@ final readonly class GuidanceWriter
             // No ownedGuidancePaths reported on this gate — the render failed,
             // so the manifest write is skipped at the call site anyway (the
             // prior manifest stays last-known-good).
-            return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => [], 'conventionsErrors' => $conventionsErrors];
+            return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => [], 'conventionsErrors' => $conventionsErrors, 'conventionsKeepReasons' => [], 'conventionsBlockKept' => false, 'conventionsEvaluated' => false];
         }
 
         $guidanceFiles = $this->collectGuidanceFiles($config, $resolvedGuidelines, $conventionsPass->section());
 
         // Inline slot tokens into each guidance body + decide the drop
         // gate — owned by ConventionsPass.
-        ['files' => $guidanceFiles, 'section' => $effectiveSection, 'errors' => $conventionsErrors, 'selfCheck' => $guidanceSelfCheck] = $conventionsPass->inlineGuidanceAndGate(
+        ['files' => $guidanceFiles, 'section' => $effectiveSection, 'errors' => $conventionsErrors, 'selfCheck' => $guidanceSelfCheck, 'keepReasons' => $conventionsKeepReasons, 'blockKept' => $conventionsBlockKept] = $conventionsPass->inlineGuidanceAndGate(
             $projectRoot,
             $guidanceFiles,
             $skillRequiresRuntime,
             $skillInlinedAny,
             $priorManifest,
+            $skillKeepReasons,
         );
         $diagnostics = [...$diagnostics, ...$guidanceSelfCheck];
 
@@ -168,7 +173,7 @@ final readonly class GuidanceWriter
             }
         }
 
-        return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => $ownedGuidancePaths, 'conventionsErrors' => $conventionsErrors];
+        return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => $ownedGuidancePaths, 'conventionsErrors' => $conventionsErrors, 'conventionsKeepReasons' => $conventionsKeepReasons, 'conventionsBlockKept' => $conventionsBlockKept, 'conventionsEvaluated' => true];
     }
 
     /**

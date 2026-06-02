@@ -3,6 +3,7 @@
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
 use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
+use SanderMuller\BoostCore\Conventions\KeepReason;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Remote\BundleExtractor;
 use SanderMuller\BoostCore\Skills\Remote\RemoteFetchException;
@@ -3213,6 +3214,206 @@ it('#85: a host guideline whose extension has no renderer is skipped with a WARN
 
         // Warning-level only: it must NOT fail --check or block the .md write.
         expect($result->errors)->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.18.0 keep-reason: the kept conventions block names the skill + legacy $.ref pinning it (#87)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-keepreason-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills/legacy-demo', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        // Un-migrated skill: still references the slot as runtime prose (not a token).
+        file_put_contents(
+            $vendor . '/resources/boost/skills/legacy-demo/SKILL.md',
+            "---\nname: legacy-demo\ndescription: Demo.\n---\nResolve \$.jira.project_key at runtime.\n",
+        );
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->conventionsBlockKept)->toBeTrue();
+        $described = array_map(static fn (KeepReason $r): string => $r->describe(), $result->conventionsKeepReasons);
+        $hit = array_filter(
+            $described,
+            static fn (string $d): bool => str_contains($d, 'skill: legacy-demo')
+                && str_contains($d, '$.jira.project_key'),
+        );
+        expect($hit)->not->toBeEmpty('keep-reason must name the skill + the legacy ref pinning the block');
+
+        // The reason ALSO surfaces as an advisory INFO diagnostic (the sync surface).
+        $info = array_filter(
+            $result->diagnostics,
+            static fn (Diagnostic $d): bool => $d->level === 'info'
+                && str_contains($d->message, 'Project Conventions block kept')
+                && str_contains($d->message, '$.jira.project_key'),
+        );
+        expect($info)->not->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('0.18.0 keep-reason: quiet when the block DROPS (fully migrated → no keep-reason, no INFO)', function (): void {
+    $root = makeEndToEndProject();
+    $vendor = sys_get_temp_dir() . '/boost-keepreason-drop-' . bin2hex(random_bytes(8));
+    mkdir($vendor . '/resources/boost/skills/conv-demo', 0o777, recursive: true);
+    try {
+        file_put_contents($vendor . '/composer.json', json_encode(['name' => 'acme/conv'], JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $vendor . '/resources/boost/conventions-schema.json',
+            json_encode([
+                'type' => 'object',
+                'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+            ], JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $vendor . '/resources/boost/skills/conv-demo/SKILL.md',
+            "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n",
+        );
+
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . "    ->withAgents([Agent::CLAUDE_CODE])\n"
+            . "    ->withAllowedVendors(['acme/conv'])\n"
+            . "    ->withConventions(['jira' => ['project_key' => 'BOOST-9']]);",
+        );
+
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
+        $result = SyncEngine::default($packages)->sync($root);
+
+        expect($result->conventionsBlockKept)->toBeFalse()
+            ->and($result->conventionsKeepReasons)->toBeEmpty();
+        $info = array_filter(
+            $result->diagnostics,
+            static fn (Diagnostic $d): bool => str_contains($d->message, 'Project Conventions block kept'),
+        );
+        expect($info)->toBeEmpty();
+    } finally {
+        rmTreeE2E($root);
+        rmTreeE2E($vendor);
+    }
+});
+
+it('0.18.0 .config/boost.php layout: the runtime manifest lands at .config/boost/manifest.json and is gitignored there', function (): void {
+    $root = makeEndToEndProject();
+    mkdir($root . '/.config', 0o755, recursive: true);
+    try {
+        file_put_contents(
+            $root . '/.config/boost.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);\n",
+        );
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\ndescription: A foo skill.\n---\n# Foo body\n");
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Manifest lands under .config/boost/, NOT the legacy root .boost/.
+        expect($root . '/.config/boost/manifest.json')->toBeFile();
+        expect($root . '/.boost/manifest.json')->not->toBeFile();
+
+        $gitignore = (string) file_get_contents($root . '/.gitignore');
+        expect($gitignore)->toContain('.config/boost/')
+            ->and($gitignore)->not->toContain("\n.boost/");
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.18.0 .config/boost.php migration: a legacy root .boost/manifest.json is read for ownership then removed', function (): void {
+    $root = makeEndToEndProject();
+    mkdir($root . '/.config', 0o755, recursive: true);
+    mkdir($root . '/.boost', 0o755, recursive: true);
+    try {
+        file_put_contents(
+            $root . '/.config/boost.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);\n",
+        );
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\ndescription: A foo skill.\n---\n# Foo body\n");
+        // A pre-migration manifest at the legacy root location.
+        file_put_contents($root . '/.boost/manifest.json', json_encode([
+            'version' => 1,
+            'generator' => 'boost-core',
+            'emitted' => ['CLAUDE.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+        ], JSON_THROW_ON_ERROR));
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // New manifest written under .config/boost/; the stale legacy root manifest
+        // (its ownership already carried forward) is cleaned up, dir and all.
+        expect($root . '/.config/boost/manifest.json')->toBeFile();
+        expect($root . '/.boost/manifest.json')->not->toBeFile()
+            ->and($root . '/.boost')->not->toBeDirectory();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.18.0 .config/boost.php migration: a legacy root manifest is removed even when this sync emits nothing (codex P2 — empty-manifest path)', function (): void {
+    $root = makeEndToEndProject();
+    mkdir($root . '/.config', 0o755, recursive: true);
+    mkdir($root . '/.boost', 0o755, recursive: true);
+    try {
+        // Agent declared but NO skills / guidelines / conventions → boost emits
+        // nothing → the new manifest is empty and never materialized. The stale
+        // legacy root manifest must STILL be cleaned (it's now unignored).
+        file_put_contents(
+            $root . '/.config/boost.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);\n",
+        );
+        file_put_contents($root . '/.boost/manifest.json', json_encode([
+            'version' => 1,
+            'generator' => 'boost-core',
+            'emitted' => ['CLAUDE.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+        ], JSON_THROW_ON_ERROR));
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($root . '/.boost/manifest.json')->not->toBeFile()
+            ->and($root . '/.config/boost/manifest.json')->not->toBeFile();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.18.0 reverse migration: moving .config/boost.php back to root carries ownership forward and prunes the stale .config/boost/ manifest (codex P2)', function (): void {
+    $root = makeEndToEndProject();
+    mkdir($root . '/.config/boost', 0o755, recursive: true);
+    try {
+        // Root layout this sync (boost.php at root, NO .config/boost.php).
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\ndescription: A foo skill.\n---\n# Foo body\n");
+        // A pre-migration manifest left at the .config/ location.
+        file_put_contents($root . '/.config/boost/manifest.json', json_encode([
+            'version' => 1,
+            'generator' => 'boost-core',
+            'emitted' => ['CLAUDE.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+        ], JSON_THROW_ON_ERROR));
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Manifest now at the root layout; the stale .config/boost copy is pruned.
+        expect($root . '/.boost/manifest.json')->toBeFile();
+        expect($root . '/.config/boost/manifest.json')->not->toBeFile()
+            ->and($root . '/.config/boost')->not->toBeDirectory();
     } finally {
         rmTreeE2E($root);
     }

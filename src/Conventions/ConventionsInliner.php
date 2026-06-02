@@ -446,6 +446,48 @@ final readonly class ConventionsInliner
         return array_keys($found);
     }
 
+    /**
+     * Human-readable descriptions of WHY this text depends on the rendered
+     * conventions block — the keep-reason provenance behind {@see
+     * dependsOnConventions()}. Mirrors that method's KEEP signals one-for-one so a
+     * body the gate keeps the block for always yields at least one cause:
+     *
+     *  - an unresolved/errored `boost:conv` token (never inlined);
+     *  - each legacy `$.<root>` runtime reference (named individually when prose-
+     *    scoped detection pins them; a generic fallback when only the flat gate
+     *    signal trips, e.g. a ref the prose scoper masks);
+     *  - a heading-relative prose pointer at the section.
+     *
+     * Returns an empty list when nothing depends on the block.
+     *
+     * @return list<string>
+     */
+    public function dependencyCauses(string $text): array
+    {
+        $causes = [];
+
+        if (str_contains($text, '<!--boost:conv ') || str_contains($text, '<!--\\boost:conv ')) {
+            $causes[] = 'an unresolved conventions token';
+        }
+
+        $refs = $this->legacyRefsIn($text);
+        foreach ($refs as $ref) {
+            $causes[] = sprintf('legacy slot reference `%s`', $ref);
+        }
+
+        // Flat gate signal trips but the prose scoper named nothing (e.g. a ref the
+        // inline-code mask skipped) — keep a cause so the reason is never blank.
+        if ($refs === [] && $this->hasLegacyRef($text)) {
+            $causes[] = 'a legacy `$.<root>` slot reference';
+        }
+
+        if ($this->mentionsConventionsPointer($text)) {
+            $causes[] = 'a prose pointer to the Project Conventions section';
+        }
+
+        return $causes;
+    }
+
     private function slotRootsAlternation(): string
     {
         return implode('|', array_map(static fn (string $r): string => preg_quote($r, '/'), $this->slotRoots));

@@ -137,3 +137,30 @@ it('legacyRefsIn: returns nothing when no slot roots are composed (no schema)', 
     expect($inliner->legacyRefsIn('mentions $.github.x and $.anything.y'))
         ->toBeEmpty();
 });
+
+it('dependencyCauses: names each prose legacy ref + a prose pointer; quiet when nothing depends (#87)', function (): void {
+    $causes = inliner([])->dependencyCauses('Runner is $.testing.runner. See the Project Conventions section above.');
+
+    expect($causes)->toContain('legacy slot reference `$.testing.runner`')
+        ->and($causes)->toContain('a prose pointer to the Project Conventions section')
+        ->and(inliner([])
+            ->dependencyCauses('A guideline with no conventions dependency at all.'))
+        ->toBeEmpty();
+});
+
+it('dependencyCauses: flags an unresolved/raw conventions token', function (): void {
+    $causes = inliner([])->dependencyCauses('Operator note: <!--boost:conv path="testing.runner" mode="inline"-->');
+
+    expect($causes)->toContain('an unresolved conventions token');
+});
+
+it('dependencyCauses: an inline-code $.slot still yields a GENERIC fallback, since the gate keeps the block on the flat signal', function (): void {
+    // legacyRefsIn() is prose-scoped (masks inline code), so it names no specific
+    // ref — but the drop gate's hasLegacyRef() is flat and DOES keep the block for
+    // this text. A kept block must always be explained, so dependencyCauses falls
+    // back to the generic cause rather than going silent (which would leave the
+    // kept block unexplained).
+    $causes = inliner([])->dependencyCauses('Write `$.testing.runner` to reference the slot.');
+
+    expect($causes)->toBe(['a legacy `$.<root>` slot reference']);
+});

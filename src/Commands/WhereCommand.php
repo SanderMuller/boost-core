@@ -7,6 +7,7 @@ use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
 use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Conventions\ConventionsAudit;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
+use SanderMuller\BoostCore\Conventions\KeepReason;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Skills\Command as BoostCommand;
 use SanderMuller\BoostCore\Skills\Guideline;
@@ -364,28 +365,110 @@ final class WhereCommand extends BoostBaseCommand
         $rows = (new ConventionsAudit())->audit($config->conventions, $composed);
 
         if ($asJson) {
+            // Unchanged machine contract: a top-level list of slot rows. The
+            // 0.18.0 block-status / keep-reasons are a human-output addition only —
+            // changing this to an object would break existing `jq '.[].path'`
+            // automation against `boost where --conventions --json`.
             $io->writeln((string) json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
             return self::SUCCESS;
         }
 
+        $block = $this->conventionsBlockStatus($projectRoot, $configOverride, hasSchema: $sources !== []);
+
         if ($rows === []) {
             $io->success('No Project Conventions slots are defined by allowlisted vendors.');
-
-            return self::SUCCESS;
+        } else {
+            $io->section('Project Conventions (effective resolved values)');
+            $io->table(
+                ['Slot', 'Provenance', 'Value'],
+                array_map(static fn (array $row): array => [
+                    $row['path'],
+                    $row['provenance'],
+                    $row['provenance'] === ConventionsAudit::MISSING ? '—' : self::renderConventionValue($row['value']),
+                ], $rows),
+            );
         }
 
-        $io->section('Project Conventions (effective resolved values)');
-        $io->table(
-            ['Slot', 'Provenance', 'Value'],
-            array_map(static fn (array $row): array => [
-                $row['path'],
-                $row['provenance'],
-                $row['provenance'] === ConventionsAudit::MISSING ? '—' : self::renderConventionValue($row['value']),
-            ], $rows),
-        );
+        $this->renderConventionsBlockStatus($io, $block);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The drop-gate decision for the `## Project Conventions` block — computed via
+     * a check-only sync so `where` reports the same kept/dropped state (and the
+     * keep-reasons behind it) the next real sync would produce, without writing.
+     *
+     * Four states, never conflated:
+     *  - `none`    — no allowlisted vendor declares a schema, so there is no block
+     *                to keep or drop (NOT a "drop"; nothing ever rendered);
+     *  - `kept`    — the gate kept the block; `keepReasons` says why. Reached even
+     *                when the sync reported errors, because a `boost:conv` token
+     *                error KEEPS the block — exactly the case this feature explains;
+     *  - `dropped` — the gate ran and dropped the block on proof of full migration;
+     *  - `unknown` — the gate did NOT run: the sync threw, aborted before guidance
+     *                assembly (a skill-source collision), or a guideline render
+     *                failure skipped the guidance write. Distinguished by
+     *                `conventionsEvaluated` — NOT by `errors`, since benign
+     *                check-only advisories (e.g. an uncached `withRemoteSkills`
+     *                "would fetch") populate `errors` while the gate ran fine.
+     *
+     * @return array{state: string, keepReasons: list<array{artifact: string, cause: string}>}
+     */
+    private function conventionsBlockStatus(string $projectRoot, ?string $configOverride, bool $hasSchema): array
+    {
+        if (! $hasSchema) {
+            return ['state' => 'none', 'keepReasons' => []];
+        }
+
+        try {
+            $result = SyncEngine::default($this->injectedPackages, $configOverride)->sync($projectRoot, checkOnly: true);
+        } catch (Throwable) {
+            return ['state' => 'unknown', 'keepReasons' => []];
+        }
+
+        // The gate never ran (collision abort / render-fail skip) → the block
+        // state is genuinely unknown; reporting "dropped" would falsely claim
+        // full migration. Gate on whether it was evaluated, not on errors.
+        if (! $result->conventionsEvaluated) {
+            return ['state' => 'unknown', 'keepReasons' => []];
+        }
+
+        if ($result->conventionsBlockKept) {
+            return [
+                'state' => 'kept',
+                'keepReasons' => array_map(static fn (KeepReason $r): array => $r->toArray(), $result->conventionsKeepReasons),
+            ];
+        }
+
+        return ['state' => 'dropped', 'keepReasons' => []];
+    }
+
+    /**
+     * @param  array{state: string, keepReasons: list<array{artifact: string, cause: string}>}  $block
+     */
+    private function renderConventionsBlockStatus(SymfonyStyle $io, array $block): void
+    {
+        switch ($block['state']) {
+            case 'none':
+                // No schema → no block ever rendered. The "no slots" line above
+                // already conveys this; stay quiet to avoid a misleading "dropped".
+                return;
+            case 'unknown':
+                $io->writeln('<comment>Project Conventions block: status unavailable — the check-only sync could not complete (run `boost sync --check` to see why).</comment>');
+
+                return;
+            case 'dropped':
+                $io->writeln('<info>Project Conventions block: dropped (fully migrated — values inline into each agent\'s skills).</info>');
+
+                return;
+            default:
+                $io->writeln('<comment>Project Conventions block: kept. Held open by:</comment>');
+                foreach ($block['keepReasons'] as $reason) {
+                    $io->writeln(sprintf('  • %s — %s', $reason['artifact'], $reason['cause']));
+                }
+        }
     }
 
     private static function renderConventionValue(mixed $value): string

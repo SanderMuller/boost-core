@@ -338,3 +338,201 @@ it('boost where --diff: divergent host + vendor renders a unified diff with head
             ->and($display)->toContain('+host-version body line');
     });
 });
+
+it('0.18.0 where --conventions: reports the kept block + keep-reasons (human + --json)', function (): void {
+    $vendorPath = sys_get_temp_dir() . '/where-conv-vendor-' . bin2hex(random_bytes(8));
+    mkdir($vendorPath, 0o755, recursive: true);
+    mkdir($vendorPath . '/resources/boost', 0o755, recursive: true);
+    file_put_contents($vendorPath . '/composer.json', (string) json_encode(['name' => 'acme/conv']));
+    file_put_contents($vendorPath . '/resources/boost/conventions-schema.json', (string) json_encode([
+        'type' => 'object',
+        'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+    ]));
+
+    $dir = whereTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/conv'])->withConventions(['jira' => ['project_key' => 'BOOST-9']])",
+    );
+    // A host skill still carrying a legacy $.ref keeps the block open.
+    file_put_contents($dir . '/.ai/skills/legacy.md', "---\nname: legacy\ndescription: Demo.\n---\nResolve \$.jira.project_key at runtime.\n");
+
+    try {
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendorPath)]);
+        $command = new WhereCommand($packages);
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+
+        // Human output carries the kept block + the keep-reason.
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir, '--conventions' => true]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->toContain('Project Conventions block: kept')
+            ->and($display)->toContain('$.jira.project_key');
+
+        // --json keeps its unchanged top-level slot-rows shape (block status is
+        // human-output only — see WhereCommand::executeConventions).
+        $jsonTester = new CommandTester($command);
+        $jsonTester->execute(['--working-dir' => $dir, '--conventions' => true, '--json' => true]);
+        /** @var list<array{path: string, provenance: string, value: mixed}> $decoded */
+        $decoded = json_decode($jsonTester->getDisplay(), true, 512, JSON_THROW_ON_ERROR);
+        expect($decoded)->toBeArray()
+            ->and($decoded[0])->toHaveKey('path')
+            ->and($decoded[0])->not->toHaveKey('conventionsBlock');
+    } finally {
+        whereCleanup($dir);
+        whereCleanup($vendorPath);
+    }
+});
+
+it('0.18.0 where --conventions: reports the block dropped when fully migrated (token-only skill)', function (): void {
+    $vendorPath = sys_get_temp_dir() . '/where-conv-drop-' . bin2hex(random_bytes(8));
+    mkdir($vendorPath, 0o755, recursive: true);
+    mkdir($vendorPath . '/resources/boost', 0o755, recursive: true);
+    file_put_contents($vendorPath . '/composer.json', (string) json_encode(['name' => 'acme/conv']));
+    file_put_contents($vendorPath . '/resources/boost/conventions-schema.json', (string) json_encode([
+        'type' => 'object',
+        'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+    ]));
+
+    $dir = whereTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/conv'])->withConventions(['jira' => ['project_key' => 'BOOST-9']])",
+    );
+    // Token-only host skill → fully migrated → block drops.
+    file_put_contents($dir . '/.ai/skills/tokenized.md', "---\nname: tokenized\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n");
+
+    try {
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendorPath)]);
+        $command = new WhereCommand($packages);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir, '--conventions' => true]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->toContain('Project Conventions block: dropped');
+    } finally {
+        whereCleanup($dir);
+        whereCleanup($vendorPath);
+    }
+});
+
+it('0.18.0 where --conventions: reports status unavailable when the check-only sync errors (codex P2 — not a false "dropped")', function (): void {
+    // Two allowlisted vendors publishing the same skill name collide → sync
+    // aborts before the conventions gate runs → SyncResult carries errors and
+    // conventionsBlockKept stays default false. where must NOT report "dropped"
+    // (a false full-migration claim); it reports the degraded/unknown state.
+    $vendorA = sys_get_temp_dir() . '/where-collide-a-' . bin2hex(random_bytes(8));
+    $vendorB = sys_get_temp_dir() . '/where-collide-b-' . bin2hex(random_bytes(8));
+    mkdir($vendorA . '/resources/boost/skills/dupe', 0o755, recursive: true);
+    mkdir($vendorB . '/resources/boost/skills/dupe', 0o755, recursive: true);
+    file_put_contents($vendorA . '/composer.json', (string) json_encode(['name' => 'acme/a']));
+    file_put_contents($vendorB . '/composer.json', (string) json_encode(['name' => 'acme/b']));
+    // A schema IS present (so block status is not short-circuited to "none"); the
+    // skill-name collision then aborts the sync before the gate runs.
+    file_put_contents($vendorA . '/resources/boost/conventions-schema.json', (string) json_encode([
+        'type' => 'object',
+        'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+    ]));
+    file_put_contents($vendorA . '/resources/boost/skills/dupe/SKILL.md', "---\nname: dupe\ndescription: A.\n---\nFrom A.\n");
+    file_put_contents($vendorB . '/resources/boost/skills/dupe/SKILL.md', "---\nname: dupe\ndescription: B.\n---\nFrom B.\n");
+
+    $dir = whereTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/a', 'acme/b'])",
+    );
+
+    try {
+        $packages = new InstalledPackages([
+            'acme/a' => new PackageInfo('acme/a', '1.0.0', $vendorA),
+            'acme/b' => new PackageInfo('acme/b', '1.0.0', $vendorB),
+        ]);
+        $command = new WhereCommand($packages);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir, '--conventions' => true]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->toContain('Project Conventions block: status unavailable')
+            ->and($display)->not->toContain('block: dropped');
+    } finally {
+        whereCleanup($dir);
+        whereCleanup($vendorA);
+        whereCleanup($vendorB);
+    }
+});
+
+it('0.18.0 where --conventions: a project with NO schema does not report the block as "dropped" (codex P2 — none vs dropped)', function (): void {
+    // No allowlisted vendor declares a conventions schema → no block ever
+    // rendered. Reporting "dropped (fully migrated)" would be misleading.
+    $dir = whereTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $command = new WhereCommand(new InstalledPackages([]));
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir, '--conventions' => true]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->not->toContain('block: dropped')
+            ->and($display)->not->toContain('block: kept');
+    } finally {
+        whereCleanup($dir);
+    }
+});
+
+it('0.18.0 where --conventions: a conventions token ERROR still reports the block as KEPT, not unavailable (codex P2.4)', function (): void {
+    // project_key IS declared → the block renders (section non-null); a skill
+    // token references the UNDECLARED other_key (no default/fallback) → render
+    // error. SyncResult has errors, but the gate KEEPS the block (a token error
+    // forces fullyMigrated false). where must show "kept", not "status unavailable".
+    $vendorPath = sys_get_temp_dir() . '/where-conv-tokerr-' . bin2hex(random_bytes(8));
+    mkdir($vendorPath . '/resources/boost/skills/conv-demo', 0o755, recursive: true);
+    file_put_contents($vendorPath . '/composer.json', (string) json_encode(['name' => 'acme/conv']));
+    file_put_contents($vendorPath . '/resources/boost/conventions-schema.json', (string) json_encode([
+        'type' => 'object',
+        'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string'], 'other_key' => ['type' => 'string']]]],
+    ]));
+    file_put_contents($vendorPath . '/resources/boost/skills/conv-demo/SKILL.md', "---\nname: conv-demo\ndescription: Demo.\n---\nKey: <!--boost:conv path=\"jira.other_key\" mode=\"inline\"-->.\n");
+
+    $dir = whereTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/conv'])->withConventions(['jira' => ['project_key' => 'BOOST-9']])",
+    );
+
+    try {
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendorPath)]);
+        $command = new WhereCommand($packages);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir, '--conventions' => true]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->toContain('Project Conventions block: kept')
+            ->and($display)->not->toContain('status unavailable');
+    } finally {
+        whereCleanup($dir);
+        whereCleanup($vendorPath);
+    }
+});
+
+it('0.18.0 where --conventions: a benign check-only advisory (uncached remote skill) does NOT mask a genuine "dropped" (codex P1 — gate-ran vs errors)', function (): void {
+    // Fully-migrated conventions (token-only vendor skill) → block drops. The
+    // project ALSO declares an uncached withRemoteSkills source, so the
+    // check-only sync emits a "would fetch" advisory into SyncResult::errors.
+    // The conventions gate still RAN, so where must report "dropped", not
+    // "status unavailable" — block status keys off conventionsEvaluated, not errors.
+    $vendorPath = sys_get_temp_dir() . '/where-conv-remote-' . bin2hex(random_bytes(8));
+    mkdir($vendorPath . '/resources/boost/skills/conv-demo', 0o755, recursive: true);
+    file_put_contents($vendorPath . '/composer.json', (string) json_encode(['name' => 'acme/conv']));
+    file_put_contents($vendorPath . '/resources/boost/conventions-schema.json', (string) json_encode([
+        'type' => 'object',
+        'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
+    ]));
+    file_put_contents($vendorPath . '/resources/boost/skills/conv-demo/SKILL.md', "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n");
+
+    $dir = whereTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/conv'])->withConventions(['jira' => ['project_key' => 'BOOST-9']])->withRemoteSkills([\n"
+        . "    RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.0.0', ['composer-upgrade']),\n"
+        . '])',
+    );
+
+    try {
+        $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendorPath)]);
+        $command = new WhereCommand($packages);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir, '--conventions' => true]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+        expect($display)->toContain('Project Conventions block: dropped')
+            ->and($display)->not->toContain('status unavailable');
+    } finally {
+        whereCleanup($dir);
+        whereCleanup($vendorPath);
+    }
+});

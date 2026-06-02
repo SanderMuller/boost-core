@@ -103,7 +103,7 @@ final readonly class ConventionsPass
      * token errors (fail --check); `inlinedAny` is positive proof of migration.
      *
      * @param  list<Skill>  $skills
-     * @return array{skills: list<Skill>, requiresRuntime: bool, errors: list<string>, inlinedAny: bool, selfCheck: list<Diagnostic>}
+     * @return array{skills: list<Skill>, requiresRuntime: bool, errors: list<string>, inlinedAny: bool, selfCheck: list<Diagnostic>, keepReasons: list<KeepReason>}
      */
     public function inlineSkills(array $skills): array
     {
@@ -114,6 +114,8 @@ final readonly class ConventionsPass
         $errors = [];
         /** @var list<Diagnostic> $selfCheck */
         $selfCheck = [];
+        /** @var list<KeepReason> $keepReasons */
+        $keepReasons = [];
 
         foreach ($skills as $skill) {
             $result = $this->inliner->inline($skill->body);
@@ -128,9 +130,12 @@ final readonly class ConventionsPass
             $errors = [...$errors, ...$result->errors];
             $out[] = $skill->withBody($result->body);
             $selfCheck = [...$selfCheck, ...$this->selfCheck('skill: ' . $skill->name, $result->body)];
+            foreach ($this->inliner->dependencyCauses($result->body) as $cause) {
+                $keepReasons[] = new KeepReason('skill: ' . $skill->name, $cause);
+            }
         }
 
-        return ['skills' => $out, 'requiresRuntime' => $requiresRuntime, 'errors' => $errors, 'inlinedAny' => $inlinedAny, 'selfCheck' => $selfCheck];
+        return ['skills' => $out, 'requiresRuntime' => $requiresRuntime, 'errors' => $errors, 'inlinedAny' => $inlinedAny, 'selfCheck' => $selfCheck, 'keepReasons' => $keepReasons];
     }
 
     /**
@@ -143,9 +148,10 @@ final readonly class ConventionsPass
      * errored). `errors` are guidance-local render-class token errors.
      *
      * @param  array<string, array{body: string, isClaude: bool}>  $guidanceFiles
-     * @return array{files: array<string, array{body: string, isClaude: bool}>, section: ?string, errors: list<string>, selfCheck: list<Diagnostic>}
+     * @param  list<KeepReason>  $skillKeepReasons  keep-reasons already collected from skills
+     * @return array{files: array<string, array{body: string, isClaude: bool}>, section: ?string, errors: list<string>, selfCheck: list<Diagnostic>, keepReasons: list<KeepReason>, blockKept: bool}
      */
-    public function inlineGuidanceAndGate(string $projectRoot, array $guidanceFiles, bool $skillRequiresRuntime, bool $skillInlinedAny, SyncManifest $priorManifest): array
+    public function inlineGuidanceAndGate(string $projectRoot, array $guidanceFiles, bool $skillRequiresRuntime, bool $skillInlinedAny, SyncManifest $priorManifest, array $skillKeepReasons = []): array
     {
         $guidanceRequiresRuntime = false;
         $anyInlined = $skillInlinedAny;
@@ -153,6 +159,8 @@ final readonly class ConventionsPass
         $errors = [];
         /** @var list<Diagnostic> $selfCheck */
         $selfCheck = [];
+        /** @var list<KeepReason> $keepReasons */
+        $keepReasons = $skillKeepReasons;
         foreach ($guidanceFiles as $file => $info) {
             $result = $this->inliner->inline($info['body']);
             $guidanceFiles[$file]['body'] = $result->body;
@@ -179,6 +187,8 @@ final readonly class ConventionsPass
             ) {
                 $guidanceRequiresRuntime = true;
             }
+
+            $keepReasons = [...$keepReasons, ...$this->guidanceKeepReasons($file, $result->body, $existingResidual)];
         }
 
         // Drop ONLY on positive proof of full migration; otherwise KEEP (a
@@ -186,8 +196,44 @@ final readonly class ConventionsPass
         // backward-safe; any uncertainty fails toward keep).
         $fullyMigrated = $anyInlined && ! $skillRequiresRuntime && ! $guidanceRequiresRuntime && $errors === [];
         $effectiveSection = ($this->section !== null && ! $fullyMigrated) ? $this->section : null;
+        $blockKept = $effectiveSection !== null;
 
-        return ['files' => $guidanceFiles, 'section' => $effectiveSection, 'errors' => $errors, 'selfCheck' => $selfCheck];
+        // The block is kept but no specific artifact pinned it — a pure-conventions
+        // project that simply hasn't adopted tokens yet (anyInlined=false, nothing
+        // needs runtime). Informational, not a problem; record so the surfaces can
+        // explain the kept block rather than leaving it unexplained.
+        if ($blockKept && $keepReasons === []) {
+            $keepReasons[] = new KeepReason('(no migration yet)', 'no conventions tokens have been inlined yet — the block renders as-is (backward-safe)');
+        }
+
+        // When the block DROPS, keep-reasons are irrelevant (fully migrated).
+        if (! $blockKept) {
+            $keepReasons = [];
+        }
+
+        return ['files' => $guidanceFiles, 'section' => $effectiveSection, 'errors' => $errors, 'selfCheck' => $selfCheck, 'keepReasons' => $keepReasons, 'blockKept' => $blockKept];
+    }
+
+    /**
+     * Keep-reasons contributed by ONE guidance file: causes in the emitted body
+     * plus causes in the surviving on-disk residual, de-duplicated by cause so a
+     * ref present in both isn't reported twice for the same file.
+     *
+     * @return list<KeepReason>
+     */
+    private function guidanceKeepReasons(string $file, string $body, string $residual): array
+    {
+        $seen = [];
+        foreach ([...$this->inliner->dependencyCauses($body), ...$this->inliner->dependencyCauses($residual)] as $cause) {
+            $seen[$cause] = true;
+        }
+
+        $out = [];
+        foreach (array_keys($seen) as $cause) {
+            $out[] = new KeepReason('guidance: ' . $file, $cause);
+        }
+
+        return $out;
     }
 
     /**

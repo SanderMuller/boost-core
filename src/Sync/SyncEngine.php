@@ -16,11 +16,14 @@ use SanderMuller\BoostCore\Agents\GeminiTarget;
 use SanderMuller\BoostCore\Agents\JunieTarget;
 use SanderMuller\BoostCore\Agents\KiroTarget;
 use SanderMuller\BoostCore\Agents\OpenCodeTarget;
+use SanderMuller\BoostCore\Config\AmbiguousBoostConfigException;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
+use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Conventions\ConventionsPass;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
+use SanderMuller\BoostCore\Conventions\KeepReason;
 use SanderMuller\BoostCore\Discovery\DiscoveredEmitter;
 use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\EmitterDiscovery;
@@ -483,6 +486,16 @@ final readonly class SyncEngine
         $projectRoot = rtrim($projectRoot, '/');
         $config = $this->configLoader->load($projectRoot, $this->configFile);
 
+        // Where the runtime manifest lives: `.config/boost/` when `boost.php` is
+        // under `.config/` (so all boost artifacts group there), else root
+        // `.boost/`. Resolution mirrors the loader (which already resolved + loaded
+        // the same path), so it can't be ambiguous here; default to root defensively.
+        try {
+            $inConfigDir = BoostConfigPath::resolve($projectRoot, $this->configFile)->inConfigDir;
+        } catch (AmbiguousBoostConfigException) {
+            $inConfigDir = false;
+        }
+
         $config = $this->injectedVendorMerger->mergeExtraRenderers($config, $extraSkillRenderers);
 
         $allowedVendors = $this->discoverAllowedVendors($config);
@@ -555,7 +568,7 @@ final readonly class SyncEngine
         // Read BEFORE runEmitters: the emitter first-adoption warn consults it
         // to detect taking over a not-yet-owned file.
         $priorManifest = $gitignoreManaged
-            ? SyncManifest::fromProjectRoot($projectRoot)
+            ? SyncManifest::fromProjectRoot($projectRoot, $inConfigDir)
             : SyncManifest::empty();
 
         // Discover wrapper-claimed paths up-front — fed to the managed
@@ -645,7 +658,7 @@ final readonly class SyncEngine
         );
 
         $gitignoreWrite = $gitignoreManaged
-            ? $this->updateGitignore($projectRoot, $config, $checkOnly, array_keys($wrapperEmits['paths']), $willWriteManifest)
+            ? $this->updateGitignore($projectRoot, $config, $checkOnly, array_keys($wrapperEmits['paths']), $willWriteManifest, $inConfigDir)
             : null;
 
         $writes = array_merge($fanOutWrites, $remoteOrphanWrites);
@@ -665,6 +678,7 @@ final readonly class SyncEngine
             $conventionsPass,
             $conventionsRequiresRuntime,
             $conventionsInlinedAny,
+            $skillInline['keepReasons'],
         );
         $writes = [...$writes, ...$guidanceResult['writes']];
         // Token errors (render-class) from skills + guidance fail --check and
@@ -770,7 +784,7 @@ final readonly class SyncEngine
                 );
             }
 
-            $this->writeSyncManifest($projectRoot, $guidanceResult['ownedGuidancePaths'], $wrapperEmits['paths'], $emitterResults, $priorManifest, $reap['retained'], $ownableEmitterPaths);
+            $this->writeSyncManifest($projectRoot, $guidanceResult['ownedGuidancePaths'], $wrapperEmits['paths'], $emitterResults, $priorManifest, $reap['retained'], $ownableEmitterPaths, $inConfigDir);
         }
 
         // Diagnostic surface for the render-fail-then-write safety gate:
@@ -796,6 +810,16 @@ final readonly class SyncEngine
             $skipWarnings,
         );
 
+        // Conventions keep-reason observability (#87): when the `## Project
+        // Conventions` block is KEPT, surface WHY — the artifact (skill / guidance
+        // file) and the legacy ref / token / pointer pinning it open. INFO-level so
+        // it stays quiet on a routine sync (shown under `-v`), never failing the
+        // build; doctor + `where --conventions` surface the same reasons verbatim.
+        $keepReasonDiagnostics = array_map(
+            static fn (KeepReason $reason): Diagnostic => Diagnostic::info(null, 'Project Conventions block kept — ' . $reason->describe()),
+            $guidanceResult['conventionsKeepReasons'],
+        );
+
         return new SyncResult(
             writes: $writes,
             emitters: $emitterResults,
@@ -815,7 +839,11 @@ final readonly class SyncEngine
                 ...$unrenderableDiagnostics,
                 ...$emitterDiagnostics,
                 ...$reapDiagnostics,
+                ...$keepReasonDiagnostics,
             ],
+            conventionsBlockKept: $guidanceResult['conventionsBlockKept'],
+            conventionsKeepReasons: $guidanceResult['conventionsKeepReasons'],
+            conventionsEvaluated: $guidanceResult['conventionsEvaluated'],
         );
     }
 
@@ -958,7 +986,14 @@ final readonly class SyncEngine
             // The sync manifest dir is engine-internal state owned by
             // SyncManifest itself — never a stale-cleanup target. Skip it so the
             // cleanup pass doesn't delete the manifest it's about to rely on.
+            // Both the root `.boost` and the `.config/boost` (config-dir layout)
+            // variants are skipped regardless of mode — neither is ever a real
+            // managed output.
             if (rtrim($pattern, '/') === SyncManifest::DIR) {
+                continue;
+            }
+
+            if (rtrim($pattern, '/') === SyncManifest::CONFIG_DIR) {
                 continue;
             }
 
@@ -1219,7 +1254,7 @@ final readonly class SyncEngine
             'gemini.md' => true,
             '.gitignore' => true,
         ];
-        $prefixes = ['.ai/', 'resources/boost/', strtolower(SyncManifest::DIR) . '/'];
+        $prefixes = ['.ai/', 'resources/boost/', strtolower(SyncManifest::DIR) . '/', strtolower(SyncManifest::CONFIG_DIR) . '/'];
         foreach ($wrapperClaimedPaths as $wrapperPath) {
             $canonical = strtolower(ManagedFileOps::canonicalizeWrapperPath($wrapperPath));
             // Exact match (file claim) AND a descendant prefix: a wrapper
@@ -1382,7 +1417,7 @@ final readonly class SyncEngine
      * @param  list<string>  $retainedOrphans  reap targets whose delete FAILED — carry their PRIOR ownership forward so a later sync retries
      * @param  array<string, true>  $ownableEmitterPaths  emitter outputs boost may own
      */
-    private function writeSyncManifest(string $projectRoot, array $ownedGuidancePaths, array $wrapperPaths, array $emitterResults, SyncManifest $priorManifest, array $retainedOrphans = [], array $ownableEmitterPaths = []): void
+    private function writeSyncManifest(string $projectRoot, array $ownedGuidancePaths, array $wrapperPaths, array $emitterResults, SyncManifest $priorManifest, array $retainedOrphans = [], array $ownableEmitterPaths = [], bool $inConfigDir = false): void
     {
         $manifest = SyncManifest::empty();
 
@@ -1436,24 +1471,72 @@ final readonly class SyncEngine
             $manifest = $manifest->withEntry($relativePath, $entry['sha256'], $entry['category'], $entry['provenance'], $entry['scope']);
         }
 
-        // Don't materialize `.boost/` for a project boost emits nothing into —
-        // but DO update an existing manifest down to empty if everything was
-        // removed (keeps it honest rather than leaving stale ownership).
-        $manifestPath = $projectRoot . '/' . SyncManifest::RELATIVE_PATH;
+        // Don't materialize the manifest dir for a project boost emits nothing
+        // into — but DO update an existing manifest down to empty if everything was
+        // removed (keeps it honest rather than leaving stale ownership). In
+        // `.config/` layout the manifest lives at `.config/boost/`.
+        $manifestPath = $projectRoot . '/' . SyncManifest::relativePathFor($inConfigDir);
         if ($manifest->isEmpty() && ! is_file($manifestPath)) {
+            // Nothing to write — but still shed a manifest left at the OTHER
+            // layout's location (a prior root↔.config migration): it's now
+            // unignored (the managed block lists the active dir) and would
+            // otherwise be re-read as ownership on the next sync. Its entries
+            // reflect a state boost no longer emits, so dropping them converges.
+            $this->removeStaleLayoutManifest($projectRoot, $inConfigDir);
+
             return;
         }
 
-        $dir = $projectRoot . '/' . SyncManifest::DIR;
+        $dir = $projectRoot . '/' . SyncManifest::dirFor($inConfigDir);
         if (! is_dir($dir)) {
             @mkdir($dir, 0o755, true);
         }
 
-        // `.boost/` is ignored via the root managed .gitignore block (added in
+        // The manifest dir is ignored via the managed .gitignore block (added in
         // updateGitignore when $willWriteManifest), so the regenerable manifest
         // never dirties the working tree. No self-contained .gitignore here —
         // that would itself be an untracked file.
         @file_put_contents($manifestPath, $manifest->toJson('boost-core'));
+
+        // Migration cleanup: after a root↔.config migration the OTHER layout's
+        // manifest is now unignored (the managed block lists the active dir only)
+        // and would surface as untracked AND be re-read as ownership next sync. Its
+        // ownership was already carried forward via fromProjectRoot's fallback, so
+        // remove the stale boost-owned manifest (+ its dir if empty); never touch
+        // operator content.
+        $this->removeStaleLayoutManifest($projectRoot, $inConfigDir);
+    }
+
+    /**
+     * Delete a manifest left at the layout NOT in use this sync — root `.boost/`
+     * when the active layout is `.config/`, or `.config/boost/` when the active
+     * layout is root — handling both migration directions. Boost-owned regenerable
+     * state only: removes the manifest file + the dir if it is now empty (an
+     * operator's own files under `.config/boost/` keep the dir, untouched).
+     */
+    private function removeStaleLayoutManifest(string $projectRoot, bool $inConfigDir): void
+    {
+        $staleDir = $inConfigDir ? SyncManifest::DIR : SyncManifest::CONFIG_DIR;
+        $stalePath = $projectRoot . '/' . $staleDir . '/manifest.json';
+        if (! is_file($stalePath)) {
+            return;
+        }
+
+        @unlink($stalePath);
+        $staleDirAbs = $projectRoot . '/' . $staleDir;
+        if (is_dir($staleDirAbs) && $this->isEmptyDir($staleDirAbs)) {
+            @rmdir($staleDirAbs);
+        }
+    }
+
+    private function isEmptyDir(string $dir): bool
+    {
+        $entries = @scandir($dir);
+        if ($entries === false) {
+            return false;
+        }
+
+        return array_values(array_diff($entries, ['.', '..'])) === [];
     }
 
     /**
@@ -1463,7 +1546,7 @@ final readonly class SyncEngine
      *   emitted files from gitignore tracking (which would leak them into
      *   the operator's git working set).
      */
-    private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly, array $wrapperClaimedPaths = [], bool $includeManifestDir = false): ?WrittenFile
+    private function updateGitignore(string $projectRoot, BoostConfig $config, bool $checkOnly, array $wrapperClaimedPaths = [], bool $includeManifestDir = false, bool $inConfigDir = false): ?WrittenFile
     {
         $patterns = [];
         foreach ($this->agentTargets as $target) {
@@ -1489,7 +1572,7 @@ final readonly class SyncEngine
         // won't exist. enumerateManagedFiles() skips this dir so the stale-
         // cleanup pass never deletes the manifest it relies on.
         if ($includeManifestDir) {
-            $patterns[] = SyncManifest::DIR . '/';
+            $patterns[] = SyncManifest::dirFor($inConfigDir) . '/';
         }
 
         // Wrapper-claimed paths land in the managed block so bare-CLI sync

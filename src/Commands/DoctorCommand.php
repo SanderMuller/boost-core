@@ -2,21 +2,14 @@
 
 namespace SanderMuller\BoostCore\Commands;
 
-use JsonException;
 use SanderMuller\BoostCore\Config\AmbiguousBoostConfigException;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigPath;
-use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
-use SanderMuller\BoostCore\Conventions\Diagnostic;
-use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
-use SanderMuller\BoostCore\Conventions\VendorSchemaSource;
 use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
 use SanderMuller\BoostCore\Discovery\PathRepoDetector;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
-use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
-use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Skills\UnrenderableSourceScanner;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
@@ -104,18 +97,19 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportSourcePaths($io, $config, $configFile->inConfigDir);
         $this->reportCommandLimitations($io, $config);
         $this->reportAllowlist($io, $config);
-        $this->reportRemoteSkills($io, $config);
+        (new RemoteSkillsReporter())->report($io, $config);
         $this->reportTags($io, $config);
         $this->reportExcludeKeys($io, $config);
         $driftResult = $this->reportDrift($io, $projectRoot, $configOverride);
         $this->reportShadows($io, $driftResult);
+        $this->reportConventionsBlock($io, $driftResult);
         $this->reportConventionTokenLeaks($io, $projectRoot, $config);
         if ($input->getOption('check-versions') === true) {
             $this->reportPathRepoShadows($io, $projectRoot);
         }
 
         if ($input->getOption('check-conventions') === true) {
-            $this->reportConventions($io, $projectRoot, $config);
+            (new ConventionsReporter())->report($io, $projectRoot, $config, $this->injectedPackages);
         }
 
         if ($input->getOption('check-stale-paths') === true) {
@@ -484,128 +478,6 @@ final class DoctorCommand extends BoostBaseCommand
         $io->listing($items);
     }
 
-    /**
-     * Report `withRemoteSkills(...)` sources — `source@version`, moving-ref
-     * warnings, per-skill cache presence. Strictly offline — checks the
-     * filesystem only, never the network.
-     */
-    private function reportRemoteSkills(SymfonyStyle $io, BoostConfig $config): void
-    {
-        if ($config->remoteSkills === []) {
-            return;
-        }
-
-        $io->section('Remote skill sources');
-        $cacheRoot = RemoteSkillCache::resolveCacheRoot();
-        $io->writeln(sprintf('Cache root: <comment>%s</comment>', $cacheRoot));
-        $io->newLine();
-
-        $movingRefSeen = false;
-        foreach ($config->remoteSkills as $source) {
-            $pinned = RemoteSkillCache::isPinnedVersion($source->version, $source->mode());
-            $movingRefSeen = $movingRefSeen || ! $pinned;
-            $marker = $pinned ? '' : '  <comment>⚠ moving ref — may drift between syncs</comment>';
-            $io->writeln(sprintf(
-                '<info>%s@%s</info> (%s)%s',
-                $source->source,
-                $source->version,
-                $source->mode(),
-                $marker,
-            ));
-
-            $slugDir = $cacheRoot . '/' . RemoteSkillCache::slug($source->source);
-            $rows = [];
-            foreach ($source->skills as $ref) {
-                $cached = $this->remoteSkillCachedForDeclaredRef($slugDir, $source, $ref->name);
-                $rows[] = [
-                    '  ' . $ref->name,
-                    $cached ? '<info>cached</info>' : '<comment>not cached (will fetch on next sync)</comment>',
-                ];
-            }
-
-            if ($rows !== []) {
-                $io->table(['Skill', 'Cache'], $rows);
-            }
-        }
-
-        if ($movingRefSeen) {
-            $io->warning('Moving refs re-resolve every 24h and can drift silently. Pin to a tag (`v1.2.0`) or full SHA for reproducible builds.');
-        }
-
-        $token = getenv('BOOST_GITHUB_TOKEN');
-        if (count($config->remoteSkills) > 3 && (! is_string($token) || $token === '')) {
-            $io->note('Anonymous GitHub access caps at 60 requests/hour. Set BOOST_GITHUB_TOKEN to lift this to 5000/hour.');
-        }
-    }
-
-    /**
-     * True when the cache holds `SKILL.md` for THIS source's currently-declared
-     * ref — not just any earlier ref. The check is offline:
-     *
-     *  - Pinned versions (`v1.2.3`, full SHAs) resolve to themselves; the
-     *    slot path is fully knowable without I/O. The skill is cached iff
-     *    `<slugDir>/<version>/<skillName>/SKILL.md` exists.
-     *  - Moving refs (`'main'`, `'latest'`, branches) need the
-     *    resolution-cache file to map the declared ref to its last-resolved
-     *    SHA. No cache file or no entry → "not cached" (offline contract:
-     *    never call out to GitHub). With an entry, check the SHA slot.
-     *
-     * Reporting any-ref-matches would lie after a version bump — the
-     * previous slot would mark the new ref "cached" even though the next
-     * sync must fetch.
-     */
-    private function remoteSkillCachedForDeclaredRef(string $slugDir, RemoteSkillSource $source, string $skillName): bool
-    {
-        if (! is_dir($slugDir)) {
-            return false;
-        }
-
-        if (RemoteSkillCache::isPinnedVersion($source->version, $source->mode())) {
-            return is_file($slugDir . '/' . $source->version . '/' . $skillName . '/SKILL.md');
-        }
-
-        $resolved = $this->readResolutionCacheEntry($slugDir, $source);
-        if ($resolved === null) {
-            return false;
-        }
-
-        return is_file($slugDir . '/' . $resolved . '/' . $skillName . '/SKILL.md');
-    }
-
-    /**
-     * Read the resolution-cache file for the source's slug and return the
-     * SHA last resolved for `<version>:<mode>`, or null if not present. Pure
-     * filesystem read — never hits the network.
-     */
-    private function readResolutionCacheEntry(string $slugDir, RemoteSkillSource $source): ?string
-    {
-        $path = $slugDir . '/.resolution-cache.json';
-        if (! is_file($path)) {
-            return null;
-        }
-
-        $raw = @file_get_contents($path);
-        if ($raw === false) {
-            return null;
-        }
-
-        try {
-            $decoded = json_decode($raw, true, flags: JSON_THROW_ON_ERROR);
-        } catch (JsonException) {
-            return null;
-        }
-
-        $key = $source->version . ':' . $source->mode();
-        $entry = is_array($decoded) ? ($decoded[$key] ?? null) : null;
-        if (! is_array($entry)) {
-            return null;
-        }
-
-        $resolved = $entry['resolved'] ?? null;
-
-        return is_string($resolved) && $resolved !== '' ? $resolved : null;
-    }
-
     private function reportTags(SymfonyStyle $io, BoostConfig $config): void
     {
         $io->section('Skill tags');
@@ -742,170 +614,27 @@ final class DoctorCommand extends BoostBaseCommand
         $io->writeln('<fg=gray>Host copies win; the vendor copies are suppressed. Use `boost where --diff=<name>` to compare.</>');
     }
 
-    private function reportConventions(SymfonyStyle $io, string $projectRoot, BoostConfig $config): void
+    /**
+     * Keep-reason observability (#87): when this sync KEPT the `## Project
+     * Conventions` block, name WHY — the skill / guidance file carrying the legacy
+     * `$.<root>` ref, unresolved token, or prose pointer that pinned it open. An
+     * operator who migrated their skills to tokens but still sees the block can
+     * find the one artifact still holding it, instead of black-box probing.
+     * Reuses the drift section's check-only sync result — no second sync.
+     * Quiet when the block dropped (fully migrated) or the drift sync failed.
+     */
+    private function reportConventionsBlock(SymfonyStyle $io, ?SyncResult $result): void
     {
-        $io->section('Project Conventions');
-
-        $discovery = new SchemaDiscovery(
-            $this->injectedPackages ?? InstalledPackages::fromComposer(),
-        );
-        ['sources' => $sources, 'diagnostics' => $discoveryDiagnostics] = $discovery->discover($config->allowedVendors);
-
-        if ($sources === []) {
-            // Split malformed-declaration diagnostics (warning/error)
-            // from the noise-collapse summary INFO. SchemaDiscovery's summary
-            // INFO populates the diagnostics list even in the legitimately-
-            // empty case ("no allowlisted vendor publishes a schema yet"), so
-            // treating any diagnostic as malformed would false-positive: a clean
-            // no-schemas-published project would triage as if every vendor
-            // shipped broken JSON. Filter by level.
-            $malformed = array_values(array_filter(
-                $discoveryDiagnostics,
-                static fn (Diagnostic $d): bool => $d->level !== 'info',
-            ));
-
-            if ($malformed === []) {
-                $io->writeln('No conventions schemas declared by allowlisted vendors.');
-                foreach ($discoveryDiagnostics as $diagnostic) {
-                    $io->writeln("ℹ {$diagnostic->message}");
-                }
-
-                return;
-            }
-
-            $io->writeln('No usable conventions schemas — all declarations malformed:');
-            foreach ($malformed as $diagnostic) {
-                $vendor = $diagnostic->vendor === null ? '' : "[{$diagnostic->vendor}] ";
-                $io->writeln("⚠ {$vendor}{$diagnostic->message}");
-            }
-
+        if (! $result instanceof SyncResult || ! $result->conventionsBlockKept) {
             return;
         }
 
-        // Source of truth is BoostConfig::$conventions, not CLAUDE.md.
-        $values = $config->conventions;
-        $schema = new ConventionsSchema($sources);
-        $diagnostics = [
-            ...$discoveryDiagnostics,
-            ...$schema->validate($values),
-            ...$this->checkPathSlots($projectRoot, $sources, $values),
-        ];
-
-        if ($diagnostics === []) {
-            $io->success('Project Conventions valid against all allowlisted vendor schemas.');
-
-            return;
+        $io->section('Project Conventions block');
+        $io->writeln('<comment>The `## Project Conventions` block is KEPT (not fully migrated). Held open by:</comment>');
+        foreach ($result->conventionsKeepReasons as $reason) {
+            $io->writeln(sprintf('  • %s', $reason->describe()));
         }
 
-        foreach ($diagnostics as $diagnostic) {
-            $glyph = match ($diagnostic->level) {
-                'error' => '✗',
-                'warning' => '⚠',
-                'info' => 'ℹ',
-                default => ' ',
-            };
-            $slot = $diagnostic->slot === null ? '' : "{$diagnostic->slot}: ";
-            $vendor = $diagnostic->vendor === null ? '' : " ({$diagnostic->vendor})";
-            $io->writeln("{$glyph} {$slot}{$diagnostic->message}{$vendor}");
-        }
-    }
-
-    /**
-     * @param  list<VendorSchemaSource>  $sources
-     * @param  array<mixed, mixed>  $values
-     * @return list<Diagnostic>
-     */
-    private function checkPathSlots(string $projectRoot, array $sources, array $values): array
-    {
-        /** @var list<Diagnostic> $out */
-        $out = [];
-        $rootCanonical = realpath($projectRoot);
-        if ($rootCanonical === false) {
-            return $out;
-        }
-
-        foreach ($sources as $source) {
-            $properties = is_array($source->schema['properties'] ?? null) ? $source->schema['properties'] : [];
-            foreach ($properties as $name => $schema) {
-                if (! is_string($name)) {
-                    continue;
-                }
-
-                if (! is_array($schema)) {
-                    continue;
-                }
-
-                foreach ($this->diagnosticsForSlot($projectRoot, $rootCanonical, $source->vendorName, $name, $schema, $values[$name] ?? null) as $diag) {
-                    $out[] = $diag;
-                }
-            }
-        }
-
-        return $out;
-    }
-
-    /**
-     * @param  array<mixed, mixed>  $schema
-     * @return list<Diagnostic>
-     */
-    private function diagnosticsForSlot(string $projectRoot, string $rootCanonical, string $vendor, string $name, array $schema, mixed $value): array
-    {
-        $type = $schema['type'] ?? null;
-
-        if ($type === 'string' && ($schema['format'] ?? null) === 'path' && is_string($value)) {
-            $diagnostic = $this->checkSinglePath($projectRoot, $rootCanonical, $name, $value, $vendor);
-
-            return $diagnostic instanceof Diagnostic ? [$diagnostic] : [];
-        }
-
-        if ($type !== 'array' || ! is_array($value)) {
-            return [];
-        }
-
-        if (! is_array($schema['items'] ?? null) || ($schema['items']['format'] ?? null) !== 'path') {
-            return [];
-        }
-
-        /** @var list<Diagnostic> $out */
-        $out = [];
-        foreach ($value as $index => $item) {
-            if (! is_string($item)) {
-                continue;
-            }
-
-            $diagnostic = $this->checkSinglePath($projectRoot, $rootCanonical, "{$name}[{$index}]", $item, $vendor);
-            if ($diagnostic instanceof Diagnostic) {
-                $out[] = $diagnostic;
-            }
-        }
-
-        return $out;
-    }
-
-    private function checkSinglePath(string $projectRoot, string $rootCanonical, string $slot, string $value, string $vendor): ?Diagnostic
-    {
-        if ($value === '') {
-            return Diagnostic::warning($slot, 'path slot has an empty value', $vendor);
-        }
-
-        $resolved = str_starts_with($value, '/') ? $value : $projectRoot . '/' . $value;
-        $canonical = realpath($resolved);
-        if ($canonical === false) {
-            return Diagnostic::warning(
-                $slot,
-                "file '{$value}' not found",
-                $vendor,
-            );
-        }
-
-        if (! str_starts_with($canonical, $rootCanonical . '/') && $canonical !== $rootCanonical) {
-            return Diagnostic::warning(
-                $slot,
-                "'{$value}' resolves outside project root ({$canonical})",
-                $vendor,
-            );
-        }
-
-        return null;
+        $io->writeln('<fg=gray>Migrate each legacy `$.<root>` ref / unresolved token to a `<!--boost:conv path="…" mode="…"-->` token (or inline the value) to let the block drop. `(no migration yet)` is informational — a pure-conventions project renders the block as-is.</>');
     }
 }

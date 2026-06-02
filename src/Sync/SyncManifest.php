@@ -42,6 +42,13 @@ final readonly class SyncManifest
 
     public const DIR = '.boost';
 
+    /**
+     * The runtime-state dir when the project's `boost.php` lives under `.config/`
+     * — the manifest moves to `.config/boost/` so all boost artifacts group under
+     * `.config/` (tracked `.config/boost.php` + gitignored `.config/boost/`).
+     */
+    public const CONFIG_DIR = '.config/boost';
+
     public const VERSION = 1;
 
     public const PROVENANCE_ENGINE = 'engine';
@@ -75,13 +82,49 @@ final readonly class SyncManifest
     }
 
     /**
+     * The manifest dir for a config layout — `.config/boost` when `boost.php`
+     * lives under `.config/`, else the historical root `.boost`.
+     */
+    public static function dirFor(bool $inConfigDir): string
+    {
+        return $inConfigDir ? self::CONFIG_DIR : self::DIR;
+    }
+
+    /**
+     * The project-relative manifest file path for a config layout.
+     */
+    public static function relativePathFor(bool $inConfigDir): string
+    {
+        return self::dirFor($inConfigDir) . '/manifest.json';
+    }
+
+    /**
      * Load the prior manifest from a project root. Absent or corrupt → empty
      * (backward-safe: no ownership asserted).
+     *
+     * Reads the manifest for the ACTIVE layout first, falling back to the OTHER
+     * layout's manifest when the active one is absent — so a project migrating
+     * EITHER direction (root ↔ `.config/`) carries its prior ownership forward (the
+     * first post-migration sync then rewrites the manifest at the active location
+     * and prunes the stale one). The first EXISTING candidate is authoritative: a
+     * present-but-corrupt active manifest yields empty without silently reading the
+     * other layout's stale copy.
      */
-    public static function fromProjectRoot(string $projectRoot): self
+    public static function fromProjectRoot(string $projectRoot, bool $inConfigDir = false): self
     {
-        $path = rtrim($projectRoot, '/') . '/' . self::RELATIVE_PATH;
-        $raw = is_file($path) ? @file_get_contents($path) : false;
+        $root = rtrim($projectRoot, '/');
+        $candidates = $inConfigDir
+            ? [$root . '/' . self::relativePathFor(true), $root . '/' . self::RELATIVE_PATH]
+            : [$root . '/' . self::RELATIVE_PATH, $root . '/' . self::relativePathFor(true)];
+
+        $raw = false;
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                $raw = @file_get_contents($candidate);
+                break;
+            }
+        }
+
         if ($raw === false) {
             return self::empty();
         }

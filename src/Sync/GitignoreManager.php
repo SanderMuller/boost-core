@@ -19,6 +19,8 @@ use SanderMuller\BoostCore\Conventions\ManagedRegion;
  *
  * The marker-bounded round-trip logic delegates to {@see ManagedRegion}.
  * `.gitignore`-specific concerns (pattern normalization, sort, dedup) stay here.
+ *
+ * @internal
  */
 final readonly class GitignoreManager
 {

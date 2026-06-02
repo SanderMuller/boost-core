@@ -9,6 +9,8 @@ namespace SanderMuller\BoostCore\Skills\Remote;
  * redirect chain — used by {@see GitHubFetcher} to verify the final host
  * is still allow-listed (a cross-host redirect to a non-GitHub host
  * triggers a {@see RemoteFetchException::BAD_REDIRECT} abort).
+ *
+ * @internal
  */
 final readonly class HttpResponse
 {

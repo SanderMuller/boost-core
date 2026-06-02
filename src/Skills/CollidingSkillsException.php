@@ -4,6 +4,9 @@ namespace SanderMuller\BoostCore\Skills;
 
 use RuntimeException;
 
+/**
+ * @internal
+ */
 final class CollidingSkillsException extends RuntimeException
 {
     /**

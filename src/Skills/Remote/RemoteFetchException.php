@@ -11,6 +11,8 @@ use Throwable;
  * `$reason` is one of the public constants — callers branch on it to decide
  * how to surface the failure (warn + skip, fall back to cache, escalate to
  * abort under `BOOST_REMOTE_STRICT`).
+ *
+ * @internal
  */
 final class RemoteFetchException extends RuntimeException
 {

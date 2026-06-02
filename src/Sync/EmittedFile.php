@@ -9,6 +9,8 @@ namespace SanderMuller\BoostCore\Sync;
  * stays minimal until a real second consumer demands more.
  *
  * @see /Users/sandermuller/Documents/GitHub/elements/internal/boost-file-emitter-contract.md
+ *
+ * @experimental
  */
 final readonly class EmittedFile
 {

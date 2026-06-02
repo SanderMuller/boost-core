@@ -26,6 +26,8 @@ use Symfony\Component\Yaml\Yaml;
  * copy case) or preserved below the wholesale body once, with a warning
  * pointing the operator at `.ai/guidelines/` as the durable home for
  * hand-written content. Never silently lossy.
+ *
+ * @internal
  */
 final readonly class GuidanceComposer
 {

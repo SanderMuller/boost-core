@@ -33,6 +33,8 @@ use Throwable;
  * Errors raised by a renderer follow `BOOST_RENDER_STRICT`: lenient
  * (default) appends to the errors-out param and skips the file; strict
  * throws `SkillRenderException` to abort.
+ *
+ * @internal
  */
 final readonly class GuidelineLoader
 {

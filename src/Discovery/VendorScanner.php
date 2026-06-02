@@ -15,6 +15,8 @@ use SanderMuller\BoostCore\Sync\PackageInfo;
  *   `resources/boost/` if absent.
  * - VendorScanner returns ALL packages with discoverable content. Allowlist
  *   filtering is the SyncEngine's responsibility downstream — keep concerns split.
+ *
+ * @internal
  */
 final readonly class VendorScanner
 {

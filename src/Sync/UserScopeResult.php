@@ -9,6 +9,8 @@ namespace SanderMuller\BoostCore\Sync;
  * into `~/.{agent}/skills/<package-suffix>/` so the skills activate in
  * any AI session on the machine. Used primarily by globally-installed
  * Composer tools that ship their own skills (e.g. `sandermuller/repo-init`).
+ *
+ * @internal
  */
 final readonly class UserScopeResult
 {

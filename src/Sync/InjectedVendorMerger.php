@@ -23,6 +23,8 @@ use SanderMuller\BoostCore\Skills\SkillTagFilter;
  * inject-vs-scan case and the inject-list-internal case) explicitly. Throws
  * `SkillSourceCollisionException` with a message pointing at the offending key —
  * forces the caller to decide (dedupe first, or use a distinct vendor key).
+ *
+ * @internal
  */
 final readonly class InjectedVendorMerger
 {

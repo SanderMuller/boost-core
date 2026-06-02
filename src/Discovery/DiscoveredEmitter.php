@@ -4,6 +4,9 @@ namespace SanderMuller\BoostCore\Discovery;
 
 use SanderMuller\BoostCore\Contracts\FileEmitter;
 
+/**
+ * @internal
+ */
 final readonly class DiscoveredEmitter
 {
     public function __construct(

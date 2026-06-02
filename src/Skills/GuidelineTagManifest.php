@@ -29,6 +29,8 @@ use Symfony\Component\Yaml\Yaml;
  * — they ship nowhere. A loud failure beats silently shipping guidelines the
  * author meant to scope. A single non-string entry value fails only that
  * one guideline closed.
+ *
+ * @internal
  */
 final readonly class GuidelineTagManifest
 {

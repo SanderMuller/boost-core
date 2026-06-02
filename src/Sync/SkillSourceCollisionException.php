@@ -16,5 +16,7 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSyncCoordinator;
  * which models cross-vendor name collisions detected by `SkillResolver`.
  * Both are caught in `SyncEngine::sync()` and converted to a `SyncResult`
  * with the message as a sync-level error — never propagated out of `sync()`.
+ *
+ * @internal
  */
 final class SkillSourceCollisionException extends RuntimeException {}

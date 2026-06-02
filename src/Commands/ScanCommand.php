@@ -22,6 +22,8 @@ use function Laravel\Prompts\multiselect;
  * Distinguished from boost:install (which also picks agents) — scan is
  * narrower and intended for the common "new dep, want to allowlist it"
  * workflow.
+ *
+ * @internal
  */
 final class ScanCommand extends BoostBaseCommand
 {

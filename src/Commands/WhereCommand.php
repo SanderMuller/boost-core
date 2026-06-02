@@ -36,6 +36,8 @@ use Throwable;
  * skills) are NOT visible from this command — they are runtime-only
  * inputs to `SyncEngine::sync(injectedVendorSkills: ...)` and require
  * the wrapper package's own CLI surface to enumerate.
+ *
+ * @internal
  */
 final class WhereCommand extends BoostBaseCommand
 {

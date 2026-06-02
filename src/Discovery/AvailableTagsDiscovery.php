@@ -19,6 +19,8 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
  * actually published by the vendors they just selected, with a count
  * of items each tag would unlock — far less guessing than reading the
  * Tag enum and hoping.
+ *
+ * @internal
  */
 final readonly class AvailableTagsDiscovery
 {

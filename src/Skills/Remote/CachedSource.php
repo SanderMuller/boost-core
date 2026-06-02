@@ -7,6 +7,8 @@ namespace SanderMuller\BoostCore\Skills\Remote;
  * directory and the concrete identifier the source resolved to. Callers
  * (notably `SyncEngine`'s remote-source ingest) compose per-skill paths via
  * `$cached->skillPath($ref)`.
+ *
+ * @internal
  */
 final readonly class CachedSource
 {

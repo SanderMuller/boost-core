@@ -11,6 +11,8 @@ namespace SanderMuller\BoostCore\Conventions;
  * `boost where --conventions` (human table + `--json`).
  *
  * @phpstan-type AuditRow array{path: string, provenance: string, value: mixed}
+ *
+ * @internal
  */
 final readonly class ConventionsAudit
 {

@@ -8,6 +8,8 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * Pure tag-diagnostics used by `boost:doctor`'s tag report — the
  * classification and hygiene heuristics, kept IO-free and testable apart
  * from the command's rendering.
+ *
+ * @internal
  */
 final class SkillTagDiagnostics
 {

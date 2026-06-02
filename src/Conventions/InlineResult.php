@@ -16,6 +16,8 @@ namespace SanderMuller\BoostCore\Conventions;
  *    Per D7/§2 these fail `boost sync --check` and suppress the block drop.
  *
  * @phpstan-type InlineErrorList list<string>
+ *
+ * @internal
  */
 final readonly class InlineResult
 {

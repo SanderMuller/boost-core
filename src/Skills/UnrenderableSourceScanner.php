@@ -26,6 +26,8 @@ use Symfony\Component\Finder\Finder;
  *    template-source extension — single-segment (`.mdx`, `.liquid`) and
  *    multi-segment (`.blade.php`) alike — while leaving auxiliary assets a host
  *    or vendor keeps alongside its guidelines unflagged.
+ *
+ * @internal
  */
 final readonly class UnrenderableSourceScanner
 {

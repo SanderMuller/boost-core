@@ -17,6 +17,8 @@ use SplFileInfo;
  * no longer emitted, the managed-file enumerator they share, and the recursive
  * delete. Stateless — every input is a parameter; behavior is identical to the
  * engine's prior inline methods.
+ *
+ * @internal
  */
 final readonly class StaleFileCleaner
 {

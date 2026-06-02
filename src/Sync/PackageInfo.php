@@ -2,6 +2,9 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
+/**
+ * @internal
+ */
 final readonly class PackageInfo
 {
     public function __construct(

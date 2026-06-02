@@ -5,6 +5,8 @@ namespace SanderMuller\BoostCore\Sync;
 /**
  * Single emitter's outcome from a sync run, suitable for both
  * human-readable reporting and JSON serialization.
+ *
+ * @internal
  */
 final readonly class EmitterResult
 {

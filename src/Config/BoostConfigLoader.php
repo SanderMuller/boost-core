@@ -13,6 +13,8 @@ namespace SanderMuller\BoostCore\Config;
  *    `BoostConfig::configure()->with*()` chained calls.
  *
  * Anything else is an error.
+ *
+ * @internal
  */
 final class BoostConfigLoader
 {

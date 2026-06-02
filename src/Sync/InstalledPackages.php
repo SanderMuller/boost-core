@@ -5,6 +5,9 @@ namespace SanderMuller\BoostCore\Sync;
 use Composer\InstalledVersions;
 use LogicException;
 
+/**
+ * @internal
+ */
 final readonly class InstalledPackages
 {
     /**

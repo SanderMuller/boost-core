@@ -15,6 +15,8 @@ namespace SanderMuller\BoostCore\Skills\Remote;
  *    landed on an allow-listed host post-redirect.
  *  - Streaming to disk when `$destinationPath` is set (tarballs + assets
  *    may be MB-scale; never load into memory).
+ *
+ * @internal
  */
 interface HttpTransport
 {

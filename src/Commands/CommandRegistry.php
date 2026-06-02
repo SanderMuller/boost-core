@@ -10,6 +10,8 @@ use Symfony\Component\Console\Command\Command;
  * Feeds the standalone `bin/boost`. Lives outside the Composer namespace
  * so it loads in end-user installs where composer/composer is not in
  * vendor/.
+ *
+ * @internal
  */
 final class CommandRegistry
 {

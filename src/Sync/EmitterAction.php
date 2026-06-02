@@ -9,6 +9,8 @@ namespace SanderMuller\BoostCore\Sync;
  * (which is for the standard skill/guideline fan-out) because emitters
  * have additional outcomes (`skipped` when emit() returns null,
  * `disabled` when in `withDisabledEmitters`, `errored` when emit() throws).
+ *
+ * @internal
  */
 enum EmitterAction: string
 {

@@ -7,6 +7,8 @@ use Symfony\Component\Finder\Finder;
 /**
  * Loads `.ai/commands/*.md` into {@see Command} value objects.
  * Mirrors {@see GuidelineLoader}.
+ *
+ * @internal
  */
 final readonly class CommandLoader
 {

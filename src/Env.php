@@ -6,6 +6,8 @@ namespace SanderMuller\BoostCore;
  * Centralised env-var name registry. Anything boost-core reads from the
  * environment lives here so the supported surface is greppable and
  * typo-resistant.
+ *
+ * @internal
  */
 final class Env
 {

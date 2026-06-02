@@ -4,6 +4,9 @@ namespace SanderMuller\BoostCore\Agents;
 
 use SanderMuller\BoostCore\Enums\Agent;
 
+/**
+ * @internal
+ */
 final class GeminiTarget extends AgentTarget
 {
     public function agent(): Agent

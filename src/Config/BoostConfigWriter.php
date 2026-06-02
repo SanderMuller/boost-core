@@ -65,6 +65,8 @@ use SanderMuller\BoostCore\Enums\Tag;
  *   happens for hand-stripped configs — the starter ships all three) is
  *   printed by php-parser's insertion heuristic; the result is clean when
  *   the surrounding chain is already multi-line.
+ *
+ * @internal
  */
 final readonly class BoostConfigWriter
 {

@@ -5,6 +5,9 @@ namespace SanderMuller\BoostCore\Agents;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\Command;
 
+/**
+ * @internal
+ */
 final class CursorTarget extends AgentTarget
 {
     public function agent(): Agent

@@ -14,6 +14,8 @@ use Symfony\Component\Yaml\Yaml;
  *
  * Operator content INSIDE the markers is the source of truth — boost-core
  * never rewrites values, only reports diagnostics. See spec §3.3.
+ *
+ * @internal
  */
 final readonly class ConventionsBlockEmitter
 {

@@ -25,6 +25,8 @@ use UnexpectedValueException;
  *  - 10,000 entries per tarball
  *  - 50MB per file
  *  - 200MB total uncompressed
+ *
+ * @internal
  */
 final readonly class TarballExtractor
 {

@@ -34,6 +34,8 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * boost-core lacks (a generated-file marker, or a sync manifest) — a
  * hand-authored `CLAUDE.md` must never be deleted. Known limitation: the
  * file is gitignored and `rm`-able; see `internal/TODO.md`.
+ *
+ * @internal
  */
 final class GuidelineTagFilter
 {

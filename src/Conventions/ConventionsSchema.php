@@ -24,6 +24,8 @@ use stdClass;
  *
  * compose() is version-agnostic; version filtering lives in SyncEngine (per
  * spec §3.9).
+ *
+ * @internal
  */
 final readonly class ConventionsSchema
 {

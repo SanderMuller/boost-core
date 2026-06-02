@@ -23,6 +23,8 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
  *
  * Shared by the three observability legs (sync-time self-check, `boost doctor`,
  * `boost validate`) so all three classify a leak identically.
+ *
+ * @internal
  */
 final readonly class ConventionTokenLeakScanner
 {

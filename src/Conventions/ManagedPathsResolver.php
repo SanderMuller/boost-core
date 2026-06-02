@@ -21,6 +21,8 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * allowlisted agents (per BoostConfig). Vendor skills consume this via the
  * `boost paths` CLI to resolve "since the most recent code change" semantics
  * for pr.gates[].window (see spec §3.10).
+ *
+ * @internal
  */
 final readonly class ManagedPathsResolver
 {

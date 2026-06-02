@@ -27,6 +27,8 @@ use Symfony\Component\Yaml\Yaml;
  *
  * A schema may pin a per-slot `render` (a mode string or list of allowed modes)
  * — the token's mode is validated against it (drift guard, 3ncrxzev-B).
+ *
+ * @internal
  */
 final readonly class SlotResolver
 {

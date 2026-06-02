@@ -7,6 +7,8 @@ namespace SanderMuller\BoostCore\Conventions;
  * slot path EXISTS in the declared conventions — even when `value` is falsy
  * (`false` / `null` / `''` / `[]`) — so declared-empty is never confused with
  * missing (spec D2, path-existence not truthiness).
+ *
+ * @internal
  */
 final readonly class DeclaredLookup
 {

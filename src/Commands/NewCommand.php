@@ -16,6 +16,8 @@ use Throwable;
  * Examples:
  *   vendor/bin/boost new skill foo-bar
  *   vendor/bin/boost new guideline conventions
+ *
+ * @internal
  */
 final class NewCommand extends BoostBaseCommand
 {

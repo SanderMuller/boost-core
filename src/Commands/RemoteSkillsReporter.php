@@ -14,6 +14,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * (`source@version`, moving-ref warnings, per-skill cache presence) lives in one
  * collaborator. Strictly offline: checks the filesystem only, never the network.
  * Behavior is identical to the prior inline `reportRemoteSkills()`.
+ *
+ * @internal
  */
 final readonly class RemoteSkillsReporter
 {

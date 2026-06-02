@@ -11,6 +11,8 @@ use InvalidArgumentException;
  * Routes through SyncResult::diagnostics, never through the
  * SyncResult::errors fatal channel. Default rendering is per command
  * (✓/✗/⚠/ℹ). JSON envelope carries `level` explicitly.
+ *
+ * @internal
  */
 final readonly class Diagnostic
 {

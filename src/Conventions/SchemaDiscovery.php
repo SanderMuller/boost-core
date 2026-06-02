@@ -19,6 +19,8 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
  *
  * Scope limit: composer-installed vendors only. Injection-path vendors
  * (SyncEngine::injectedVendorSkills) are not covered — see spec §3.4.
+ *
+ * @internal
  */
 final readonly class SchemaDiscovery
 {

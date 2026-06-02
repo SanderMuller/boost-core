@@ -25,6 +25,8 @@ use Throwable;
  * against the declared `RemoteSkillRef::name`. Mismatch → recorded as an
  * error; the mismatched skill does not enter the pipeline; sibling skills
  * proceed.
+ *
+ * @internal
  */
 final readonly class RemoteSkillIngester
 {

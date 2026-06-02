@@ -15,6 +15,8 @@ use SanderMuller\BoostCore\Conventions\ManagedRegion;
  * operator-authored content OUTSIDE the markers. This is how `CLAUDE.md`,
  * `AGENTS.md`, etc. coexist with operator-added sections like the Project
  * Conventions block.
+ *
+ * @internal
  */
 final readonly class PendingWrite
 {

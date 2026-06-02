@@ -39,6 +39,8 @@ use SanderMuller\BoostCore\Sync\WrittenFile;
  * signal that lets us remove a non-empty dir safely.
  *
  * In check mode nothing is deleted — a `WOULD_DELETE` result is returned.
+ *
+ * @internal
  */
 final class RemoteOrphanPruner
 {

@@ -20,6 +20,8 @@ use SanderMuller\BoostCore\Skills\Skill;
  *  - it resolves strictly inside the managed `.{agent}/skills/` directory.
  *
  * In check mode nothing is deleted — a `WOULD_DELETE` result is returned.
+ *
+ * @internal
  */
 final class FilteredSkillPruner
 {

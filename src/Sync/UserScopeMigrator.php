@@ -30,6 +30,8 @@ use SplFileInfo;
  * didn't yet exist): if the legacy dir holds files this package's source
  * tree cannot account for, the rename is skipped and the dir is left for
  * manual cleanup rather than mis-attributing it.
+ *
+ * @internal
  */
 final readonly class UserScopeMigrator
 {

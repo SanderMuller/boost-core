@@ -16,6 +16,8 @@ namespace SanderMuller\BoostCore\Conventions;
  * `$provenance` records WHY a successful resolution produced its value, for the
  * `boost where --conventions` audit surface (D5): `declared` (from boost.php,
  * even if falsy), `schema-default`, or `fallback` (inline token fallback).
+ *
+ * @internal
  */
 final readonly class SlotResolution
 {

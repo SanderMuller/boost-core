@@ -20,6 +20,8 @@ namespace SanderMuller\BoostCore\Conventions;
  *    not a single token.
  *
  * `line` is 1-based, for `<file>:<line>` reporting.
+ *
+ * @internal
  */
 final readonly class LeakHit
 {

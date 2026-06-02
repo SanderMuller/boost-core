@@ -21,6 +21,8 @@ use SanderMuller\BoostCore\Enums\Tag;
  * not silently leave it untagged (= ships everywhere) and leak a scoped
  * skill or guideline. A missing `metadata`, a `metadata` that is not a map,
  * or an absent `boost-tags` key is untagged-valid.
+ *
+ * @internal
  */
 final class BoostTags
 {

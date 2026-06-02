@@ -2,6 +2,9 @@
 
 namespace SanderMuller\BoostCore\Discovery;
 
+/**
+ * @internal
+ */
 final readonly class DiscoveredVendor
 {
     public function __construct(

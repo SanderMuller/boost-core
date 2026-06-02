@@ -22,6 +22,8 @@ namespace SanderMuller\BoostCore\Skills;
  *  - Unknown bareword `$foo` IS valid as KIND_NAMED — the transpiler
  *    decides whether `foo` matches a declared frontmatter argument and
  *    how to emit it per-agent.
+ *
+ * @internal
  */
 final readonly class ArgumentParser
 {

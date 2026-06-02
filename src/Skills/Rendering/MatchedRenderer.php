@@ -11,6 +11,8 @@ use SanderMuller\BoostCore\Contracts\SkillRenderer;
  * extension carried out of the match, `getFilenameWithoutExtension()`
  * strips only the last `.`-segment and `SKILL.blade.php` would resolve to
  * `SKILL.blade` instead of `SKILL`.
+ *
+ * @internal
  */
 final readonly class MatchedRenderer
 {

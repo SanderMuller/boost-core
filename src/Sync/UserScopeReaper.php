@@ -20,6 +20,8 @@ namespace SanderMuller\BoostCore\Sync;
  *
  * Reaping itself is gated by the caller on a clean run (no write errors) — a
  * transient write failure must not make a still-needed path look reapable.
+ *
+ * @internal
  */
 final readonly class UserScopeReaper
 {

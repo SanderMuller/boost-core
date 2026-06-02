@@ -14,6 +14,8 @@ use Throwable;
  * shadows. Pure read-only: one HTTP GET per package, no caching beyond
  * the process. A failed lookup returns `null` and the caller treats it
  * as "couldn't verify" rather than fataling.
+ *
+ * @internal
  */
 final readonly class PackagistVersionLookup
 {

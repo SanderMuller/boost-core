@@ -11,6 +11,8 @@ namespace SanderMuller\BoostCore\Conventions;
  *
  * Advisory only — the gate decision is computed identically with or without this
  * record; collecting it never changes whether the block is written.
+ *
+ * @internal
  */
 final readonly class KeepReason
 {

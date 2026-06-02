@@ -15,6 +15,8 @@ namespace SanderMuller\BoostCore\Config;
  * so every existing repo is unaffected). Both present → fail loud
  * ({@see AmbiguousBoostConfigException}). Neither → default to root with
  * `exists = false` (the not-found / scaffold-target case).
+ *
+ * @internal
  */
 final readonly class BoostConfigPath
 {

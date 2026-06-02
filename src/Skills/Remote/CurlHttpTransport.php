@@ -14,6 +14,8 @@ use CurlHandle;
  * rather than during cURL's redirect dance. Streams to disk when a
  * destination path is provided — tarballs and `.skill` assets can be
  * MB-scale; never collected in memory.
+ *
+ * @internal
  */
 final class CurlHttpTransport implements HttpTransport
 {

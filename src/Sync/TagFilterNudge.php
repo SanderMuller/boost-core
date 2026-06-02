@@ -16,6 +16,8 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * Decision lives here rather than in {@see SyncEngine} so the per-sync
  * counting stays out of the engine's cognitive-complexity budget. Pure
  * function — no state, no I/O.
+ *
+ * @internal
  */
 final class TagFilterNudge
 {

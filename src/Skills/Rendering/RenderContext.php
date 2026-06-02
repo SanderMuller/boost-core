@@ -12,6 +12,8 @@ use SanderMuller\BoostCore\Contracts\SkillRenderer;
  * again in `SkillLoader`, so a template that regenerates its frontmatter is
  * free to ignore `$frontmatter` here — but most renderers should leave it
  * intact since templates typically wrap the body, not the head.
+ *
+ * @experimental
  */
 final readonly class RenderContext
 {

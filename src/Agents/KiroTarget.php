@@ -9,6 +9,9 @@ use SanderMuller\BoostCore\Skills\Command;
 use SanderMuller\BoostCore\Skills\CommandTranspileResult;
 use SanderMuller\BoostCore\Sync\PendingWrite;
 
+/**
+ * @internal
+ */
 final class KiroTarget extends AgentTarget
 {
     public function agent(): Agent

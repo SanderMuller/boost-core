@@ -15,6 +15,8 @@ use Throwable;
  *
  * One package failing — or losing a user-scope-path collision — does not
  * abort the rest; each yields its own {@see UserScopeResult}.
+ *
+ * @internal
  */
 final class UserScopeBulkSync
 {

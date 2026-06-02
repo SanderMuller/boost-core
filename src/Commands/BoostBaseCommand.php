@@ -18,6 +18,8 @@ use Throwable;
  * Extends Symfony's Command directly so commands load in the standalone
  * `bin/boost` — including end-user installs where composer/composer is not
  * in vendor/.
+ *
+ * @internal
  */
 abstract class BoostBaseCommand extends Command
 {

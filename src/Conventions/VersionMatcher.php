@@ -17,6 +17,8 @@ use UnexpectedValueException;
  * NOT called from `ConventionsSchema::compose()` — composition is
  * version-agnostic; version-based skip-write is a sync-time decision
  * applied per skill (see spec §3.9).
+ *
+ * @internal
  */
 final readonly class VersionMatcher
 {

@@ -16,6 +16,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  * existence subsystem lives in one cohesive collaborator instead of inflating
  * the command's cognitive complexity. Behavior is identical to the prior inline
  * `reportConventions()`; doctor delegates the whole opt-in check here.
+ *
+ * @internal
  */
 final readonly class ConventionsReporter
 {

@@ -43,8 +43,13 @@ parameters:
         -
             identifier: trait.unused
             reportUnmatched: false
+        # The package's own Pest tests are global-namespace files, so PHPStan treats
+        # them as an EXTERNAL consumer of the engine's @internal classes (1.0 boundary,
+        # task #107). A package using its own internals in its own tests is fine —
+        # allow every "internal {class,enum,interface,trait}" usage under tests/ only.
+        # External consumers still get the @internal signal; src→src use is same-root.
         -
-            identifier: method.internalClass
+            message: '#internal (class|enum|interface|trait)#'
             path: tests/*
             reportUnmatched: false
         # Pest's `$this->foo` in beforeEach binds dynamic properties on the test scope.

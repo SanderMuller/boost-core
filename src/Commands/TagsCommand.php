@@ -14,6 +14,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * The same report appears as a section of `boost:doctor`; this command is
  * the focused, standalone view of it.
+ *
+ * @internal
  */
 final class TagsCommand extends BoostBaseCommand
 {

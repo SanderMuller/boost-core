@@ -11,6 +11,8 @@ namespace SanderMuller\BoostCore\Sync;
  * Stateless: all inputs are passed in. Only called by SyncEngine on a successful,
  * real (non-check) sync, after all non-destructive writes + cleanup succeeded and
  * before the new manifest is written.
+ *
+ * @internal
  */
 final class OrphanReaper
 {

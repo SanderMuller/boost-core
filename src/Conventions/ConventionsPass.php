@@ -18,6 +18,8 @@ use SanderMuller\BoostCore\Sync\SyncManifest;
  *
  * This is the single conventions-build authority — `ConventionTokenLeakScanner::
  * fromConfig()` delegates here, so the build is defined once.
+ *
+ * @internal
  */
 final readonly class ConventionsPass
 {

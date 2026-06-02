@@ -16,6 +16,8 @@ namespace SanderMuller\BoostCore\Discovery;
  * - `sandermuller/project-boost-*` (future framework adapters)
  *
  * NOT included: `sandermuller/package-boost` (the retired guidance stub).
+ *
+ * @internal
  */
 final class FirstPartyPrefixes
 {

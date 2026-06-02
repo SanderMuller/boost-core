@@ -8,6 +8,9 @@ use SanderMuller\BoostCore\Skills\ArgumentToken;
 use SanderMuller\BoostCore\Skills\Command;
 use SanderMuller\BoostCore\Skills\CommandTranspileResult;
 
+/**
+ * @internal
+ */
 final class OpenCodeTarget extends AgentTarget
 {
     public function agent(): Agent

@@ -21,6 +21,8 @@ use Throwable;
  * returns a {@see CachedSource} pointing at the slot. Resolves the ref (with
  * a 24h TTL for moving refs), fetches + extracts on miss, and verifies
  * SHA-256 tree hashes on hit.
+ *
+ * @internal
  */
 final readonly class RemoteSkillCache
 {

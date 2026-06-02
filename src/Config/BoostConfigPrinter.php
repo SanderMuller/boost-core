@@ -19,6 +19,8 @@ use PhpParser\PrettyPrinter\Standard;
  * format-preserving printing reproduces every unchanged node verbatim,
  * so the fluent chain's own line layout is whatever the source file
  * already had (the starter template ships it multi-line).
+ *
+ * @internal
  */
 final class BoostConfigPrinter extends Standard
 {

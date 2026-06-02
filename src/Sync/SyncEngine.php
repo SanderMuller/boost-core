@@ -61,6 +61,8 @@ use Throwable;
  * 6. Resolve collisions (host wins, vendor-vs-vendor strict unless --force).
  * 7. Run FileEmitters (before fan-out — one-way dependency).
  * 8. Agent fan-out: skills + guidelines per active agent.
+ *
+ * @internal
  */
 final readonly class SyncEngine
 {

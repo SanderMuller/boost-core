@@ -17,6 +17,8 @@ namespace SanderMuller\BoostCore\Skills;
  *
  * Sealed-by-convention: only the four kinds below are produced by
  * {@see ArgumentParser}. Pattern-match exhaustively on `$token->kind`.
+ *
+ * @internal
  */
 final readonly class ArgumentToken
 {

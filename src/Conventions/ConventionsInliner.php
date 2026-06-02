@@ -26,6 +26,8 @@ namespace SanderMuller\BoostCore\Conventions;
  * {@see scanLeaks()} (which detects leaks in EMITTED output) via
  * {@see walkLines()}, so the two never drift in how they classify prose vs.
  * fence vs. inline-code.
+ *
+ * @internal
  */
 final readonly class ConventionsInliner
 {

@@ -22,6 +22,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * Header-agnostic — the caller frames it (`boost:doctor` as one of its
  * sections, `boost:tags` under its own title).
+ *
+ * @internal
  */
 final readonly class TagReporter
 {

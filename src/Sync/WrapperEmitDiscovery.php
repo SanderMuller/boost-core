@@ -28,6 +28,8 @@ use Throwable;
  *    exception class + first line of message.
  *  - `injectedEmitPaths()` returns non-array or contains non-string entries:
  *    per-package type-validation warning.
+ *
+ * @internal
  */
 final readonly class WrapperEmitDiscovery
 {

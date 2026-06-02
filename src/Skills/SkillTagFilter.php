@@ -28,6 +28,8 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * tag-mismatch drops are nudge-worthy. Excluded and malformed drops are
  * intentional / broken-content and would mislead the consumer if reported
  * as "your `withTags()` is empty."
+ *
+ * @internal
  */
 final class SkillTagFilter
 {

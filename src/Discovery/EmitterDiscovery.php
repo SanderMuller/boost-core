@@ -18,6 +18,8 @@ use Throwable;
  *   stale composer.json reference).
  * - Class must implement FileEmitter. Mismatches are silently skipped.
  * - Constructor must be parameterless. Throwing constructors are skipped.
+ *
+ * @internal
  */
 final readonly class EmitterDiscovery
 {

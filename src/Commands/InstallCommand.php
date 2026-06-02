@@ -27,6 +27,8 @@ use function Laravel\Prompts\multiselect;
  * proceeds straight into the interactive picker.
  *
  * First-party packages (matching FirstPartyPrefixes) are pre-checked.
+ *
+ * @internal
  */
 final class InstallCommand extends BoostBaseCommand
 {

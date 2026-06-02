@@ -2,6 +2,9 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
+/**
+ * @internal
+ */
 enum WriteAction: string
 {
     case WROTE = 'wrote';

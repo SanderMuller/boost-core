@@ -19,6 +19,8 @@ use ZipArchive;
  *  - 10,000 entries per archive (zip-bomb defense)
  *  - 50MB per file
  *  - 200MB total uncompressed size
+ *
+ * @internal
  */
 final readonly class BundleExtractor
 {

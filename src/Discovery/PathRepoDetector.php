@@ -13,6 +13,8 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
  * constraint, so a stale path repo from an earlier dogfood window can
  * shadow newer published versions. Surfaced by `boost doctor
  * --check-versions` for the family-package allowlist.
+ *
+ * @internal
  */
 final readonly class PathRepoDetector
 {

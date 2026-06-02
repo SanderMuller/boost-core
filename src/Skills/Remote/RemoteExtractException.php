@@ -11,6 +11,8 @@ use Throwable;
  * `$reason` is one of the public constants — callers (the cache layer)
  * branch on it to surface the failure as `malformed` source state and
  * skip + warn.
+ *
+ * @internal
  */
 final class RemoteExtractException extends RuntimeException
 {

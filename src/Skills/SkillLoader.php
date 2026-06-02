@@ -38,6 +38,8 @@ use Throwable;
  *
  * Errors raised by a renderer are NOT caught here. Caller (`SyncEngine`)
  * applies the `BOOST_RENDER_STRICT` policy.
+ *
+ * @internal
  */
 final readonly class SkillLoader
 {

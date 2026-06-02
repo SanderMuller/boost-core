@@ -16,6 +16,8 @@ namespace SanderMuller\BoostCore\Conventions;
  * - region exists + body empty     → strip block
  *
  * Used by Sync\GitignoreManager and Conventions\ConventionsBlockEmitter.
+ *
+ * @internal
  */
 final readonly class ManagedRegion
 {

@@ -35,6 +35,8 @@ use JsonException;
  * (no clearing/pruning).
  *
  * @phpstan-type ManifestEntry array{sha256: string, category: string, provenance: string, scope: string}
+ *
+ * @internal
  */
 final readonly class SyncManifest
 {

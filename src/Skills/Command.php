@@ -9,6 +9,8 @@ namespace SanderMuller\BoostCore\Skills;
  * directory.
  *
  * @see Guideline — the structural sibling this mirrors.
+ *
+ * @internal
  */
 final readonly class Command
 {

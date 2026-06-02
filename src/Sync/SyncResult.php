@@ -5,6 +5,9 @@ namespace SanderMuller\BoostCore\Sync;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\KeepReason;
 
+/**
+ * @internal
+ */
 final readonly class SyncResult
 {
     /**

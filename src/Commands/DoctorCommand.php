@@ -25,6 +25,8 @@ use Throwable;
 
 /**
  * Aggregated diagnostics for a boost-core install.
+ *
+ * @internal
  */
 final class DoctorCommand extends BoostBaseCommand
 {

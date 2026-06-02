@@ -21,6 +21,8 @@ use SanderMuller\BoostCore\Conventions\ManagedRegion;
  *   `SyncEngine::pruneDeadSymlinks()` — a sync write that followed
  *   `.claude/skills/<name>` (symlink → `../../.ai/skills/<name>/`) would
  *   overwrite the user's source file in `.ai/skills/`, silently.
+ *
+ * @internal
  */
 final class FileWriter
 {

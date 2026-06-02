@@ -17,6 +17,8 @@ use JsonException;
  *
  * Absent or corrupt → empty (backward-safe: no ownership asserted, nothing reaped
  * — the lazy cold-start mirrors the 0.14.0 project manifest).
+ *
+ * @internal
  */
 final readonly class UserScopeManifest
 {

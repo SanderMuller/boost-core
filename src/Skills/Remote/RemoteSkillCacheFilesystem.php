@@ -11,6 +11,8 @@ use SplFileInfo;
  * Filesystem helpers used by {@see RemoteSkillCache} during slot population
  * and integrity checks. Every method here is a pure-static utility with no
  * shared state.
+ *
+ * @internal
  */
 final class RemoteSkillCacheFilesystem
 {

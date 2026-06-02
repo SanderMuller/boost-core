@@ -21,6 +21,8 @@ use SanderMuller\BoostCore\Skills\Guideline;
  * render markerless into each guidance file. {@see GuidanceComposer} migrates
  * legacy marker-bounded files, and the never-lossy empty-assembly guard ensures a
  * non-empty file is never blanked unless boost provably owns it.
+ *
+ * @internal
  */
 final readonly class GuidanceWriter
 {

@@ -12,6 +12,8 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * grows when a real second consumer demands it.
  *
  * @see /Users/sandermuller/Documents/GitHub/elements/internal/boost-file-emitter-contract.md
+ *
+ * @experimental
  */
 final readonly class SyncContext
 {

@@ -21,6 +21,8 @@ use Symfony\Component\Yaml\Yaml;
  *
  * Files without a frontmatter block are valid — they return an empty
  * frontmatter array and the full content as body.
+ *
+ * @internal
  */
 final class FrontmatterParser
 {

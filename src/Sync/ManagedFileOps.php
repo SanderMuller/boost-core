@@ -6,6 +6,8 @@ namespace SanderMuller\BoostCore\Sync;
  * Stateless filesystem/path helpers shared across the sync passes. Used by the
  * stale-cleanup, wrapper-claim, manifest, and orphan-reap logic, so they live in
  * one place rather than being duplicated across those passes.
+ *
+ * @internal
  */
 final class ManagedFileOps
 {

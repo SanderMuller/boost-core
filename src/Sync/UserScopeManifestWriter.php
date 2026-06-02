@@ -8,6 +8,8 @@ namespace SanderMuller\BoostCore\Sync;
  * {@see SyncManifestWriter}, extracted from {@see SyncEngine} so the engine stays
  * focused on resolution + fan-out. Stateless; behavior is identical to the
  * engine's prior inline `writeUserScopeManifest()`.
+ *
+ * @internal
  */
 final readonly class UserScopeManifestWriter
 {

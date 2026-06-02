@@ -22,6 +22,8 @@ namespace SanderMuller\BoostCore\Skills\Remote;
  * The HTTP I/O lives in an injected {@see HttpTransport} so the URL-building
  * + response-classification logic here is fully unit-testable without a
  * real HTTP server.
+ *
+ * @internal
  */
 final readonly class GitHubFetcher implements RemoteFetcher
 {

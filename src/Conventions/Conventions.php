@@ -8,6 +8,8 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * PHP API entry point for vendor skills (and future internal callers) needing
  * access to boost-core's managed-paths registry. CLI surface is `boost paths`
  * (PathsCommand); this is the programmatic equivalent. See spec §3.10.
+ *
+ * @internal
  */
 final readonly class Conventions
 {

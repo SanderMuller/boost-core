@@ -9,6 +9,8 @@ namespace SanderMuller\BoostCore\Skills\Remote;
  * the release tag name (releases on GitHub are tag-anchored, not SHA-anchored).
  * Either form is content-addressed and serves as the cache slot key:
  * `<owner>__<repo>/<resolved>/`.
+ *
+ * @internal
  */
 final readonly class ResolvedRef
 {

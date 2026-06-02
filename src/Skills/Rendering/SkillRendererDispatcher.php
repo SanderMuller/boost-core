@@ -34,6 +34,8 @@ use SanderMuller\BoostCore\Contracts\SkillRenderer;
  *    registrations and the first-registered-wins rule applies. This lets
  *    `withDisabledRenderers([...])` resolve conflicts by dropping one side
  *    before the dispatcher sees the list.
+ *
+ * @internal
  */
 final readonly class SkillRendererDispatcher
 {

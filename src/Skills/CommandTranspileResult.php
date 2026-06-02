@@ -12,6 +12,8 @@ namespace SanderMuller\BoostCore\Skills;
  * (operator-visible) but never abort the sync. The `boost where`
  * pipeline already establishes this pattern: render what we can, name
  * the gap honestly.
+ *
+ * @internal
  */
 final readonly class CommandTranspileResult
 {

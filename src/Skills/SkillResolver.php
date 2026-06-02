@@ -13,6 +13,8 @@ namespace SanderMuller\BoostCore\Skills;
  *    order (caller-provided). First vendor wins.
  * 3. Vendor-vs-vendor collisions on the SAME name trigger CollidingSkillsException
  *    unless `$force = true`. Force mode falls back to declaration order.
+ *
+ * @internal
  */
 final class SkillResolver
 {

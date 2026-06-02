@@ -14,6 +14,8 @@ use SanderMuller\BoostCore\Conventions\Diagnostic;
  * The set of on-disk managed files is passed IN (the engine owns the gitignore /
  * cleanup machinery that enumerates them), so this collaborator never calls back
  * into the engine — it's a pure "given these inputs, build + persist" unit.
+ *
+ * @internal
  */
 final readonly class SyncManifestWriter
 {

@@ -13,6 +13,8 @@ namespace SanderMuller\BoostCore\Skills\Remote;
  * All methods throw {@see RemoteFetchException} on failure with a typed
  * `$reason`. Callers branch on the reason to decide cache-fallback,
  * warn-and-skip, or escalation under `BOOST_REMOTE_STRICT`.
+ *
+ * @internal
  */
 interface RemoteFetcher
 {

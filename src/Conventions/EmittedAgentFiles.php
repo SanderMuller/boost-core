@@ -28,6 +28,8 @@ use Symfony\Component\Finder\Finder;
  * command directories (commands are not a conventions-inlining target — the
  * inliner only runs over skills + guidelines, so a token in a command never
  * resolves and is a separate, out-of-scope concern).
+ *
+ * @internal
  */
 final readonly class EmittedAgentFiles
 {

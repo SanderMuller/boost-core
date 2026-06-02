@@ -2,6 +2,9 @@
 
 namespace SanderMuller\BoostCore\Skills;
 
+/**
+ * @internal
+ */
 final class GuidelineResolver
 {
     /**

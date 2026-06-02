@@ -4,6 +4,9 @@ namespace SanderMuller\BoostCore\Conventions;
 
 use RuntimeException;
 
+/**
+ * @internal
+ */
 final class SlotTypeMismatchException extends RuntimeException
 {
     public function __construct(

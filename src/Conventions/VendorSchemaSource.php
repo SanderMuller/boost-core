@@ -6,6 +6,8 @@ namespace SanderMuller\BoostCore\Conventions;
  * One vendor's loaded `resources/boost/conventions-schema.json` source.
  *
  * Discovered by SchemaDiscovery, consumed by ConventionsSchema::compose().
+ *
+ * @internal
  */
 final readonly class VendorSchemaSource
 {

@@ -13,6 +13,8 @@ use SanderMuller\BoostCore\Sync\WrittenFile;
 /**
  * Coordinates the remote-skill side of a sync — fetching + tag-filtering +
  * orphan-pruning.
+ *
+ * @internal
  */
 final readonly class RemoteSkillSyncCoordinator
 {

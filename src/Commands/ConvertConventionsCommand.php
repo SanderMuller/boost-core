@@ -22,6 +22,8 @@ use Symfony\Component\Yaml\Yaml;
  *
  * Edge cases handled per spec §3.4: no CLAUDE.md, no marker region,
  * scaffold-only body, both-sources-present, YAML parse failure.
+ *
+ * @internal
  */
 final class ConvertConventionsCommand extends BoostBaseCommand
 {

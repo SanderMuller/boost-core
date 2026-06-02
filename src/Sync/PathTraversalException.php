@@ -4,6 +4,9 @@ namespace SanderMuller\BoostCore\Sync;
 
 use RuntimeException;
 
+/**
+ * @internal
+ */
 final class PathTraversalException extends RuntimeException
 {
     public function __construct(

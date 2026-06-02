@@ -9,6 +9,9 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
+/**
+ * @internal
+ */
 final class PathsCommand extends BoostBaseCommand
 {
     protected function configure(): void

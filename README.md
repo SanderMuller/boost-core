@@ -144,7 +144,7 @@ Codex and Gemini have no committable target boost-core can write into — Codex'
 
 ## Managed `.gitignore`
 
-`boost:sync` maintains a managed block in `.gitignore` so generated agent dirs (`.claude/skills/`, `.cursor/skills/`, `CLAUDE.md`, `AGENTS.md`, ...) stay out of version control. Edit skills in `.ai/` only; the fan-out regenerates on next install.
+`boost:sync` maintains a managed block in `.gitignore` so the generated agent skill/command **directories** (`.claude/skills/`, `.cursor/skills/`, `.github/skills/`, …) and the `.boost/` runtime dir stay out of version control. Edit skills in `.ai/` only; the fan-out regenerates on next install. The agent **guidance files** (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.github/copilot-instructions.md`) are deliberately NOT gitignored — they're wholesale boost-owned but kept tracked so the output is reviewable in diffs and present on a fresh clone (see [Tracked guidance files](#) below).
 
 Opt out per project:
 

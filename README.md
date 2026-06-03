@@ -192,7 +192,7 @@ Render failures default to warn-and-skip: an error is recorded in `SyncResult::e
 
 A distinct gap is a source whose extension has **no registered renderer at all** — e.g. a `SKILL.blade.php` with no `BladeRenderer` declared. boost-core used to drop these silently; since 0.18.0 `boost sync` emits a warning diagnostic (and `boost doctor` reports the same over host + allowlisted-vendor sources) naming the file, the unclaimed extension, and the fix — register a `SkillRenderer` for it, or rename it to `SKILL.md`. Recognized binary/data assets a vendor ships alongside its sources (images, archives, JSON/YAML, etc.) are never flagged. The warning never fails `--check`; a missing renderer is an advisory, not a render error.
 
-The renderer contract is `@experimental` — the shape will change before v1.0 stable; pin to an exact boost-core version if building against it. Reference consumer: [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) ships a `BladeRenderer` that delegates to laravel/boost's `RendersBladeGuidelines` trait, so `.ai/<pkg>/skill/<name>/SKILL.blade.php` files render with the `$assist = GuidelineAssist` runtime context they expect.
+The renderer contract is `@api` (locked at 1.0): a parameterless `SkillRenderer` with stable `render()`/`extensions()` signatures. Reference consumer: [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) ships a `BladeRenderer` that delegates to laravel/boost's `RendersBladeGuidelines` trait, so `.ai/<pkg>/skill/<name>/SKILL.blade.php` files render with the `$assist = GuidelineAssist` runtime context they expect.
 
 ### Wrapper-injection contract (`BoostWrapperContract`)
 
@@ -381,7 +381,7 @@ boost-core follows [Semantic Versioning](https://semver.org). The semver promise
 - **Config authoring API** — `BoostConfig::configure()` and the `BoostConfigBuilder` `with*()` methods you call in `boost.php`, plus the `Agent`/`Tag` enums and `RemoteSkillSource`.
 - **CLI** — the `bin/boost` command names, their documented options, and exit codes (`0` ok, `1` failure, `2` usage).
 - **Composer hooks** — `BoostAutoSync::run` / `runWithSummary` (the `post-install`/`post-update` targets). New parameters are always optional-with-default.
-- **Plugin contracts** — `BoostWrapperContract` (stable). `FileEmitter` and `SkillRenderer` are **`@experimental`** until a second independent consumer validates their shape; they may change in a minor.
+- **Plugin contracts** — `FileEmitter`, `SkillRenderer`, and `BoostWrapperContract` (with the DTOs `SyncContext`, `EmittedFile`, `RenderContext` and `AgentTarget`). All locked at 1.0: parameterless constructors only; changing a contract method's signature is a major bump.
 
 **Explicitly NOT covered** (may change in any release, including patches):
 
@@ -393,9 +393,6 @@ The committed surface is enumerated in [`PUBLIC_API.md`](PUBLIC_API.md). Pre-`1.
 ## Upgrading
 
 See [`UPGRADING.md`](UPGRADING.md) for breaking-change migrations between majors/minors.
-
-> [!NOTE]
-> The `FileEmitter` plugin contract is `@experimental` — the shape will change before v1.0 stable.
 
 ## Changelog
 

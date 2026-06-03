@@ -14,6 +14,8 @@ use SanderMuller\BoostCore\Contracts\SkillRenderer;
  * include-expansion, …) registers their own renderer claiming `md`; the
  * dispatcher honors registration order so the user-registered renderer
  * wins over this implicit default.
+ *
+ * @api
  */
 final class PassthroughRenderer implements SkillRenderer
 {

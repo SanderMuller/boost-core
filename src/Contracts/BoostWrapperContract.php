@@ -72,6 +72,8 @@ namespace SanderMuller\BoostCore\Contracts;
  *   the exception class.
  * - `injectedEmitPaths()` returns non-array or contains non-string entries:
  *   type-validation warning + skip the wrapper's contribution.
+ *
+ * @api
  */
 interface BoostWrapperContract
 {

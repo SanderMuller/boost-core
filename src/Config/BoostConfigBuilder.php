@@ -15,6 +15,8 @@ use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
  *
  * BoostConfigLoader receives the builder from `require boost.php` and calls
  * `build($projectRoot)` to resolve defaults and produce an immutable BoostConfig.
+ *
+ * @api
  */
 final class BoostConfigBuilder
 {
@@ -262,6 +264,11 @@ final class BoostConfigBuilder
         return $this;
     }
 
+    /**
+     * @internal Called by {@see BoostConfigLoader}
+     *           to resolve defaults into the immutable {@see BoostConfig}; not part
+     *           of the public authoring surface.
+     */
     public function build(string $projectRoot): BoostConfig
     {
         $projectRoot = rtrim($projectRoot, '/');

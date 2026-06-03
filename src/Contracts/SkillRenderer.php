@@ -7,10 +7,9 @@ use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 /**
  * Plugin seam for rendering template-flavored skill bodies (Blade, Twig, …).
  *
- * @experimental Will change before v1.0 stable. Pin to exact boost-core
- * version if building against this. Lock-in happens after a second
- * non-trivial consumer from a different problem domain validates the shape
- * (mirrors {@see FileEmitter}'s lock-in criteria).
+ * @api Stable plugin seam (locked at 1.0). Parameterless constructor only;
+ * changing `render()`/`extensions()` signatures is a breaking change that
+ * needs a major bump.
  *
  * Reference consumer: `sandermuller/project-boost-laravel` ships a
  * `BladeRenderer` that bridges to laravel/boost's `RendersBladeGuidelines`

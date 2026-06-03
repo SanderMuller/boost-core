@@ -21,12 +21,10 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  * hooks. A new engine class added later must either carry `@internal` or be added
  * to one of the explicit allowlists below — a deliberate, reviewed act.
  *
- * Allowlists:
- *  - PUBLIC_OR_DEFERRED: consumer-reachable types intentionally NOT `@internal`
- *    (their `@api` status is decided in task #108).
- *  - EXPERIMENTAL_DTOS: contract DTOs that ride with the `@experimental`
- *    FileEmitter/SkillRenderer interfaces — they carry `@experimental`, not
- *    `@internal`, and are asserted to keep it.
+ * Allowlist:
+ *  - ENGINE_PUBLIC_API: consumer-facing classes that live in the engine
+ *    namespaces but are part of the 1.0 public surface — they carry `@api`,
+ *    never `@internal` (locked in task #108).
  */
 const ENGINE_NAMESPACE_PREFIXES = [
     'SanderMuller\\BoostCore\\Sync\\',
@@ -46,16 +44,13 @@ const ENGINE_EXTRA_INTERNAL = [
     BoostConfigPath::class,
 ];
 
-const PUBLIC_OR_DEFERRED = [
+const ENGINE_PUBLIC_API = [
     RemoteSkillSource::class,
     RemoteSkillRef::class,
     AgentTarget::class,
     PassthroughRenderer::class,
     InvalidSkillRendererException::class,
     SkillRenderException::class,
-];
-
-const EXPERIMENTAL_DTOS = [
     SyncContext::class,
     EmittedFile::class,
     RenderContext::class,
@@ -104,7 +99,7 @@ function isEngineClass(string $fqcn): bool
 }
 
 it('marks every engine class @internal (or explicitly allowlists it)', function (): void {
-    $allowed = array_merge(PUBLIC_OR_DEFERRED, EXPERIMENTAL_DTOS);
+    $allowed = ENGINE_PUBLIC_API;
 
     $missing = [];
     foreach (boostSrcClasses() as $fqcn) {
@@ -124,27 +119,19 @@ it('marks every engine class @internal (or explicitly allowlists it)', function 
 
     expect($missing)->toBe([], sprintf(
         'These engine classes are not @internal. Add `@internal` to the class docblock, '
-        . "or (if genuinely consumer-facing) add them to PUBLIC_OR_DEFERRED/EXPERIMENTAL_DTOS:\n- %s",
+        . "or (if genuinely consumer-facing) add them to ENGINE_PUBLIC_API:\n- %s",
         implode("\n- ", $missing),
     ));
 });
 
-it('keeps @experimental on the contract DTOs that ride with the plugin interfaces', function (): void {
-    foreach (EXPERIMENTAL_DTOS as $fqcn) {
-        $doc = (new ReflectionClass($fqcn))->getDocComment();
-        expect($doc)->toBeString();
-        // `toContain` is variadic — a 2nd "message" arg is treated as another needle,
-        // so assert plainly. The loop var names the offending class on failure.
-        expect((string) $doc)->toContain('@experimental');
-    }
-});
-
-it('does not let the public-or-deferred carve-outs silently become @internal', function (): void {
-    // These are consumer-reachable; their status is decided in #108. Guard against an
-    // accidental @internal that would wrongly fence off the authoring surface.
-    foreach (PUBLIC_OR_DEFERRED as $fqcn) {
-        $doc = (new ReflectionClass($fqcn))->getDocComment();
-        $hasInternal = $doc !== false && str_contains($doc, '@internal');
-        expect($hasInternal)->toBeFalse("{$fqcn} is consumer-reachable and must not be @internal (decide @api in #108).");
+it('marks the in-engine public-API carve-outs @api (and never @internal)', function (): void {
+    // These live in engine namespaces but are part of the locked 1.0 surface
+    // (task #108). Guard both directions: they must carry @api, and must never
+    // pick up an @internal that would wrongly fence off the public surface.
+    foreach (ENGINE_PUBLIC_API as $fqcn) {
+        $doc = (string) (new ReflectionClass($fqcn))->getDocComment();
+        expect($doc)->toContain('@api')
+            ->and(str_contains($doc, '@internal'))
+            ->toBeFalse("{$fqcn} must not be @internal");
     }
 });

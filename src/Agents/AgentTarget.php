@@ -19,6 +19,8 @@ use Symfony\Component\Yaml\Yaml;
  * concatenate) and inherit default formatters that pass frontmatter + body
  * through unchanged. Override formatters if the agent expects a transformed
  * shape.
+ *
+ * @api
  */
 abstract class AgentTarget
 {

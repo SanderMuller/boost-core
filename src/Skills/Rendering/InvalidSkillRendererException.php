@@ -10,5 +10,7 @@ use RuntimeException;
  *    dot, characters outside `/^[a-z0-9.]+$/`), or
  *  - two registered renderers claim the same extension and the conflict
  *    cannot be resolved (e.g. by `withDisabledRenderers(...)` dropping one).
+ *
+ * @api
  */
 final class InvalidSkillRendererException extends RuntimeException {}

@@ -49,6 +49,8 @@ use Throwable;
  * own bundled skills from their bin script. There is no Composer event in
  * that context, so they drive {@see SyncEngine} in-process rather than
  * resolving and spawning the `boost` binary.
+ *
+ * @api
  */
 final class BoostAutoSync
 {

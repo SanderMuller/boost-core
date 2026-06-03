@@ -25,6 +25,8 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
  * `configure()` returns a BoostConfigBuilder; the builder accumulates state.
  * BoostConfigLoader calls `->build($projectRoot)` to produce this immutable
  * value object.
+ *
+ * @api
  */
 final readonly class BoostConfig
 {

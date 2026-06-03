@@ -12,6 +12,8 @@ namespace SanderMuller\BoostCore\Enums;
  * never validates a skill's declared tag against this enum; any string is a
  * legal tag. New common tags can be added here freely — doing so closes
  * nothing.
+ *
+ * @api
  */
 enum Tag: string
 {

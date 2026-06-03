@@ -13,7 +13,7 @@ use SanderMuller\BoostCore\Contracts\SkillRenderer;
  * free to ignore `$frontmatter` here — but most renderers should leave it
  * intact since templates typically wrap the body, not the head.
  *
- * @experimental
+ * @api Stable as of 1.0 — the read-only context passed to {@see SkillRenderer}.
  */
 final readonly class RenderContext
 {

@@ -13,6 +13,8 @@ use Throwable;
  * is set. In lenient mode (default), the loader catches the original
  * `Throwable` and appends the error message to `SyncResult::errors`
  * instead; this exception class is only used to abort the sync transaction.
+ *
+ * @api
  */
 final class SkillRenderException extends RuntimeException
 {

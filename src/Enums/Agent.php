@@ -7,6 +7,8 @@ namespace SanderMuller\BoostCore\Enums;
  *
  * Per-agent transformation details (directory layout, naming, frontmatter
  * quirks) live with each AgentTarget implementation.
+ *
+ * @api
  */
 enum Agent: string
 {

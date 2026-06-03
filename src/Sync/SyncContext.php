@@ -11,9 +11,7 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * "we don't know what emitter #2 will need yet" stance. The shape only
  * grows when a real second consumer demands it.
  *
- * @see /Users/sandermuller/Documents/GitHub/elements/internal/boost-file-emitter-contract.md
- *
- * @experimental
+ * @api Stable as of 1.0 — the read-only context passed to {@see FileEmitter}.
  */
 final readonly class SyncContext
 {

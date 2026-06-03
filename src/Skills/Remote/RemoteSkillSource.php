@@ -15,6 +15,8 @@ use InvalidArgumentException;
  *
  * Raw construction is available for the rare non-default asset-name case;
  * the factories cover the 99% path with less boilerplate.
+ *
+ * @api
  */
 final readonly class RemoteSkillSource
 {

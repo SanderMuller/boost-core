@@ -4,10 +4,10 @@
 
 Only the latest `0.x` minor receives security fixes during the pre-1.0 phase. Once a `1.0` ships, the most recent stable minor and the previous minor will be supported.
 
-| Version | Supported          |
-|---------|--------------------|
-| 0.2.x   | :white_check_mark: |
-| < 0.2   | :x:                |
+| Version            | Supported          |
+|--------------------|--------------------|
+| Latest `0.x` minor | :white_check_mark: |
+| Any older minor    | :x:                |
 
 ## Reporting a Vulnerability
 

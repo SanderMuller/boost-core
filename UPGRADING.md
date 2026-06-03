@@ -2,6 +2,30 @@
 
 Breaking changes per major/minor bump.
 
+## 0.19 → 0.20
+
+### `withTags()` now takes an array (breaking)
+
+`BoostConfigBuilder::withTags()` was variadic; it now takes a single `array`, matching every other `with*()` collection setter. Update your `boost.php`:
+
+| Was | Now |
+|---|---|
+| `->withTags(Tag::Php, Tag::Jira)` | `->withTags([Tag::Php, Tag::Jira])` |
+| `->withTags('php', 'jira')` | `->withTags(['php', 'jira'])` |
+| `->withTags(Tag::Php)` | `->withTags([Tag::Php])` |
+
+`boost install`'s tag picker now writes the array form, and `boost sync` still parses + migrates an existing variadic `withTags(...)` it finds in your `boost.php` — but update the call by hand to avoid a `TypeError` the next time the config is loaded directly.
+
+### Plugin contracts locked — no action
+
+`FileEmitter` and `SkillRenderer` (with the DTOs `SyncContext`, `EmittedFile`, `RenderContext`) are now `@api`, locked for the `1.x` line — no longer `@experimental`. If you built against them you no longer need to pin an exact boost-core version. This supersedes the "pin to an exact version" advice in the older entries below.
+
+### Engine internals are now `@internal` — no action for normal use
+
+Every engine class (`Sync\`, `Discovery\`, `Conventions\`, `Commands\`, the `Skills\` internals, …) is now marked `@internal` and excluded from the semver promise — see [`PUBLIC_API.md`](PUBLIC_API.md). Normal consumers only touch the `boost.php` authoring API, the CLI, and the plugin contracts, none of which changed here. If you imported an engine class directly, it may now change in any release.
+
+> Entries for 0.7 → 0.19 are omitted — those bumps were additive / observability work, with any migration noted in their [release notes](https://github.com/sandermuller/boost-core/releases). 0.20 is the first action-required change since 0.12.
+
 ## 0.6 → 0.7
 
 0.7.0 adds four additive surfaces — no migration required for the routine case.

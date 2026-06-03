@@ -38,6 +38,10 @@ The command names, their documented options, and the exit-code contract (`0` ok,
 - Every class marked `@internal` — the engine: `Sync\`, `Discovery\`, `Conventions\`, `Agents\` (except `AgentTarget`), `Commands\`, the `Skills\` internals, `Env`, and the internal `Config\` loader/writer/printer/path classes. Do not import these.
 - On-disk regenerable state: the sync manifest (`.boost/manifest.json` ⁄ `.config/boost/manifest.json`), the remote-skill ledger (`remote-manifest.json`), the user-scope manifests under `~/.boost/manifests/`, the `.boost/` ⁄ `.config/boost/` runtime dir, and the cache sentinel. Their schema is not a contract.
 
+## Deprecation policy
+
+A stable (`@api`) element is deprecated before it is removed: marked `@deprecated` in PHPDoc — and, where it has a runtime code path, emitting `E_USER_DEPRECATED` — in a MINOR release, then removed no earlier than the next MAJOR. Deprecations are listed under `### Deprecated` in `CHANGELOG.md` so they surface in release notes.
+
 ## Removed APIs
 
 <!-- Track removed APIs here so consumers know what was removed when. Example:

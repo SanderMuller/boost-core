@@ -209,9 +209,11 @@ it('freezes the BoostSync wrapper entry point shape (0.22.0)', function (): void
     $rc = new ReflectionClass(BoostSync::class);
 
     $make = $rc->getMethod('make');
+    // `make(): self` — PHP normalizes the `self` return type's reflection name
+    // differently across versions (8.3 → "self", 8.5 → the FQCN), so accept both.
     expect($make->isStatic())->toBeTrue()
         ->and($make->getNumberOfRequiredParameters())->toBe(0)
-        ->and((string) $make->getReturnType())->toBe(BoostSync::class);
+        ->and((string) $make->getReturnType())->toBeIn(['self', BoostSync::class]);
 
     $sync = $rc->getMethod('sync');
     expect((string) $sync->getReturnType())->toBe(SyncResult::class)

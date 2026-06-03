@@ -3,7 +3,11 @@
 namespace SanderMuller\BoostCore\Skills;
 
 /**
- * @internal
+ * The result of {@see FrontmatterParser::parse()} — the parsed YAML head and the
+ * remaining body.
+ *
+ * @api Stable as of 1.0. `$frontmatter` (the parsed head, `array<string, mixed>`)
+ * and `$body` are the frozen read surface.
  */
 final readonly class ParsedDocument
 {

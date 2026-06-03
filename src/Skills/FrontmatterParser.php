@@ -22,7 +22,10 @@ use Symfony\Component\Yaml\Yaml;
  * Files without a frontmatter block are valid — they return an empty
  * frontmatter array and the full content as body.
  *
- * @internal
+ * @api Stable as of 1.0 — a pure, parameterless-constructor utility. A wrapper
+ * reusing it (instead of rolling its own YAML-head parse) keeps boost-tag
+ * extraction identical to the engine, so which-skills-ship can't silently
+ * diverge. `parse()` returns an `@api` {@see ParsedDocument}.
  */
 final class FrontmatterParser
 {

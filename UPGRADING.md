@@ -4,6 +4,8 @@ Breaking changes per major/minor bump.
 
 ## 0.20 → 0.21
 
+> **⚠️ Migrate your `emit()` signature FIRST.** If you ship a `FileEmitter`, change its `emit()` signature to `iterable` BEFORE you bump boost-core to 0.21+. A still-`?EmittedFile` implementation **hard-fatals** the moment boost-core loads your class (`Declaration … must be compatible with FileEmitter::emit(): iterable`) — a raw PHP fatal at sync startup, not a graceful diagnostic, so it blocks the entire sync. Do this one edit before anything else in this upgrade.
+
 ### `FileEmitter::emit()` now returns `iterable<EmittedFile>` (breaking)
 
 A `FileEmitter` can now emit **more than one file** per sync. The return type changed from `?EmittedFile` to `iterable<EmittedFile>` (return an empty iterable to skip):

@@ -66,6 +66,23 @@ final readonly class BoostConfig
         return new BoostConfigBuilder();
     }
 
+    /**
+     * Load + build a project's `boost.php` into a resolved config.
+     *
+     * The `@api` entry point for a wrapper that needs to READ a project's declared
+     * config — e.g. its `withAgents([...])` set via `$config->agents` — without
+     * depending on the engine-internal loader. Resolves a root `boost.php` vs
+     * `.config/boost.php` (or an explicit `$configFile`). Throws on a
+     * missing / invalid / ambiguous config: the fail-loud behavior is contractual
+     * (see PUBLIC_API.md), though the thrown exception classes are `@internal`.
+     *
+     * @api Stable as of 1.0.
+     */
+    public static function load(string $projectRoot, ?string $configFile = null): self
+    {
+        return (new BoostConfigLoader())->load($projectRoot, $configFile);
+    }
+
     public function hasAgent(Agent $agent): bool
     {
         return in_array($agent, $this->agents, true);

@@ -8,7 +8,9 @@ use SanderMuller\BoostCore\Config\BoostConfigPrinter;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Env;
+use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
+use SanderMuller\BoostCore\Skills\ParsedDocument;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillRef;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Skills\Rendering\InvalidSkillRendererException;
@@ -78,6 +80,10 @@ const ENGINE_PUBLIC_API = [
     EmitterAction::class,
     Skill::class,
     Guideline::class,
+    // Frontmatter parsing seam (0.22.0) — a wrapper reuses it for boost-tag
+    // parity instead of rolling its own YAML-head parse.
+    FrontmatterParser::class,
+    ParsedDocument::class,
     PassthroughRenderer::class,
     InvalidSkillRendererException::class,
     SkillRenderException::class,

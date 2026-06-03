@@ -106,7 +106,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "0.19.x-dev"
+            "dev-main": "0.20.x-dev"
         }
     },
     "minimum-stability": "stable",

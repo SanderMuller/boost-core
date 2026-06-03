@@ -163,6 +163,33 @@ it('end-to-end via BoostSync facade: drives sync + threads injected vendor skill
     }
 });
 
+it('preserves non-consumed frontmatter keys through emission (0.22.0 pass-through contract)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        // boost-core consumes name/description/metadata.boost-tags/schema-required;
+        // every OTHER key (Agent-Skills display fields, future keys) must round-trip.
+        file_put_contents(
+            $root . '/.ai/skills/foo.md',
+            "---\nname: foo\ndescription: A foo skill.\nargument-hint: \"<path>\"\nlicense: MIT\nallowed-tools:\n  - Read\n  - Edit\n---\n# Foo body\n",
+        );
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect($result->hasErrors())->toBeFalse();
+
+        $emitted = file_get_contents($root . '/.claude/skills/foo/SKILL.md');
+        expect($emitted)->toContain('argument-hint')
+            ->toContain('<path>')
+            ->toContain('license: MIT')
+            ->toContain('allowed-tools')
+            ->toContain('Read')
+            ->toContain('Edit');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('check mode reports drift without writing', function (): void {
     $root = makeEndToEndProject();
     try {

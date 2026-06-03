@@ -3,7 +3,12 @@
 namespace SanderMuller\BoostCore\Skills;
 
 /**
- * @internal
+ * A resolved skill — name, frontmatter, body, and provenance.
+ *
+ * @api Stable as of 1.0 — the value type a wrapper package constructs to inject
+ * skills via `BoostSync::sync(injectedVendorSkills: [...])`. The eight
+ * constructor properties are frozen; new ones, if ever added, append with a
+ * default (non-breaking).
  */
 final readonly class Skill
 {

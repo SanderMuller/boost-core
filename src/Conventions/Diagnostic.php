@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Conventions;
 
 use InvalidArgumentException;
+use SanderMuller\BoostCore\Sync\SyncResult;
 
 /**
  * Structured diagnostic produced by conventions schema discovery / composition
@@ -12,7 +13,11 @@ use InvalidArgumentException;
  * SyncResult::errors fatal channel. Default rendering is per command
  * (✓/✗/⚠/ℹ). JSON envelope carries `level` explicitly.
  *
- * @internal
+ * @api Stable as of 1.0 — an item of {@see SyncResult::$diagnostics}.
+ * The four read properties (`level`, `slot`, `message`, `vendor`) are frozen;
+ * `level` is one of `error`/`warning`/`info`. The `LEVEL_*` constants and the
+ * `error()`/`warning()`/`info()` factories are convenience, not part of the
+ * frozen read surface.
  */
 final readonly class Diagnostic
 {

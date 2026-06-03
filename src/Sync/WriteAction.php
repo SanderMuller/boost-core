@@ -3,7 +3,9 @@
 namespace SanderMuller\BoostCore\Sync;
 
 /**
- * @internal
+ * @api Stable as of 1.0 — the per-file action on a {@see WrittenFile} in an
+ * `@api` {@see SyncResult}. New cases may be added (additive); existing backing
+ * values won't change.
  */
 enum WriteAction: string
 {

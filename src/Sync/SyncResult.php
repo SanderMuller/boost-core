@@ -6,7 +6,16 @@ use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\KeepReason;
 
 /**
- * @internal
+ * The outcome of a sync — returned by {@see BoostSync::sync()} (the `@api`
+ * wrapper entry point) and the engine.
+ *
+ * @api Stable as of 1.0. Frozen read surface: `$writes` (list of {@see WrittenFile}),
+ * `$emitters` (list of {@see EmitterResult}), `$errors` (list<string>),
+ * `$diagnostics` (list of {@see Diagnostic}),
+ * `$hostShadows` (list of `array{skill: string, shadowedVendor: string}`),
+ * and the methods `hasErrors()`, `countByAction()`, `countEmittersByAction()`,
+ * `renderDeleteAttribution()`. The conventions-* properties + `$conventionsKeepReasons`
+ * are engine-internal detail, not part of the frozen surface.
  */
 final readonly class SyncResult
 {

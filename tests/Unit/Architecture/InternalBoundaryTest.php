@@ -6,17 +6,26 @@ use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Config\BoostConfigPrinter;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
+use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Env;
+use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillRef;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Skills\Rendering\InvalidSkillRendererException;
 use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
+use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Sync\BoostSync;
 use SanderMuller\BoostCore\Sync\EmittedFile;
+use SanderMuller\BoostCore\Sync\EmitterAction;
+use SanderMuller\BoostCore\Sync\EmitterResult;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
 use SanderMuller\BoostCore\Sync\SyncContext;
+use SanderMuller\BoostCore\Sync\SyncResult;
+use SanderMuller\BoostCore\Sync\WriteAction;
+use SanderMuller\BoostCore\Sync\WrittenFile;
 
 /**
  * 1.0 boundary guard (task #107/#109): every class in the engine namespaces must
@@ -56,6 +65,19 @@ const ENGINE_PUBLIC_API = [
     // config-option/loading helpers carry method-level @internal. The class
     // docblock is @api (no class-level @internal tag), so it belongs here.
     BoostBaseCommand::class,
+    // Wrapper-integration surface (0.22.0) — the @api BoostSync facade + the
+    // SyncResult it returns + the result value objects/enums a wrapper reads,
+    // plus the Skill/Guideline payload types a wrapper injects. Promoted so the
+    // (already @api) BoostWrapperContract is implementable on frozen surface.
+    BoostSync::class,
+    SyncResult::class,
+    WrittenFile::class,
+    EmitterResult::class,
+    Diagnostic::class,
+    WriteAction::class,
+    EmitterAction::class,
+    Skill::class,
+    Guideline::class,
     PassthroughRenderer::class,
     InvalidSkillRendererException::class,
     SkillRenderException::class,
@@ -179,6 +201,57 @@ it('freezes BoostBaseCommand NARROW: two @api helpers, the rest method-level @in
     expect((string) $rc->getMethod('resolveProjectRoot')->getReturnType())->toBe('string')
         ->and($rc->getMethod('addWorkingDirOption')->getNumberOfParameters())->toBe(0)
         ->and($rc->getMethod('resolveProjectRoot')->getNumberOfRequiredParameters())->toBe(1);
+});
+
+it('freezes the BoostSync wrapper entry point shape (0.22.0)', function (): void {
+    // The @api wrapper-integration facade. Pin make() + sync() so the frozen
+    // entry point can't silently drift; the engine behind it stays @internal.
+    $rc = new ReflectionClass(BoostSync::class);
+
+    $make = $rc->getMethod('make');
+    expect($make->isStatic())->toBeTrue()
+        ->and($make->getNumberOfRequiredParameters())->toBe(0)
+        ->and((string) $make->getReturnType())->toBe(BoostSync::class);
+
+    $sync = $rc->getMethod('sync');
+    expect((string) $sync->getReturnType())->toBe(SyncResult::class)
+        ->and($sync->getNumberOfRequiredParameters())->toBe(1)
+        ->and(array_map(static fn (ReflectionParameter $p): string => $p->getName(), $sync->getParameters()))
+        ->toBe(['projectRoot', 'checkOnly', 'injectedVendorSkills', 'extraSkillRenderers', 'injectedVendorGuidelines']);
+
+    // The constructor stays private — wrappers build via make().
+    expect($rc->getConstructor()?->isPrivate())->toBeTrue();
+});
+
+it('freezes the SyncResult wrapper-read surface (0.22.0)', function (): void {
+    // The consumed surface project-boost-laravel reads off a sync result. Pin it
+    // so a refactor can't drop a property/method a wrapper depends on.
+    $rc = new ReflectionClass(SyncResult::class);
+
+    foreach (['writes', 'emitters', 'errors', 'hostShadows', 'diagnostics'] as $prop) {
+        expect($rc->hasProperty($prop))->toBeTrue("SyncResult::\${$prop} is frozen @api");
+    }
+
+    foreach (['hasErrors', 'countByAction', 'countEmittersByAction', 'renderDeleteAttribution'] as $method) {
+        expect($rc->hasMethod($method))->toBeTrue("SyncResult::{$method}() is frozen @api");
+    }
+
+    // The count helpers take the @api enums.
+    expect((string) $rc->getMethod('countByAction')->getParameters()[0]->getType())->toBe(WriteAction::class)
+        ->and((string) $rc->getMethod('countEmittersByAction')->getParameters()[0]->getType())->toBe(EmitterAction::class);
+});
+
+it('exposes a string-based @api skill emit-path helper (0.22.0)', function (): void {
+    // BoostWrapperContract impls compute emit paths without an @internal Skill.
+    $rc = new ReflectionClass(AgentTarget::class);
+
+    $byName = $rc->getMethod('skillRelativePathForName');
+    expect(hasInternalTag((string) $byName->getDocComment()))->toBeFalse('skillRelativePathForName is the @api helper')
+        ->and((string) $byName->getReturnType())->toBe('string')
+        ->and((string) $byName->getParameters()[0]->getType())->toBe('string');
+
+    // The Skill-typed companion stays @internal (it takes the @internal Skill).
+    expect(hasInternalTag((string) $rc->getMethod('skillRelativePath')->getDocComment()))->toBeTrue();
 });
 
 it('never exposes an @internal type in an @api method signature or public property', function (): void {

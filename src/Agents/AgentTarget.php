@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
+use SanderMuller\BoostCore\Contracts\BoostWrapperContract;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;
@@ -184,11 +185,28 @@ abstract class AgentTarget
      * the nested-directory layout — flat `<name>.md` outputs are silently
      * ignored, so source-layout-mirror semantics aren't useful here.
      *
-     * @internal Takes the @internal Skill type.
+     * @internal Takes the engine-internal Skill type — wrappers call the
+     * `@api` string-based {@see skillRelativePathForName()} instead.
      */
     public function skillRelativePath(Skill $skill): string
     {
-        return $skill->name . '/' . self::SKILL_FILE;
+        return $this->skillRelativePathForName($skill->name);
+    }
+
+    /**
+     * Where a skill named `$skillName` is emitted, relative to
+     * `skillsDirectoryRelative()` — always the directory form `<name>/SKILL.md`.
+     *
+     * The string-based companion to {@see skillRelativePath()}, so a wrapper
+     * implementing {@see BoostWrapperContract}
+     * can compute its injected skills' emit paths without constructing an
+     * engine-internal Skill.
+     *
+     * @api Stable as of 1.0.
+     */
+    public function skillRelativePathForName(string $skillName): string
+    {
+        return $skillName . '/' . self::SKILL_FILE;
     }
 
     /**

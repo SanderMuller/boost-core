@@ -11,9 +11,11 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillIngester;
 use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Sync\BoostSync;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
 use SanderMuller\BoostCore\Sync\SyncEngine;
+use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Sync\WriteAction;
 use SanderMuller\BoostCore\Sync\WrittenFile;
 use SanderMuller\BoostCore\Tests\Doubles\Remote\FakeRemoteFetcher;
@@ -123,6 +125,39 @@ it('end-to-end: host skill + guideline → Claude Code files committed to disk',
         $claudeMd = file_get_contents($root . '/CLAUDE.md');
         expect($claudeMd)->toContain('# Conventions')
             ->toContain('strict types');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('end-to-end via BoostSync facade: drives sync + threads injected vendor skills (0.22.0)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withAllowedVendors(['acme/pack']);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\ndescription: A foo skill.\n---\n# Foo body\n");
+
+        // A wrapper supplies a fully-populated Skill (the @api payload type)
+        // through the @api facade — project-boost-laravel's laravel/boost path.
+        $injected = new Skill(
+            name: 'injected-bar',
+            description: 'Injected by a wrapper.',
+            frontmatter: ['name' => 'injected-bar'],
+            body: '# Injected body',
+            sourcePath: '',
+            sourceVendor: 'acme/pack',
+        );
+
+        $result = BoostSync::make(emptyInstalledPackages())
+            ->sync($root, injectedVendorSkills: ['acme/pack' => [$injected]]);
+
+        expect($result)->toBeInstanceOf(SyncResult::class)
+            ->and($result->hasErrors())->toBeFalse();
+
+        // Both the host skill and the wrapper-injected skill land on disk.
+        expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/injected-bar/SKILL.md'))->toBeTrue()
+            ->and(file_get_contents($root . '/.claude/skills/injected-bar/SKILL.md'))
+            ->toContain('# Injected body');
     } finally {
         rmTreeE2E($root);
     }

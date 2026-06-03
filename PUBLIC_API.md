@@ -22,6 +22,15 @@ This package follows Semantic Versioning 2.0.0. Pre-`1.0.0`, MINOR bumps may sti
 - `SanderMuller\BoostCore\Contracts\SkillRenderer` + `SanderMuller\BoostCore\Skills\Rendering\RenderContext` (param), plus `PassthroughRenderer`, `InvalidSkillRendererException`, `SkillRenderException`.
 - `SanderMuller\BoostCore\Contracts\BoostWrapperContract` + `SanderMuller\BoostCore\Agents\AgentTarget` — wrapper packages compute their emit surface against these. Only `AgentTarget`'s path/identity methods (`agent`, `skillsDirectoryRelative`, `guidelinesFileRelative`, `commandsDirectoryRelative`, `commandFileExtension`, `gitignorePatterns`) are `@api`; its `plan`/`format*`/`transpile*` methods are `@internal` (they operate on internal engine types).
 
+### Wrapper integration (advanced)
+
+For wrapper packages that drive a sync with INJECTED vendor skills/guidelines and EXTRA renderers (e.g. `project-boost-laravel` registering a Blade renderer and injecting `laravel/boost`'s assets). A plain consumer never needs this — the CLI + composer hooks cover the normal path.
+
+- `SanderMuller\BoostCore\Sync\BoostSync` — the façade entry point. `BoostSync::make(?InstalledPackages, ?string $configFile): self`, then `->sync(string $projectRoot, bool $checkOnly = false, array $injectedVendorSkills = [], array $extraSkillRenderers = [], array $injectedVendorGuidelines = []): SyncResult`. The underlying `SyncEngine` stays `@internal` (free to evolve); this façade is the frozen entry point.
+- `SanderMuller\BoostCore\Skills\Skill` + `SanderMuller\BoostCore\Skills\Guideline` — the value types injected via `injectedVendorSkills` / `injectedVendorGuidelines` (keyed by `vendor/package`). Their constructor properties are frozen; new ones append with a default.
+- `SanderMuller\BoostCore\Sync\SyncResult` — the return. Frozen read surface: `$writes` (list of `WrittenFile` — `relativePath`, `action`), `$emitters` (list of `EmitterResult` — `action`, `relativePath`, `fqcn`, `vendor`, `reason`), `$errors` (list<string>), `$diagnostics` (list of `Diagnostic` — `level`, `slot`, `message`, `vendor`), `$hostShadows` (list of `array{skill, shadowedVendor}`), plus `hasErrors()`, `countByAction(WriteAction)`, `countEmittersByAction(EmitterAction)`, `renderDeleteAttribution()`. The `WriteAction` / `EmitterAction` enums are `@api` (existing backing values stable; new cases additive). The `conventions*` properties are engine-internal, not frozen.
+- `SanderMuller\BoostCore\Agents\AgentTarget::skillRelativePathForName(string): string` — compute a skill's emit path (relative to `skillsDirectoryRelative()`) from its name, for a `BoostWrapperContract::injectedEmitPaths()` implementation — without constructing an engine-internal `Skill`.
+
 ### Composer hooks
 
 - `SanderMuller\BoostCore\Scripts\BoostAutoSync::run` / `runWithSummary` — the `post-install-cmd` / `post-update-cmd` targets.

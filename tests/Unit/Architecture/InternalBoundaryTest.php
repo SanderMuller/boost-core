@@ -2,10 +2,14 @@
 
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Commands\BoostBaseCommand;
+use SanderMuller\BoostCore\Config\AmbiguousBoostConfigException;
+use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
+use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
 use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Config\BoostConfigPrinter;
 use SanderMuller\BoostCore\Config\BoostConfigWriter;
+use SanderMuller\BoostCore\Config\InvalidBoostConfigException;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
@@ -260,6 +264,31 @@ it('exposes a string-based @api skill emit-path helper (0.22.0)', function (): v
 
     // The Skill-typed companion stays @internal (it takes the @internal Skill).
     expect(hasInternalTag((string) $rc->getMethod('skillRelativePath')->getDocComment()))->toBeTrue();
+});
+
+it('freezes the config exceptions thrown by BoostConfig::load() as @api (project-boost-laravel)', function (): void {
+    // A documented @throws of an @api method is part of its contract: a consumer
+    // catches the type by name to give a friendly message, so the class must not
+    // be renameable under the 1.0 freeze. Mirrors the SkillRenderer exception
+    // precedent (Invalid*/SkillRenderException already @api).
+    $exceptions = [
+        BoostConfigNotFoundException::class,
+        InvalidBoostConfigException::class,
+        AmbiguousBoostConfigException::class,
+    ];
+
+    foreach ($exceptions as $fqcn) {
+        $doc = (string) (new ReflectionClass($fqcn))->getDocComment();
+        expect($doc)->toContain('@api')
+            ->and(hasInternalTag($doc))->toBeFalse("{$fqcn} is a documented @throws of @api BoostConfig::load(); must not be @internal");
+    }
+
+    // The docblock must keep naming all three as @throws so the contract is discoverable.
+    $loadDoc = (string) (new ReflectionMethod(BoostConfig::class, 'load'))->getDocComment();
+    foreach ($exceptions as $fqcn) {
+        $short = (new ReflectionClass($fqcn))->getShortName();
+        expect($loadDoc)->toContain("@throws {$short}");
+    }
 });
 
 it('never exposes an @internal type in an @api method signature or public property', function (): void {

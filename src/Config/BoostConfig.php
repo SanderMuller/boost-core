@@ -73,8 +73,13 @@ final readonly class BoostConfig
      * config — e.g. its `withAgents([...])` set via `$config->agents` — without
      * depending on the engine-internal loader. Resolves a root `boost.php` vs
      * `.config/boost.php` (or an explicit `$configFile`). Throws on a
-     * missing / invalid / ambiguous config: the fail-loud behavior is contractual
-     * (see PUBLIC_API.md), though the thrown exception classes are `@internal`.
+     * missing / invalid / ambiguous config — the fail-loud behavior is
+     * contractual (see PUBLIC_API.md), and the thrown classes are themselves
+     * `@api` so a wrapper can catch them by name.
+     *
+     * @throws BoostConfigNotFoundException no `boost.php` at the expected path
+     * @throws InvalidBoostConfigException  a `boost.php` that doesn't return a {@see self}
+     * @throws AmbiguousBoostConfigException both a root and a `.config/boost.php` exist
      *
      * @api Stable as of 1.0.
      */

@@ -5,9 +5,13 @@ namespace SanderMuller\BoostCore\Config;
 use RuntimeException;
 
 /**
- * Thrown when a project has BOTH a root `boost.php` and a `.config/boost.php`.
- * boost-core uses exactly one config; silently picking one would risk the
- * operator editing the file boost ignores, so resolution fails loud.
+ * Thrown by {@see BoostConfig::load()} when a project has BOTH a root
+ * `boost.php` and a `.config/boost.php`. boost-core uses exactly one config;
+ * silently picking one would risk the operator editing the file boost ignores,
+ * so resolution fails loud. Catchable by name so a wrapper can surface the
+ * conflict instead of letting it bubble.
+ *
+ * @api
  */
 final class AmbiguousBoostConfigException extends RuntimeException
 {

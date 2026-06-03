@@ -1,6 +1,7 @@
 <?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Agents\AgentTarget;
+use SanderMuller\BoostCore\Commands\BoostBaseCommand;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Config\BoostConfigPrinter;
@@ -50,6 +51,11 @@ const ENGINE_PUBLIC_API = [
     RemoteSkillSource::class,
     RemoteSkillRef::class,
     AgentTarget::class,
+    // Family-CLI extension point (0.22.0). @api is NARROW: only the protected
+    // addWorkingDirOption() + resolveProjectRoot() helpers are frozen; the
+    // config-option/loading helpers carry method-level @internal. The class
+    // docblock is @api (no class-level @internal tag), so it belongs here.
+    BoostBaseCommand::class,
     PassthroughRenderer::class,
     InvalidSkillRendererException::class,
     SkillRenderException::class,
@@ -147,6 +153,32 @@ it('marks the in-engine public-API carve-outs @api (and never @internal)', funct
             ->and(hasInternalTag($doc))
             ->toBeFalse("{$fqcn} must not be @internal");
     }
+});
+
+it('freezes BoostBaseCommand NARROW: two @api helpers, the rest method-level @internal (0.22.0)', function (): void {
+    // The family-CLI extension point promoted in 0.22.0. The @api guarantee is
+    // exactly addWorkingDirOption() + resolveProjectRoot(); the config-option /
+    // config-loading helpers stay @internal. Pin both halves so the narrow
+    // promise can't silently widen (a future method must be a reviewed choice).
+    $rc = new ReflectionClass(BoostBaseCommand::class);
+
+    $frozen = ['addWorkingDirOption', 'resolveProjectRoot'];
+    $internalHelpers = ['addConfigOption', 'configFileOption', 'loadConfig', 'isInteractiveOrExplain'];
+
+    foreach ($frozen as $name) {
+        $doc = (string) $rc->getMethod($name)->getDocComment();
+        expect(hasInternalTag($doc))->toBeFalse("{$name} is the frozen @api surface; must not be @internal");
+    }
+
+    foreach ($internalHelpers as $name) {
+        $doc = (string) $rc->getMethod($name)->getDocComment();
+        expect(hasInternalTag($doc))->toBeTrue("{$name} is NOT frozen; must carry method-level @internal");
+    }
+
+    // Signature lock on the two frozen helpers.
+    expect((string) $rc->getMethod('resolveProjectRoot')->getReturnType())->toBe('string')
+        ->and($rc->getMethod('addWorkingDirOption')->getNumberOfParameters())->toBe(0)
+        ->and($rc->getMethod('resolveProjectRoot')->getNumberOfRequiredParameters())->toBe(1);
 });
 
 it('never exposes an @internal type in an @api method signature or public property', function (): void {

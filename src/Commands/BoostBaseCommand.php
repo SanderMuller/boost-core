@@ -13,16 +13,26 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
 
 /**
- * Shared base for boost-family commands.
+ * Shared base for boost-family CLI commands — the documented extension point
+ * for wrapper/tooling packages that ship their own `bin/<tool>` commands.
  *
  * Extends Symfony's Command directly so commands load in the standalone
  * `bin/boost` — including end-user installs where composer/composer is not
  * in vendor/.
  *
- * @internal
+ * @api The FROZEN surface is exactly two protected helpers — {@see addWorkingDirOption()}
+ * and {@see resolveProjectRoot()} — the `--working-dir` / project-root plumbing a
+ * family command needs. Subclass via Symfony's normal `configure()` / `execute()`.
+ * The remaining protected members (the `--config` option + config-LOADING helpers)
+ * are `@internal`: a config-loading extension point is a separate, heavier contract
+ * deliberately NOT locked at 1.0.
  */
 abstract class BoostBaseCommand extends Command
 {
+    /**
+     * Register the `--working-dir` (`-d`) option. Part of the frozen `@api`
+     * family-CLI surface; call from a subclass `configure()`.
+     */
     protected function addWorkingDirOption(): static
     {
         $this->addOption(
@@ -35,6 +45,10 @@ abstract class BoostBaseCommand extends Command
         return $this;
     }
 
+    /**
+     * @internal Not part of the frozen family-CLI surface — `--config` resolution
+     * is engine-internal; a config-loading extension point is a separate contract.
+     */
     protected function addConfigOption(): static
     {
         $this->addOption(
@@ -50,6 +64,8 @@ abstract class BoostBaseCommand extends Command
     /**
      * The `--config` override value, or null when unset/empty. A relative path is
      * resolved against the project root by {@see BoostConfigPath}.
+     *
+     * @internal Not part of the frozen family-CLI surface.
      */
     protected function configFileOption(InputInterface $input): ?string
     {
@@ -62,6 +78,10 @@ abstract class BoostBaseCommand extends Command
         return is_string($value) && $value !== '' ? $value : null;
     }
 
+    /**
+     * Resolve the project root from `--working-dir`, falling back to the current
+     * working directory. Part of the frozen `@api` family-CLI surface.
+     */
     protected function resolveProjectRoot(InputInterface $input): string
     {
         $workingDir = $input->getOption('working-dir');
@@ -79,6 +99,8 @@ abstract class BoostBaseCommand extends Command
      * `multiselect` pickers). Returns true when interactive; otherwise prints
      * `$guidance` and returns false so the caller can fail fast with a clear
      * message instead of hanging on a prompt in CI / under `--no-interaction`.
+     *
+     * @internal Not part of the frozen family-CLI surface.
      */
     protected function isInteractiveOrExplain(InputInterface $input, SymfonyStyle $io, string $guidance): bool
     {
@@ -95,6 +117,9 @@ abstract class BoostBaseCommand extends Command
      * Load and build the project's `boost.php`. Renders the failure to `$io`
      * and returns null on a missing or broken config — callers return
      * `self::FAILURE` on null.
+     *
+     * @internal Not part of the frozen family-CLI surface — returns the
+     * `@api` BoostConfig but the loading flow itself is engine-internal.
      */
     protected function loadConfig(SymfonyStyle $io, string $projectRoot, ?string $configFile = null): ?BoostConfig
     {

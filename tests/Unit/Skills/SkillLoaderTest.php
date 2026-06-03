@@ -181,6 +181,33 @@ it('loads SKILL.blade.php once a renderer claims `blade.php`', function (): void
         ->and($skills[0]->body)->toContain('TestApp');
 });
 
+it('does NOT ship nested reference files as phantom skills; flat + nested SKILL.* both load (0.22.0 #A)', function (): void {
+    // Regression: laravel/mcp ships mcp-development/SKILL.blade.php +
+    // mcp-development/references/app.md. The depth-unbounded Finder shipped a
+    // phantom top-level skill named `app` from the reference file. Correct
+    // scope = top-level `*.<ext>` OR depth-1 `*/SKILL.*` — never deeper.
+    $dir = sys_get_temp_dir() . '/boost-skill-depth-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/mcp-development/references', 0o755, true);
+    file_put_contents($dir . '/mcp-development/SKILL.md', "---\nname: mcp-development\n---\nNested skill body.");
+    file_put_contents($dir . '/mcp-development/references/app.md', "# app reference\nNot a skill.");
+    file_put_contents($dir . '/flat-skill.md', "---\nname: flat-skill\n---\nFlat body.");
+    // A non-SKILL .md sitting directly in a skill subdir is also NOT a skill.
+    file_put_contents($dir . '/mcp-development/notes.md', "# notes\nNot a skill.");
+
+    try {
+        /** @var list<Skill> $skills */
+        $skills = iterator_to_array(loader()->load($dir), false);
+        $names = array_map(fn (Skill $s): string => $s->name, $skills);
+
+        expect($names)->toContain('mcp-development') // nested SKILL.md entry
+            ->toContain('flat-skill')                // top-level flat skill
+            ->not->toContain('app')                  // nested reference — NOT shipped
+            ->and($skills)->toHaveCount(2);
+    } finally {
+        rmTreeSkillLoader($dir);
+    }
+});
+
 it('uses a renderer body VERBATIM — directive/token-like content survives (0.22.0 @api passthrough)', function (): void {
     // Frozen SkillRenderer guarantee a wrapper's BladeRenderer relies on
     // (e.g. @verbatim-wrapped content): boost-core strips the LEADING
@@ -192,7 +219,7 @@ it('uses a renderer body VERBATIM — directive/token-like content survives (0.2
         . "A fenced block:\n```php\n\$x = 1;\n```\n";
 
     $renderer = new class ($body) implements SkillRenderer {
-        public function __construct(private string $body) {}
+        public function __construct(private readonly string $body) {}
 
         /** @return list<string> */
         public function extensions(): array
@@ -292,7 +319,46 @@ it('passes RenderContext to the renderer with pre-parsed frontmatter', function 
     expect($box->ctx)->toBeInstanceOf(RenderContext::class);
     assert($box->ctx instanceof RenderContext);
     expect($box->ctx->frontmatter)->toBeArray()
-        ->and($box->ctx->sourcePath)->toContain('host');
+        ->and($box->ctx->sourcePath)->toContain('host')
+        // projectRoot defaults null when the loader is called without one.
+        ->and($box->ctx->projectRoot)->toBeNull();
+});
+
+it('threads projectRoot into RenderContext when provided (0.22.0 — container-free renderers)', function (): void {
+    $box = new class {
+        public ?RenderContext $ctx = null;
+    };
+
+    $renderer = new class ($box) implements SkillRenderer {
+        public function __construct(private readonly object $box) {}
+
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['md'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            $this->box->ctx = $ctx;
+
+            return $raw;
+        }
+    };
+
+    $dir = sys_get_temp_dir() . '/boost-skill-projectroot-' . bin2hex(random_bytes(8));
+    mkdir($dir, 0o755, true);
+    file_put_contents($dir . '/foo.md', "---\nname: foo\n---\nBody.");
+
+    try {
+        $dispatcher = new SkillRendererDispatcher([$renderer]);
+        iterator_to_array(loader()->load($dir, null, $dispatcher, projectRoot: '/abs/project'), false);
+
+        assert($box->ctx instanceof RenderContext);
+        expect($box->ctx->projectRoot)->toBe('/abs/project');
+    } finally {
+        rmTreeSkillLoader($dir);
+    }
 });
 
 it('post-render frontmatter override beats the filename fallback', function (): void {
@@ -311,8 +377,8 @@ it('post-render frontmatter override beats the filename fallback', function (): 
     };
 
     $fixtureDir = sys_get_temp_dir() . '/boost-skill-loader-rename-' . bin2hex(random_bytes(8));
-    mkdir($fixtureDir . '/anonymous', 0o755, true);
-    file_put_contents($fixtureDir . '/anonymous/skill.md', 'Body.');
+    mkdir($fixtureDir, 0o755, true);
+    file_put_contents($fixtureDir . '/skill.md', 'Body.');
 
     try {
         $dispatcher = new SkillRendererDispatcher([$renderer]);
@@ -341,10 +407,9 @@ it('lenient mode: renderer exception adds to errors-out and continues with sibli
     };
 
     $fixtureDir = sys_get_temp_dir() . '/boost-skill-render-throw-' . bin2hex(random_bytes(8));
-    mkdir($fixtureDir . '/one', 0o755, true);
-    mkdir($fixtureDir . '/two', 0o755, true);
-    file_put_contents($fixtureDir . '/one/a.md', 'A.');
-    file_put_contents($fixtureDir . '/two/b.md', 'B.');
+    mkdir($fixtureDir, 0o755, true);
+    file_put_contents($fixtureDir . '/a.md', 'A.');
+    file_put_contents($fixtureDir . '/b.md', 'B.');
 
     try {
         $dispatcher = new SkillRendererDispatcher([$renderer]);
@@ -375,8 +440,8 @@ it('strict mode: renderer exception throws SkillRenderException', function (): v
     };
 
     $fixtureDir = sys_get_temp_dir() . '/boost-skill-render-strict-' . bin2hex(random_bytes(8));
-    mkdir($fixtureDir . '/one', 0o755, true);
-    file_put_contents($fixtureDir . '/one/a.md', 'A.');
+    mkdir($fixtureDir, 0o755, true);
+    file_put_contents($fixtureDir . '/a.md', 'A.');
 
     putenv('BOOST_RENDER_STRICT=1');
     try {

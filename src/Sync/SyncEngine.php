@@ -231,7 +231,7 @@ final readonly class SyncEngine
 
         /** @var list<Skill> $skills */
         $skills = [];
-        foreach ($this->skillLoader->load($skillsDir, $packageName) as $skill) {
+        foreach ($this->skillLoader->load($skillsDir, $packageName, projectRoot: $packageRoot) as $skill) {
             $skills[] = $skill;
         }
 
@@ -527,8 +527,8 @@ final readonly class SyncEngine
         $renderErrors = [];
 
         return [
-            'skills' => $this->resolveSkills($config, $allowedVendors, false, [], true)['skills'],
-            'guidelines' => $this->resolveGuidelines($config, $allowedVendors, false, [], $renderErrors),
+            'skills' => $this->resolveSkills($projectRoot, $config, $allowedVendors, false, [], true)['skills'],
+            'guidelines' => $this->resolveGuidelines($projectRoot, $config, $allowedVendors, false, [], $renderErrors),
             'commands' => $this->resolveCommands($config),
             'remoteSourceKeys' => array_values($remoteSourceKeys),
             'scannedSkillVendorKeys' => $scannedSkillVendorKeys,
@@ -595,8 +595,8 @@ final readonly class SyncEngine
         /** @var list<string> $skipWarnings */
         $skipWarnings = [];
         try {
-            $skillResolution = $this->resolveSkills($config, $allowedVendors, $force, $injectedVendorSkills, $checkOnly, $skipWarnings);
-            $resolvedGuidelines = $this->resolveGuidelines($config, $allowedVendors, $force, $injectedVendorGuidelines, $guidelineRenderErrors, $hostGuidelineShadows, $skipWarnings);
+            $skillResolution = $this->resolveSkills($projectRoot, $config, $allowedVendors, $force, $injectedVendorSkills, $checkOnly, $skipWarnings);
+            $resolvedGuidelines = $this->resolveGuidelines($projectRoot, $config, $allowedVendors, $force, $injectedVendorGuidelines, $guidelineRenderErrors, $hostGuidelineShadows, $skipWarnings);
         } catch (CollidingSkillsException $collidingSkillsException) {
             return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
         } catch (SkillSourceCollisionException $sourceCollisionException) {
@@ -1264,7 +1264,7 @@ final readonly class SyncEngine
         $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
 
         $hostPath = null;
-        foreach ($this->skillLoader->load($config->skillsPath, null, $dispatcher) as $hostSkill) {
+        foreach ($this->skillLoader->load($config->skillsPath, null, $dispatcher, projectRoot: $projectRoot) as $hostSkill) {
             if ($hostSkill->name === $skillName) {
                 $hostPath = $hostSkill->sourcePath;
 
@@ -1283,7 +1283,7 @@ final readonly class SyncEngine
             }
 
             $vendorSkills = [];
-            foreach ($this->skillLoader->load($vendor->skillsPath, $vendor->name, $dispatcher) as $vendorSkill) {
+            foreach ($this->skillLoader->load($vendor->skillsPath, $vendor->name, $dispatcher, projectRoot: $projectRoot) as $vendorSkill) {
                 $vendorSkills[] = $vendorSkill;
             }
 
@@ -1335,7 +1335,7 @@ final readonly class SyncEngine
         $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
 
         $hostPath = null;
-        foreach ($this->guidelineLoader->load($config->guidelinesPath, null, $dispatcher) as $hostGuideline) {
+        foreach ($this->guidelineLoader->load($config->guidelinesPath, null, $dispatcher, projectRoot: $projectRoot) as $hostGuideline) {
             if ($hostGuideline->name === $guidelineName) {
                 $hostPath = $hostGuideline->sourcePath;
 
@@ -1356,7 +1356,7 @@ final readonly class SyncEngine
             }
 
             $vendorGuidelines = [];
-            foreach ($this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name, $dispatcher) as $vendorGuideline) {
+            foreach ($this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name, $dispatcher, projectRoot: $projectRoot) as $vendorGuideline) {
                 $vendorGuidelines[] = $vendorGuideline;
             }
 
@@ -1387,7 +1387,7 @@ final readonly class SyncEngine
      * @param  list<string>  $skipWarnings  Out-param: SKILL.* files skipped for lack of a registered renderer (surfaced as advisory warnings).
      * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int, remoteErrors: list<string>, hostShadows: list<array{skill: string, shadowedVendor: string}>}  `remoteErrors` carries both per-source remote ingest failures (lenient mode) and per-file render failures. `hostShadows` records host `.ai/skills/<name>` shadowing an allowlisted-vendor skill of the same name.
      */
-    private function resolveSkills(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorSkills = [], bool $checkOnly = false, array &$skipWarnings = []): array
+    private function resolveSkills(string $projectRoot, BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorSkills = [], bool $checkOnly = false, array &$skipWarnings = []): array
     {
         // Per-sync renderer dispatcher — built from the just-loaded config.
         // Cannot live as a ctor field on SyncEngine because BoostConfig is
@@ -1399,7 +1399,7 @@ final readonly class SyncEngine
 
         $hostSkills = [];
         if (is_dir($config->skillsPath)) {
-            foreach ($this->skillLoader->load($config->skillsPath, null, $dispatcher, $renderErrors, $skipWarnings) as $hostSkill) {
+            foreach ($this->skillLoader->load($config->skillsPath, null, $dispatcher, $renderErrors, $skipWarnings, $projectRoot) as $hostSkill) {
                 $hostSkills[] = $hostSkill;
             }
         }
@@ -1419,7 +1419,7 @@ final readonly class SyncEngine
             // iterates the result once and the errors-out reference must
             // be wired through that iteration).
             $loaded = [];
-            foreach ($this->skillLoader->load($vendor->skillsPath, $vendor->name, $dispatcher, $renderErrors, $skipWarnings) as $vendorSkill) {
+            foreach ($this->skillLoader->load($vendor->skillsPath, $vendor->name, $dispatcher, $renderErrors, $skipWarnings, $projectRoot) as $vendorSkill) {
                 $loaded[] = $vendorSkill;
             }
 
@@ -1482,13 +1482,13 @@ final readonly class SyncEngine
      * @param  list<string>  $skipWarnings  Out-param: guideline files skipped for lack of a registered renderer (surfaced as advisory warnings).
      * @return list<Guideline>
      */
-    private function resolveGuidelines(BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorGuidelines = [], array &$renderErrors = [], array &$hostGuidelineShadows = [], array &$skipWarnings = []): array
+    private function resolveGuidelines(string $projectRoot, BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorGuidelines = [], array &$renderErrors = [], array &$hostGuidelineShadows = [], array &$skipWarnings = []): array
     {
         $dispatcher = new SkillRendererDispatcher($config->skillRenderers);
 
         $hostGuidelines = [];
         if (is_dir($config->guidelinesPath)) {
-            foreach ($this->guidelineLoader->load($config->guidelinesPath, null, $dispatcher, $renderErrors, $skipWarnings) as $hostGuideline) {
+            foreach ($this->guidelineLoader->load($config->guidelinesPath, null, $dispatcher, $renderErrors, $skipWarnings, $projectRoot) as $hostGuideline) {
                 $hostGuidelines[] = $hostGuideline;
             }
         }
@@ -1498,7 +1498,7 @@ final readonly class SyncEngine
         foreach ($allowedVendors as $vendor) {
             if ($vendor->guidelinesPath !== null) {
                 $loaded = [];
-                foreach ($this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name, $dispatcher, $renderErrors, $skipWarnings) as $vendorGuideline) {
+                foreach ($this->guidelineLoader->load($vendor->guidelinesPath, $vendor->name, $dispatcher, $renderErrors, $skipWarnings, $projectRoot) as $vendorGuideline) {
                     $loaded[] = $vendorGuideline;
                 }
 

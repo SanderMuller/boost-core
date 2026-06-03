@@ -8,8 +8,8 @@ use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
-use SplFileInfo;
 use Symfony\Component\Finder\Finder;
+use Symfony\Component\Finder\SplFileInfo;
 use Throwable;
 
 /**
@@ -53,7 +53,7 @@ final readonly class SkillLoader
      *   no registered renderer claims its extension (silent-capability-loss guard).
      * @return iterable<Skill>
      */
-    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = [], array &$warnings = []): iterable
+    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = [], array &$warnings = [], ?string $projectRoot = null): iterable
     {
         if (! is_dir($directory)) {
             return;
@@ -68,6 +68,10 @@ final readonly class SkillLoader
             ->files()
             ->in($directory)
             ->name($dispatcher->fileGlobPatterns())
+            // Top-level `*.<ext>` OR depth-1 `*/SKILL.*` only — never descend
+            // into a skill's `references/`/`examples/` (which would otherwise
+            // ship nested asset files as phantom top-level skills).
+            ->filter(static fn (SplFileInfo $file): bool => SkillSourceScope::isSkillSource($file))
             ->ignoreDotFiles(true)
             ->sortByName();
 
@@ -92,6 +96,7 @@ final readonly class SkillLoader
                 sourcePath: $this->resolvedPath($file),
                 sourceVendor: $sourceVendor,
                 frontmatter: $preParsed->frontmatter,
+                projectRoot: $projectRoot,
             );
 
             try {

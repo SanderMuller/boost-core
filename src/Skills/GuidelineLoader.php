@@ -48,7 +48,7 @@ final readonly class GuidelineLoader
      *   registered renderer claims its extension (silent-capability-loss guard).
      * @return iterable<Guideline>
      */
-    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = [], array &$warnings = []): iterable
+    public function load(string $directory, ?string $sourceVendor = null, ?SkillRendererDispatcher $renderers = null, array &$errors = [], array &$warnings = [], ?string $projectRoot = null): iterable
     {
         if (! is_dir($directory)) {
             return;
@@ -79,6 +79,7 @@ final readonly class GuidelineLoader
                 sourcePath: $this->resolvedPath($file),
                 sourceVendor: $sourceVendor,
                 frontmatter: $preParsed->frontmatter,
+                projectRoot: $projectRoot,
             );
 
             try {

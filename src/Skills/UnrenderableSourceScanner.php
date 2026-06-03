@@ -2,12 +2,14 @@
 
 namespace SanderMuller\BoostCore\Skills;
 
+use Closure;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Skills\Rendering\MatchedRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use Symfony\Component\Finder\Finder;
+use Symfony\Component\Finder\SplFileInfo;
 
 /**
  * Finds source files a loader will DROP because no registered renderer claims
@@ -18,8 +20,9 @@ use Symfony\Component\Finder\Finder;
  * classify identically. Read-only; returns advisory warning strings.
  *
  * Scope differs by source kind:
- *  - Skills are `<name>/SKILL.md` by convention, so skill scanning is restricted
- *    to `SKILL.*` files — asset files inside a skill dir never false-trigger.
+ *  - Skills are a top-level `<name>.md` OR a nested `<name>/SKILL.*`
+ *    ({@see SkillSourceScope}), so skill scanning is restricted to that scope —
+ *    a reference/asset file inside a skill dir never false-triggers.
  *  - Guidelines have no filename convention, so guideline scanning warns on any
  *    file whose extension no renderer claims AND which is not a recognized binary
  *    or data ASSET (images, archives, JSON/YAML/etc.). This catches every
@@ -81,7 +84,7 @@ final readonly class UnrenderableSourceScanner
      */
     public function guidelineSkips(string $directory, SkillRendererDispatcher $dispatcher): array
     {
-        return $this->scan($directory, $dispatcher, null, 'guideline', '.md');
+        return $this->scan($directory, $dispatcher, 'guideline', '.md');
     }
 
     /**
@@ -89,13 +92,18 @@ final readonly class UnrenderableSourceScanner
      */
     public function skillSkips(string $directory, SkillRendererDispatcher $dispatcher): array
     {
-        return $this->scan($directory, $dispatcher, 'SKILL.*', 'skill', 'SKILL.md');
+        // Scope identically to SkillLoader (top-level `*.<ext>` OR depth-1
+        // `*/SKILL.*`) so doctor reports exactly what sync would drop — a
+        // reference file inside a skill dir is never flagged, a flat or nested
+        // skill source always is.
+        return $this->scan($directory, $dispatcher, 'skill', 'SKILL.md', SkillSourceScope::isSkillSource(...));
     }
 
     /**
+     * @param  Closure(SplFileInfo): bool|null  $filter
      * @return list<string>
      */
-    private function scan(string $directory, SkillRendererDispatcher $dispatcher, ?string $nameGlob, string $label, string $renameHint): array
+    private function scan(string $directory, SkillRendererDispatcher $dispatcher, string $label, string $renameHint, ?Closure $filter = null): array
     {
         if (! is_dir($directory)) {
             return [];
@@ -107,8 +115,8 @@ final readonly class UnrenderableSourceScanner
             ->ignoreDotFiles(true)
             ->sortByName();
 
-        if ($nameGlob !== null) {
-            $finder->name($nameGlob);
+        if ($filter instanceof Closure) {
+            $finder->filter($filter);
         }
 
         $warnings = [];

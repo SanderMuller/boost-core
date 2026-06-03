@@ -14,13 +14,13 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 final class CaseRenameEmitter implements FileEmitter
 {
-    public function emit(SyncContext $ctx): EmittedFile
+    public function emit(SyncContext $ctx): iterable
     {
         $renamed = is_file($ctx->projectRoot . '/.rename-marker');
 
-        return new EmittedFile(
+        return [new EmittedFile(
             relativePath: $renamed ? '.dummy/output.txt' : '.Dummy/output.txt',
             content: "Case-rename emitter output.\n",
-        );
+        )];
     }
 }

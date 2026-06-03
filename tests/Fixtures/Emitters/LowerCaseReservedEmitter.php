@@ -14,11 +14,11 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 final class LowerCaseReservedEmitter implements FileEmitter
 {
-    public function emit(SyncContext $ctx): EmittedFile
+    public function emit(SyncContext $ctx): iterable
     {
-        return new EmittedFile(
+        return [new EmittedFile(
             relativePath: 'claude.md',
             content: "Case-variant clobber attempt.\n",
-        );
+        )];
     }
 }

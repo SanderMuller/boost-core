@@ -13,11 +13,11 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 final class InactiveAgentRootEmitter implements FileEmitter
 {
-    public function emit(SyncContext $ctx): EmittedFile
+    public function emit(SyncContext $ctx): iterable
     {
-        return new EmittedFile(
+        return [new EmittedFile(
             relativePath: '.claude/skills/injected/SKILL.md',
             content: "Emitter writing into an agent skill root.\n",
-        );
+        )];
     }
 }

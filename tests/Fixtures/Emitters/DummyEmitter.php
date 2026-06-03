@@ -11,11 +11,11 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 final class DummyEmitter implements FileEmitter
 {
-    public function emit(SyncContext $ctx): EmittedFile
+    public function emit(SyncContext $ctx): iterable
     {
-        return new EmittedFile(
+        return [new EmittedFile(
             relativePath: '.dummy/output.txt',
             content: "Dummy emitter output for project root: {$ctx->projectRoot}\n",
-        );
+        )];
     }
 }

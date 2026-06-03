@@ -1566,7 +1566,9 @@ final readonly class SyncEngine
                 continue;
             }
 
-            $results[] = $this->runOneEmitter($emitter, $context, $projectRoot, $checkOnly, $claimedPaths, $priorManifest, $reservedPaths, $emitterDiagnostics, $ownableEmitterPaths);
+            foreach ($this->runOneEmitter($emitter, $context, $projectRoot, $checkOnly, $claimedPaths, $priorManifest, $reservedPaths, $emitterDiagnostics, $ownableEmitterPaths) as $result) {
+                $results[] = $result;
+            }
         }
 
         return $results;
@@ -1577,6 +1579,7 @@ final readonly class SyncEngine
      * @param  array{exact: array<string, true>, prefixes: list<string>}  $reservedPaths
      * @param  list<Diagnostic>  $emitterDiagnostics
      * @param  array<string, true>  $ownableEmitterPaths
+     * @return list<EmitterResult>  one per emitted file, or a single skip/error result
      */
     private function runOneEmitter(
         DiscoveredEmitter $emitter,
@@ -1588,28 +1591,67 @@ final readonly class SyncEngine
         array $reservedPaths,
         array &$emitterDiagnostics,
         array &$ownableEmitterPaths,
-    ): EmitterResult {
+    ): array {
         try {
             $emitted = $emitter->emitter->emit($context);
         } catch (Throwable $throwable) {
-            return new EmitterResult(
+            return [new EmitterResult(
                 fqcn: $emitter->fqcn,
                 vendor: $emitter->vendor,
                 action: EmitterAction::ERRORED,
                 relativePath: null,
                 reason: $throwable->getMessage(),
-            );
+            )];
         }
 
-        if (! $emitted instanceof EmittedFile) {
-            return new EmitterResult(
+        // emit() returns iterable<EmittedFile> — zero (skip), one, or many.
+        $files = [];
+        foreach ($emitted as $file) {
+            if ($file instanceof EmittedFile) {
+                $files[] = $file;
+            }
+        }
+
+        if ($files === []) {
+            return [new EmitterResult(
                 fqcn: $emitter->fqcn,
                 vendor: $emitter->vendor,
                 action: EmitterAction::SKIPPED,
                 relativePath: null,
-                reason: 'emit() returned null.',
-            );
+                reason: 'emit() returned no files.',
+            )];
         }
+
+        $results = [];
+        foreach ($files as $file) {
+            $results[] = $this->processEmittedFile($file, $emitter, $projectRoot, $checkOnly, $claimedPaths, $priorManifest, $reservedPaths, $emitterDiagnostics, $ownableEmitterPaths);
+        }
+
+        return $results;
+    }
+
+    /**
+     * Validate + write ONE emitted file, returning its outcome. Path
+     * canonicalization, the reserved-path denylist, cross-emitter collision
+     * tracking, the write, and the first-adoption ownership gate all apply
+     * per file, so an emitter returning N files yields N {@see EmitterResult}s.
+     *
+     * @param  array<string, string>  $claimedPaths
+     * @param  array{exact: array<string, true>, prefixes: list<string>}  $reservedPaths
+     * @param  list<Diagnostic>  $emitterDiagnostics
+     * @param  array<string, true>  $ownableEmitterPaths
+     */
+    private function processEmittedFile(
+        EmittedFile $emitted,
+        DiscoveredEmitter $emitter,
+        string $projectRoot,
+        bool $checkOnly,
+        array &$claimedPaths,
+        SyncManifest $priorManifest,
+        array $reservedPaths,
+        array &$emitterDiagnostics,
+        array &$ownableEmitterPaths,
+    ): EmitterResult {
 
         // Canonicalize the emitter path ONCE before every downstream use —
         // reserved-path check, collision tracking, manifest

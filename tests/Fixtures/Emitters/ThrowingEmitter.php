@@ -4,7 +4,6 @@ namespace SanderMuller\BoostCore\Tests\Fixtures\Emitters;
 
 use RuntimeException;
 use SanderMuller\BoostCore\Contracts\FileEmitter;
-use SanderMuller\BoostCore\Sync\EmittedFile;
 use SanderMuller\BoostCore\Sync\SyncContext;
 
 /**
@@ -12,7 +11,7 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 final class ThrowingEmitter implements FileEmitter
 {
-    public function emit(SyncContext $ctx): ?EmittedFile
+    public function emit(SyncContext $ctx): iterable
     {
         throw new RuntimeException('Deliberate failure from ThrowingEmitter.');
     }

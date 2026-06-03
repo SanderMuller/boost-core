@@ -17,7 +17,9 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  *
  * Contract:
  * - Called exactly once per sync, after vendor allowlist filtering.
- * - Return null to skip — no separate guard method (eliminates TOCTOU).
+ * - Returns the files to emit — zero (an empty iterable to skip), one, or many.
+ *   No separate guard method (eliminates TOCTOU). Each {@see EmittedFile} is
+ *   reported and written independently.
  * - Throwing is recorded as `errored` in the SyncResult; sync continues
  *   with remaining emitters and standard fan-out.
  * - Parameterless constructors only. Anything more is deferred to a
@@ -27,5 +29,8 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 interface FileEmitter
 {
-    public function emit(SyncContext $ctx): ?EmittedFile;
+    /**
+     * @return iterable<EmittedFile>  zero files (skip), one, or many
+     */
+    public function emit(SyncContext $ctx): iterable;
 }

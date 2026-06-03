@@ -2,6 +2,28 @@
 
 Breaking changes per major/minor bump.
 
+## 0.20 → 0.21
+
+### `FileEmitter::emit()` now returns `iterable<EmittedFile>` (breaking)
+
+A `FileEmitter` can now emit **more than one file** per sync. The return type changed from `?EmittedFile` to `iterable<EmittedFile>` (return an empty iterable to skip):
+
+```php
+// before
+public function emit(SyncContext $ctx): ?EmittedFile
+{
+    return new EmittedFile('.mcp.json', $json);   // or null to skip
+}
+
+// after
+public function emit(SyncContext $ctx): iterable
+{
+    return [new EmittedFile('.mcp.json', $json)]; // or [] to skip; or [$a, $b, …]
+}
+```
+
+Each emitted file is validated, written, and reported independently (one `EmitterResult` per file). This is a pre-1.0 shape change so the contract can be frozen at 1.0 without blocking multi-file emitters.
+
 ## 0.19 → 0.20
 
 ### `withTags()` now takes an array (breaking)

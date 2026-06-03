@@ -13,11 +13,11 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 final class DotAliasEmitter implements FileEmitter
 {
-    public function emit(SyncContext $ctx): EmittedFile
+    public function emit(SyncContext $ctx): iterable
     {
-        return new EmittedFile(
+        return [new EmittedFile(
             relativePath: './.dummy/output.txt',
             content: "Dot-aliased emitter output.\n",
-        );
+        )];
     }
 }

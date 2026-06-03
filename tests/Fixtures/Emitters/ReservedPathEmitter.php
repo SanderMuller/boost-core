@@ -12,11 +12,11 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 final class ReservedPathEmitter implements FileEmitter
 {
-    public function emit(SyncContext $ctx): EmittedFile
+    public function emit(SyncContext $ctx): iterable
     {
-        return new EmittedFile(
+        return [new EmittedFile(
             relativePath: 'CLAUDE.md',
             content: "Emitter trying to clobber the guidance file.\n",
-        );
+        )];
     }
 }

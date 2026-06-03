@@ -13,6 +13,7 @@ use SanderMuller\BoostCore\Tests\Fixtures\Emitters\DotAliasReservedEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\DummyEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\InactiveAgentRootEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\LowerCaseReservedEmitter;
+use SanderMuller\BoostCore\Tests\Fixtures\Emitters\MultiFileEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\ReservedPathEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\SkippingEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\ThrowingEmitter;
@@ -99,6 +100,39 @@ it('runs a discovered emitter and writes its file', function (): void {
             ->toBe('test/dummy-pkg')
             ->and(file_exists($root . '/.dummy/output.txt'))
             ->toBeTrue();
+    } finally {
+        rmTreeEmit($root);
+    }
+});
+
+it('writes every file when an emitter returns multiple (0.21.0 iterable contract)', function (): void {
+    $root = makeEmitterProject();
+    try {
+        $packages = fakeVendorWithEmitter(
+            'test/multi-pkg',
+            MultiFileEmitter::class,
+            $root . '/vendor/test/multi-pkg',
+        );
+
+        writeBoostPhpForEmitter($root, 'test/multi-pkg');
+
+        $result = (new SyncEngine([], installedPackages: $packages))->sync($root);
+
+        // One EmitterResult per emitted file; both written.
+        $actions = [];
+        $paths = [];
+        foreach ($result->emitters as $emitterResult) {
+            $actions[] = $emitterResult->action;
+            $paths[] = $emitterResult->relativePath;
+        }
+
+        sort($paths);
+
+        expect($result->emitters)->toHaveCount(2)
+            ->and($actions)->each->toBe(EmitterAction::WROTE)
+            ->and($paths)->toBe(['.multi/a.txt', '.multi/b.txt'])
+            ->and((string) file_get_contents($root . '/.multi/a.txt'))->toBe("alpha\n")
+            ->and((string) file_get_contents($root . '/.multi/b.txt'))->toBe("beta\n");
     } finally {
         rmTreeEmit($root);
     }

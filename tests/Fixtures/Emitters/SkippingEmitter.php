@@ -3,7 +3,6 @@
 namespace SanderMuller\BoostCore\Tests\Fixtures\Emitters;
 
 use SanderMuller\BoostCore\Contracts\FileEmitter;
-use SanderMuller\BoostCore\Sync\EmittedFile;
 use SanderMuller\BoostCore\Sync\SyncContext;
 
 /**
@@ -11,8 +10,8 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  */
 final class SkippingEmitter implements FileEmitter
 {
-    public function emit(SyncContext $ctx): ?EmittedFile
+    public function emit(SyncContext $ctx): iterable
     {
-        return null;
+        return [];
     }
 }

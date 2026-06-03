@@ -1592,8 +1592,17 @@ final readonly class SyncEngine
         array &$emitterDiagnostics,
         array &$ownableEmitterPaths,
     ): array {
+        // emit() returns iterable<EmittedFile> — zero (skip), one, or many. The
+        // iteration is INSIDE the try: a generator emit() body runs lazily, so an
+        // exception thrown mid-yield surfaces here (not at the call), and must
+        // still be recorded as `errored` rather than aborting the whole sync.
         try {
-            $emitted = $emitter->emitter->emit($context);
+            $files = [];
+            foreach ($emitter->emitter->emit($context) as $file) {
+                if ($file instanceof EmittedFile) {
+                    $files[] = $file;
+                }
+            }
         } catch (Throwable $throwable) {
             return [new EmitterResult(
                 fqcn: $emitter->fqcn,
@@ -1602,14 +1611,6 @@ final readonly class SyncEngine
                 relativePath: null,
                 reason: $throwable->getMessage(),
             )];
-        }
-
-        // emit() returns iterable<EmittedFile> — zero (skip), one, or many.
-        $files = [];
-        foreach ($emitted as $file) {
-            if ($file instanceof EmittedFile) {
-                $files[] = $file;
-            }
         }
 
         if ($files === []) {

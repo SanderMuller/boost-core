@@ -18,10 +18,13 @@ use SanderMuller\BoostCore\Sync\SyncContext;
  * Contract:
  * - Called exactly once per sync, after vendor allowlist filtering.
  * - Returns the files to emit — zero (an empty iterable to skip), one, or many.
- *   No separate guard method (eliminates TOCTOU). Each {@see EmittedFile} is
- *   reported and written independently.
- * - Throwing is recorded as `errored` in the SyncResult; sync continues
- *   with remaining emitters and standard fan-out.
+ *   No separate guard method (eliminates TOCTOU). Each {@see EmittedFile} from a
+ *   SUCCESSFUL emit is validated + written independently (one outcome per file).
+ * - Throwing is recorded as `errored` and sync continues with the remaining
+ *   emitters. Emit is ALL-OR-NOTHING on failure: if a generator `emit()` throws
+ *   after yielding some files, NONE of its files are written — a crashed emitter
+ *   never half-applies a partial set. Return an array (not a throwing generator)
+ *   if you want already-computed files to land regardless of a later problem.
  * - Parameterless constructors only. Anything more is deferred to a
  *   factory pattern when emitter #2 demands it.
  * - Identity is the fully-qualified class name (FQCN). Used in JSON

@@ -31,6 +31,21 @@ final class OrphanReaper
         $preserved = [];
         $hasLiveOutput = false;
 
+        // An emitter can now emit MANY files, so one FQCN may have both a live
+        // (WROTE/UNCHANGED) result and a DISABLED/ERRORED one in the same run.
+        // Pre-compute which FQCNs produced live output: a partially-successful
+        // emitter is alive, so its dormant files stay reapable — only a FULLY
+        // down emitter (no live output) preserves its prior files.
+        $liveFqcns = [];
+        foreach ($emitterResults as $emitterResult) {
+            if (
+                $emitterResult->relativePath !== null
+                && in_array($emitterResult->action, [EmitterAction::WROTE, EmitterAction::UNCHANGED], true)
+            ) {
+                $liveFqcns[$emitterResult->fqcn] = true;
+            }
+        }
+
         foreach ($emitterResults as $emitterResult) {
             if (
                 $emitterResult->relativePath !== null
@@ -39,14 +54,14 @@ final class OrphanReaper
                 $intended[$emitterResult->relativePath] = true;
             }
 
-            if (
-                $emitterResult->relativePath !== null
-                && in_array($emitterResult->action, [EmitterAction::WROTE, EmitterAction::UNCHANGED], true)
-            ) {
+            if (isset($liveFqcns[$emitterResult->fqcn])) {
                 $hasLiveOutput = true;
             }
 
-            if (in_array($emitterResult->action, [EmitterAction::DISABLED, EmitterAction::ERRORED], true)) {
+            if (
+                in_array($emitterResult->action, [EmitterAction::DISABLED, EmitterAction::ERRORED], true)
+                && ! isset($liveFqcns[$emitterResult->fqcn])
+            ) {
                 $preserved[$emitterResult->fqcn] = true;
             }
         }

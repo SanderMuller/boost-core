@@ -11,6 +11,7 @@ use SanderMuller\BoostCore\Tests\Fixtures\Emitters\CaseRenameEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\DotAliasEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\DotAliasReservedEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\DummyEmitter;
+use SanderMuller\BoostCore\Tests\Fixtures\Emitters\GeneratorThrowingEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\InactiveAgentRootEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\LowerCaseReservedEmitter;
 use SanderMuller\BoostCore\Tests\Fixtures\Emitters\MultiFileEmitter;
@@ -133,6 +134,30 @@ it('writes every file when an emitter returns multiple (0.21.0 iterable contract
             ->and($paths)->toBe(['.multi/a.txt', '.multi/b.txt'])
             ->and((string) file_get_contents($root . '/.multi/a.txt'))->toBe("alpha\n")
             ->and((string) file_get_contents($root . '/.multi/b.txt'))->toBe("beta\n");
+    } finally {
+        rmTreeEmit($root);
+    }
+});
+
+it('records errored (not abort) when a generator emit() throws mid-iteration', function (): void {
+    $root = makeEmitterProject();
+    try {
+        $packages = fakeVendorWithEmitter(
+            'test/gen-throw-pkg',
+            GeneratorThrowingEmitter::class,
+            $root . '/vendor/test/gen-throw-pkg',
+        );
+
+        writeBoostPhpForEmitter($root, 'test/gen-throw-pkg');
+
+        // Must not abort the sync — the lazy throw is caught + recorded.
+        $result = (new SyncEngine([], installedPackages: $packages))->sync($root);
+
+        expect($result->emitters)->toHaveCount(1)
+            ->and($result->emitters[0]->action)->toBe(EmitterAction::ERRORED)
+            ->and($result->emitters[0]->reason)->toContain('mid-generator')
+            // The partial first yield is discarded — a failed emitter writes nothing.
+            ->and(file_exists($root . '/.gen/first.txt'))->toBeFalse();
     } finally {
         rmTreeEmit($root);
     }

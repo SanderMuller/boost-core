@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Commands;
 
 use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\ConventionsPass;
 use SanderMuller\BoostCore\Conventions\ConventionsSchema;
 use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
@@ -90,14 +91,24 @@ final class ValidateCommand extends BoostBaseCommand
             return $this->render($io, $output, [...$discoveryDiagnostics, ...$leakDiagnostics], $json, $strict, $verboseInfo);
         }
 
-        /** @var list<Diagnostic> $diagnostics */
-        $diagnostics = $discoveryDiagnostics;
+        // Schema-version handshake enforcement (spec §3.9), identical to the sync
+        // path (ConventionsPass::build): an out-of-range vendor is dropped + gets an
+        // ERROR diagnostic, so `validate --strict` fails on a host/vendor
+        // schema-version mismatch. Seed = the host's effective version.
+        $seed = (new ConventionsBlockEmitter())->scaffoldSeed($sources);
+        ['applied' => $applied, 'diagnostics' => $versionDiagnostics] = ConventionsSchema::enforceSchemaVersion($sources, $seed);
 
-        // Source of truth is BoostConfig::$conventions, not CLAUDE.md.
-        $schema = new ConventionsSchema($sources);
+        /** @var list<Diagnostic> $diagnostics */
+        $diagnostics = [...$discoveryDiagnostics, ...$versionDiagnostics];
+
+        // Source of truth is BoostConfig::$conventions, not CLAUDE.md. Validate
+        // over the IN-RANGE subset only (matches what sync would apply).
+        if ($applied !== []) {
+            $diagnostics = [...$diagnostics, ...(new ConventionsSchema($applied))->validate($config->conventions)];
+        }
+
         $diagnostics = [
             ...$diagnostics,
-            ...$schema->validate($config->conventions),
             ...$leakDiagnostics,
             ...$this->legacyRefDiagnostics($projectRoot, $config, $packages),
         ];

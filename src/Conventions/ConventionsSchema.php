@@ -35,6 +35,56 @@ final readonly class ConventionsSchema
     public function __construct(public array $sources) {}
 
     /**
+     * Schema-version handshake enforcement (spec §3.9). Partition sources by
+     * whether the effective host schema-version satisfies each vendor's declared
+     * `metadata.schema-required` range:
+     *  - in-range sources are returned in `applied` (composed + validated normally);
+     *  - an out-of-range source is DROPPED (its slots never compose, so its tokens
+     *    resolve to render errors — its conventions are NOT applied) and gets an
+     *    ERROR-level diagnostic naming the vendor + range + host version.
+     *
+     * A `null`/`*`/empty range always satisfies, so a vendor without a
+     * `schema-required` is never enforced out (the no-false-trip common case).
+     *
+     * The single enforcement authority, shared by {@see ConventionsPass::build()}
+     * (the sync path) and `boost validate` so the two classify identically.
+     *
+     * @param  list<VendorSchemaSource>  $sources
+     * @return array{applied: list<VendorSchemaSource>, diagnostics: list<Diagnostic>}
+     */
+    public static function enforceSchemaVersion(array $sources, int $hostVersion, ?VersionMatcher $matcher = null): array
+    {
+        $matcher ??= new VersionMatcher();
+
+        /** @var list<VendorSchemaSource> $applied */
+        $applied = [];
+        /** @var list<Diagnostic> $diagnostics */
+        $diagnostics = [];
+
+        foreach ($sources as $source) {
+            $required = $source->schemaRequired();
+            if ($matcher->satisfies($hostVersion, $required)) {
+                $applied[] = $source;
+
+                continue;
+            }
+
+            $diagnostics[] = Diagnostic::error(
+                null,
+                sprintf(
+                    'conventions schema-version mismatch: the host Project Conventions block is at schema-version %d, but vendor `%s` requires "%s" — this vendor\'s conventions are NOT applied (its tokens will not resolve). Align the host schema-version or the vendor allowlist.',
+                    $hostVersion,
+                    $source->vendorName,
+                    (string) $required,
+                ),
+                $source->vendorName,
+            );
+        }
+
+        return ['applied' => $applied, 'diagnostics' => $diagnostics];
+    }
+
+    /**
      * @return array{'$schema': string, type: string, properties: array<string, array<mixed, mixed>>, required: list<string>, additionalProperties: bool}
      *
      * @throws SlotTypeMismatchException

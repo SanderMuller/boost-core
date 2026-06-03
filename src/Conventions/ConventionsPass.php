@@ -48,10 +48,25 @@ final readonly class ConventionsPass
         $composed = [];
         $section = null;
         if ($sources !== []) {
-            $schema = new ConventionsSchema($sources);
-            $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
-            $composed = $schema->compose();
+            // Effective host schema-version = the seed the host block carries/renders
+            // (max of every source's minRequired). Computed from the FULL source set
+            // so an out-of-range low-major vendor can't lower it and cascade.
             $seed = (new ConventionsBlockEmitter())->scaffoldSeed($sources);
+
+            // Schema-version handshake (spec §3.9): drop any vendor whose declared
+            // range excludes the host version — its slots never compose (tokens
+            // resolve to errors) + an ERROR diagnostic gates validate --strict and
+            // sync --check. Sync itself stays lenient (the diagnostic is rendered,
+            // not fatal). Null/'*' ranges always pass (no false-trip).
+            ['applied' => $applied, 'diagnostics' => $versionDiagnostics] = ConventionsSchema::enforceSchemaVersion($sources, $seed);
+            $diagnostics = [...$diagnostics, ...$versionDiagnostics];
+
+            if ($applied !== []) {
+                $schema = new ConventionsSchema($applied);
+                $diagnostics = [...$diagnostics, ...$schema->validate($config->conventions)];
+                $composed = $schema->compose();
+            }
+
             $section = (new GuidanceComposer())->renderConventionsSection($config->conventions, $seed);
         }
 

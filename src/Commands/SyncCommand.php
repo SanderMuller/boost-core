@@ -181,6 +181,17 @@ final class SyncCommand extends BoostBaseCommand
         return self::SUCCESS;
     }
 
+    private function hasErrorDiagnostic(SyncResult $result): bool
+    {
+        foreach ($result->diagnostics as $diagnostic) {
+            if ($diagnostic->isError()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private function report(SymfonyStyle $io, SyncResult $result, bool $checkOnly): int
     {
         // Render diagnostics BEFORE the error short-circuit. Render-fail
@@ -194,6 +205,16 @@ final class SyncCommand extends BoostBaseCommand
             foreach ($result->errors as $error) {
                 $io->error($error);
             }
+
+            return self::FAILURE;
+        }
+
+        // --check gates on an error-level conventions diagnostic (e.g. a
+        // schema-version handshake mismatch) in addition to drift. Plain sync
+        // stays lenient (the diagnostic is rendered above, but exit stays 0 so a
+        // composer install isn't broken) — the gate is the CI surface.
+        if ($checkOnly && $this->hasErrorDiagnostic($result)) {
+            $io->error('Conventions error: a vendor\'s required schema-version is not satisfied by the host — its conventions were NOT applied (see the diagnostics above). Align the host schema-version or the vendor allowlist.');
 
             return self::FAILURE;
         }

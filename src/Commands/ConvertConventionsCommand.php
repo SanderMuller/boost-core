@@ -33,6 +33,10 @@ final class ConvertConventionsCommand extends BoostBaseCommand
     {
         $this
             ->setName('boost:convert-conventions')
+            // Legacy one-shot for the pre-0.12 marker → boost.php format. Hidden
+            // from the 1.0 command list (still runnable for stragglers) — not part
+            // of the committed CLI contract.
+            ->setHidden(true)
             ->setDescription("Migrate Project Conventions YAML from CLAUDE.md into boost.php's ->withConventions([...]) chain.")
             ->addWorkingDirOption()
             ->addConfigOption()

@@ -26,6 +26,11 @@ use Throwable;
 /**
  * Aggregated diagnostics for a boost-core install.
  *
+ * ADVISORY ONLY: exits 0 even when it surfaces drift, leaked tokens, shadows, or
+ * stale paths (non-zero only on a config-load failure). It's a human-facing
+ * report, not a CI gate — use `boost sync --check` or `boost validate --strict`
+ * to fail a build on those conditions.
+ *
  * @internal
  */
 final class DoctorCommand extends BoostBaseCommand

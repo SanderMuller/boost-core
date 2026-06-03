@@ -75,6 +75,23 @@ abstract class BoostBaseCommand extends Command
     }
 
     /**
+     * Guard for commands whose flow needs an interactive terminal (the
+     * `multiselect` pickers). Returns true when interactive; otherwise prints
+     * `$guidance` and returns false so the caller can fail fast with a clear
+     * message instead of hanging on a prompt in CI / under `--no-interaction`.
+     */
+    protected function isInteractiveOrExplain(InputInterface $input, SymfonyStyle $io, string $guidance): bool
+    {
+        if ($input->isInteractive()) {
+            return true;
+        }
+
+        $io->error($guidance);
+
+        return false;
+    }
+
+    /**
      * Load and build the project's `boost.php`. Renders the failure to `$io`
      * and returns null on a missing or broken config — callers return
      * `self::FAILURE` on null.

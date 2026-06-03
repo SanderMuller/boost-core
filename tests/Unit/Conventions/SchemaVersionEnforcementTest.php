@@ -71,6 +71,21 @@ it('keeps the highest-major vendor, drops a lower-major one (seed direction)', f
         ->and($result['diagnostics'][0]->vendor)->toBe('acme/v1');
 });
 
+it('a host pinned LOW drops a higher-major vendor, keeps the matching one (codex P2)', function (): void {
+    // The pinned-schema-version scenario: ConventionsPass feeds the effective
+    // host version (an operator `withConventions(['schema-version' => 1])` pin
+    // overrides the seed). At host=1, a ^2 vendor is out of range; ^1 stays.
+    $result = ConventionsSchema::enforceSchemaVersion(
+        [schemaSource('acme/v1', '^1'), schemaSource('acme/v2', '^2')],
+        hostVersion: 1,
+    );
+
+    $appliedVendors = array_map(static fn (VendorSchemaSource $s): string => $s->vendorName, $result['applied']);
+    expect($appliedVendors)->toBe(['acme/v1'])
+        ->and($result['diagnostics'])->toHaveCount(1)
+        ->and($result['diagnostics'][0]->vendor)->toBe('acme/v2');
+});
+
 it('emits error-level diagnostics (gates validate --strict / sync --check)', function (): void {
     $result = ConventionsSchema::enforceSchemaVersion([schemaSource('acme/old', '^1'), schemaSource('acme/new', '^2')], hostVersion: 2);
 

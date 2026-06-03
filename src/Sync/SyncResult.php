@@ -21,7 +21,7 @@ final readonly class SyncResult
 {
     /**
      * @param  list<WrittenFile>  $writes  Files written by agent fan-out (skills + guidelines).
-     * @param  list<EmitterResult>  $emitters  Per-emitter outcomes (FileEmitter plugin layer).
+     * @param  list<EmitterResult>  $emitters  Per-emitted-FILE outcomes from the FileEmitter plugin layer — since 0.21.0 emit() returns iterable, so a multi-file emitter contributes several (one per file); a skipped/disabled/errored emitter contributes one. `countEmittersByAction()` therefore counts files, not distinct emitters.
      * @param  list<string>  $errors  Top-level errors that aborted parts of the run.
      * @param  int  $tagFilteredSkillsCount  Count of vendor skills dropped by the tag filter
      *         WHEN the consumer's `withTags()` is empty. Zero when `withTags()` is declared

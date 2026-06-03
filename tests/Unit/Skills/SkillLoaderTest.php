@@ -181,6 +181,50 @@ it('loads SKILL.blade.php once a renderer claims `blade.php`', function (): void
         ->and($skills[0]->body)->toContain('TestApp');
 });
 
+it('uses a renderer body VERBATIM — directive/token-like content survives (0.22.0 @api passthrough)', function (): void {
+    // Frozen SkillRenderer guarantee a wrapper's BladeRenderer relies on
+    // (e.g. @verbatim-wrapped content): boost-core strips the LEADING
+    // frontmatter and uses the rest of render()'s output byte-for-byte — it
+    // never re-processes directive-like, token-like, or fence-like body text.
+    $body = "Keep @verbatim {{ \$notCompiled }} @endverbatim intact.\n"
+        . "A token-looking literal: <!--boost:conv path=\"x\" mode=\"inline\"-->\n"
+        . "A legacy ref literal: \$.testing.runner\n"
+        . "A fenced block:\n```php\n\$x = 1;\n```\n";
+
+    $renderer = new class ($body) implements SkillRenderer {
+        public function __construct(private string $body) {}
+
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['blade.php'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            // A renderer that regenerates frontmatter + emits the body unchanged.
+            return "---\nname: verbatim-skill\n---\n" . $this->body;
+        }
+    };
+
+    $fixtureDir = sys_get_temp_dir() . '/boost-skill-loader-verbatim-' . bin2hex(random_bytes(8));
+    mkdir($fixtureDir . '/verbatim-skill', 0o755, true);
+    file_put_contents($fixtureDir . '/verbatim-skill/SKILL.blade.php', "ignored source\n");
+
+    try {
+        $dispatcher = new SkillRendererDispatcher([$renderer, new PassthroughRenderer()]);
+        /** @var list<Skill> $skills */
+        $skills = iterator_to_array(loader()->load($fixtureDir, null, $dispatcher), false);
+
+        expect($skills)->toHaveCount(1)
+            ->and($skills[0]->name)->toBe('verbatim-skill')
+            // Body is byte-identical to what the renderer emitted (frontmatter stripped).
+            ->and($skills[0]->body)->toBe($body);
+    } finally {
+        rmTreeSkillLoader($fixtureDir);
+    }
+});
+
 it('multi-extension filename fallback strips full matched extension', function (): void {
     // Fixture: SKILL.blade.php with NO `name:` frontmatter. Without the
     // fallback fix, getFilenameWithoutExtension would yield `SKILL.blade`.

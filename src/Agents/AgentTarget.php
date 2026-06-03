@@ -20,7 +20,15 @@ use Symfony\Component\Yaml\Yaml;
  * through unchanged. Override formatters if the agent expects a transformed
  * shape.
  *
- * @api
+ * @api Only the path/identity methods (`agent`, `skillsDirectoryRelative`,
+ *      `guidelinesFileRelative`, `commandsDirectoryRelative`,
+ *      `commandFileExtension`, `gitignorePatterns`) are the committed surface —
+ *      wrapper packages read these to compute emit paths. The `plan`/`format*`/
+ *      `transpile*` methods are internal engine machinery (each carries its own
+ *      internal-tag). Subclassing AgentTarget is the engine's own agent-registry
+ *      extension point, NOT a consumer seam. 1.x guarantee: no NEW abstract
+ *      method will be added (any future hook ships with a default), so the
+ *      in-tree targets and any subclass keep compiling.
  */
 abstract class AgentTarget
 {

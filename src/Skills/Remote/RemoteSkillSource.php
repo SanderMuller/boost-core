@@ -20,8 +20,10 @@ use InvalidArgumentException;
  */
 final readonly class RemoteSkillSource
 {
+    /** @internal Engine mode discriminator — consumers pick mode via the factories. */
     public const MODE_BUNDLE = 'bundle';
 
+    /** @internal Engine mode discriminator — consumers pick mode via the factories. */
     public const MODE_PATH = 'path';
 
     private const SOURCE_PATTERN = '/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/';
@@ -104,6 +106,7 @@ final readonly class RemoteSkillSource
         return new self($source, $version, $refs);
     }
 
+    /** @internal Engine helper — the ingester/builder pick the fetch strategy from this. */
     public function mode(): string
     {
         // Safe — `assertUniformMode()` runs in the constructor; an empty
@@ -116,6 +119,8 @@ final readonly class RemoteSkillSource
      * `<source>@<version>:<mode>`. Same source at the same version in two
      * different modes (one bundle, one path) is allowed and produces two
      * distinct keys — that's a real, supported config shape.
+     *
+     * @internal Engine de-dup helper used by withRemoteSkills().
      */
     public function uniqueKey(): string
     {

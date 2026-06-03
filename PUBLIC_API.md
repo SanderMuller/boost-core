@@ -33,6 +33,15 @@ New parameters on any stable method are always optional-with-default; their abse
 
 The command names, their documented options, and the exit-code contract (`0` ok, `1` failure, `2` usage) are stable. Human-readable output text is NOT a contract; `--json` envelopes (where offered) are.
 
+### Textual / wire formats
+
+These aren't PHP types, but they're authored or observed by consumers/publishers, so they're part of the contract (changing them is a major bump):
+
+- **`boost:conv` inline token** — `<!--boost:conv path="…" mode="…" fallback="…"-->` (and the ` ```boost:conv ` fence), with the `$.`/`group.key` path syntax. Vendor skill/guideline authors hand-write these; the `\`-escape (`<!--\boost:conv…-->`) is also stable.
+- **Conventions exclude-key grammar** — the `vendor/package:name` form passed to `withExcludedSkills()` / `withExcludedGuidelines()`.
+- **Managed `.gitignore` block markers** — `# >>> boost (managed) >>>` … `# <<< boost (managed) <<<` (written into the consumer's tracked `.gitignore`).
+- **`Agent` enum backing values** — the kebab strings (`claude-code`, …) double as on-disk directory slugs and cross the wrapper boundary; new agents may be added, existing values won't change.
+
 ## Internal (not covered by semver)
 
 - Every class marked `@internal` — the engine: `Sync\`, `Discovery\`, `Conventions\`, `Agents\` (except `AgentTarget`), `Commands\`, the `Skills\` internals, `Env`, and the internal `Config\` loader/writer/printer/path classes. Do not import these.

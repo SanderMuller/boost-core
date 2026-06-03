@@ -16,6 +16,11 @@ use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
  * BoostConfigLoader receives the builder from `require boost.php` and calls
  * `build($projectRoot)` to resolve defaults and produce an immutable BoostConfig.
  *
+ * Collection-setter semantics (stable): every `with*()` REPLACES its collection
+ * on each call — calling one twice keeps only the last set — EXCEPT
+ * `withSkillRenderers()`, which ACCUMULATES across calls. (`withRemoteSkills`
+ * additionally rejects duplicates; `withTags` de-dupes + normalizes.)
+ *
  * @api
  */
 final class BoostConfigBuilder

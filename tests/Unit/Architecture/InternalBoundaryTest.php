@@ -87,6 +87,15 @@ function boostSrcClasses(): array
     return $classes;
 }
 
+/**
+ * True only when `@internal` appears as a docblock TAG (after `* ` or `/**`),
+ * not when an `@api` docblock merely mentions the word in prose.
+ */
+function hasInternalTag(string $doc): bool
+{
+    return preg_match('#(?:/\*\*|\*)\s+@internal\b#', $doc) === 1;
+}
+
 function isEngineClass(string $fqcn): bool
 {
     if (in_array($fqcn, ENGINE_EXTRA_INTERNAL, true)) {
@@ -116,7 +125,7 @@ it('marks every engine class @internal (or explicitly allowlists it)', function 
         }
 
         $doc = (new ReflectionClass($fqcn))->getDocComment();
-        if ($doc === false || ! str_contains($doc, '@internal')) {
+        if ($doc === false || ! hasInternalTag($doc)) {
             $missing[] = $fqcn;
         }
     }
@@ -135,7 +144,7 @@ it('marks the in-engine public-API carve-outs @api (and never @internal)', funct
     foreach (ENGINE_PUBLIC_API as $fqcn) {
         $doc = (string) (new ReflectionClass($fqcn))->getDocComment();
         expect($doc)->toContain('@api')
-            ->and(str_contains($doc, '@internal'))
+            ->and(hasInternalTag($doc))
             ->toBeFalse("{$fqcn} must not be @internal");
     }
 });
@@ -152,7 +161,7 @@ it('never exposes an @internal type in an @api method signature or public proper
             $api[] = $fqcn;
         }
 
-        if (str_contains($doc, '@internal')) {
+        if (hasInternalTag($doc)) {
             $internal[$fqcn] = true;
         }
     }

@@ -18,9 +18,9 @@ This package follows Semantic Versioning 2.0.0. Pre-`1.0.0`, MINOR bumps may sti
 
 ### Plugin contracts
 
-- `SanderMuller\BoostCore\Contracts\FileEmitter` + `SanderMuller\BoostCore\Sync\SyncContext` (param) + `SanderMuller\BoostCore\Sync\EmittedFile` (return) — emit custom files during sync. Parameterless constructors only.
+- `SanderMuller\BoostCore\Contracts\FileEmitter` + `SanderMuller\BoostCore\Sync\SyncContext` (the received context) + `SanderMuller\BoostCore\Sync\EmittedFile` (return) — emit custom files during sync. Parameterless constructors only. The context exposes `projectRoot`, the `BoostConfig`, and the installed-package set via `SanderMuller\BoostCore\Sync\InstalledPackages` / `PackageInfo` (also `@api`). `SyncContext` is received, not constructed by emitters.
 - `SanderMuller\BoostCore\Contracts\SkillRenderer` + `SanderMuller\BoostCore\Skills\Rendering\RenderContext` (param), plus `PassthroughRenderer`, `InvalidSkillRendererException`, `SkillRenderException`.
-- `SanderMuller\BoostCore\Contracts\BoostWrapperContract` + `SanderMuller\BoostCore\Agents\AgentTarget` — wrapper packages compute their emit surface against these.
+- `SanderMuller\BoostCore\Contracts\BoostWrapperContract` + `SanderMuller\BoostCore\Agents\AgentTarget` — wrapper packages compute their emit surface against these. Only `AgentTarget`'s path/identity methods (`agent`, `skillsDirectoryRelative`, `guidelinesFileRelative`, `commandsDirectoryRelative`, `commandFileExtension`, `gitignorePatterns`) are `@api`; its `plan`/`format*`/`transpile*` methods are `@internal` (they operate on internal engine types).
 
 ### Composer hooks
 

@@ -102,6 +102,8 @@ abstract class AgentTarget
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
      * @return list<PendingWrite>
+     *
+     * @internal Engine emit-planning — operates on @internal Skill/PendingWrite types.
      */
     public function plan(array $skills, array $guidelines): array
     {
@@ -129,6 +131,8 @@ abstract class AgentTarget
      *
      * @param  list<Command>  $commands
      * @return array{writes: list<PendingWrite>, warnings: list<string>}
+     *
+     * @internal Engine emit-planning — operates on @internal Command/PendingWrite types.
      */
     public function planCommands(array $commands): array
     {
@@ -171,12 +175,17 @@ abstract class AgentTarget
      * the other agents boost-core targets) only auto-discover skills under
      * the nested-directory layout — flat `<name>.md` outputs are silently
      * ignored, so source-layout-mirror semantics aren't useful here.
+     *
+     * @internal Takes the @internal Skill type.
      */
     public function skillRelativePath(Skill $skill): string
     {
         return $skill->name . '/' . self::SKILL_FILE;
     }
 
+    /**
+     * @internal Takes the @internal Skill type.
+     */
     public function formatSkillContent(Skill $skill): string
     {
         return $this->renderFrontmatter($skill->frontmatter) . $skill->body;
@@ -187,6 +196,8 @@ abstract class AgentTarget
      * Kept for callers that want the raw body (tests, doctor diagnostics).
      * The `planCommands()` emit path goes through `transpileCommandBody()`
      * + `wrapTranspiledBody()` to apply per-agent argument rules.
+     *
+     * @internal Takes the @internal Command type.
      */
     public function formatCommandContent(Command $command): string
     {
@@ -203,6 +214,8 @@ abstract class AgentTarget
      * other emit-capable target overrides with its agent-specific rules.
      *
      * Spec: `internal/specs/agent-commands-sync.md` Phase 3.
+     *
+     * @internal Operates on @internal Command / CommandTranspileResult types.
      */
     public function transpileCommandBody(Command $command): CommandTranspileResult
     {
@@ -237,6 +250,8 @@ abstract class AgentTarget
      * Default: concat guideline bodies separated by `---` horizontal rules.
      *
      * @param  list<Guideline>  $guidelines
+     *
+     * @internal Operates on @internal Guideline types.
      */
     public function formatGuidelinesContent(array $guidelines): string
     {

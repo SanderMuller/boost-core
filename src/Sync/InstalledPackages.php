@@ -6,7 +6,10 @@ use Composer\InstalledVersions;
 use LogicException;
 
 /**
- * @internal
+ * The installed-Composer-package set a {@see FileEmitter} reads from its
+ * {@see SyncContext} to decide what to emit.
+ *
+ * @api Stable as of 1.0 — part of the FileEmitter contract surface.
  */
 final readonly class InstalledPackages
 {

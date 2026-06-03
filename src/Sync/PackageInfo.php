@@ -3,7 +3,10 @@
 namespace SanderMuller\BoostCore\Sync;
 
 /**
- * @internal
+ * One installed Composer package (name, version, install path) as exposed by
+ * {@see InstalledPackages} to a {@see FileEmitter}.
+ *
+ * @api Stable as of 1.0 — part of the FileEmitter contract surface.
  */
 final readonly class PackageInfo
 {

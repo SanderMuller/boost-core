@@ -13,6 +13,8 @@ use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
 use SanderMuller\BoostCore\Sync\EmittedFile;
+use SanderMuller\BoostCore\Sync\InstalledPackages;
+use SanderMuller\BoostCore\Sync\PackageInfo;
 use SanderMuller\BoostCore\Sync\SyncContext;
 
 /**
@@ -54,6 +56,8 @@ const ENGINE_PUBLIC_API = [
     SyncContext::class,
     EmittedFile::class,
     RenderContext::class,
+    InstalledPackages::class,
+    PackageInfo::class,
 ];
 
 /**
@@ -134,4 +138,80 @@ it('marks the in-engine public-API carve-outs @api (and never @internal)', funct
             ->and(str_contains($doc, '@internal'))
             ->toBeFalse("{$fqcn} must not be @internal");
     }
+});
+
+it('never exposes an @internal type in an @api method signature or public property', function (): void {
+    // A frozen @api method/property whose type is @internal is a footgun: a
+    // consumer can't use it without touching the unstable engine. Lock the
+    // invariant so the public surface stays self-contained for 1.x.
+    $api = [];
+    $internal = [];
+    foreach (boostSrcClasses() as $fqcn) {
+        $doc = (string) (new ReflectionClass($fqcn))->getDocComment();
+        if (str_contains($doc, '@api')) {
+            $api[] = $fqcn;
+        }
+
+        if (str_contains($doc, '@internal')) {
+            $internal[$fqcn] = true;
+        }
+    }
+
+    $internalNamesIn = static function (?ReflectionType $type) use ($internal): array {
+        if (! $type instanceof ReflectionType) {
+            return [];
+        }
+
+        $parts = $type instanceof ReflectionUnionType || $type instanceof ReflectionIntersectionType
+            ? $type->getTypes()
+            : [$type];
+        $hits = [];
+        foreach ($parts as $part) {
+            if ($part instanceof ReflectionNamedType && ! $part->isBuiltin() && isset($internal[ltrim($part->getName(), '\\')])) {
+                $hits[] = ltrim($part->getName(), '\\');
+            }
+        }
+
+        return $hits;
+    };
+
+    $leaks = [];
+    foreach ($api as $fqcn) {
+        $rc = new ReflectionClass($fqcn);
+        foreach ($rc->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+            if ($method->getDeclaringClass()->getName() !== $fqcn) {
+                continue;
+            }
+
+            if (str_contains((string) $method->getDocComment(), '@internal')) {
+                continue;
+            }
+
+            foreach ($method->getParameters() as $param) {
+                foreach ($internalNamesIn($param->getType()) as $hit) {
+                    $leaks[] = "{$fqcn}::{$method->getName()}(\${$param->getName()}) → {$hit}";
+                }
+            }
+
+            foreach ($internalNamesIn($method->getReturnType()) as $hit) {
+                $leaks[] = "{$fqcn}::{$method->getName()}() return → {$hit}";
+            }
+        }
+
+        foreach ($rc->getProperties(ReflectionProperty::IS_PUBLIC) as $prop) {
+            if ($prop->getDeclaringClass()->getName() !== $fqcn) {
+                continue;
+            }
+
+            foreach ($internalNamesIn($prop->getType()) as $hit) {
+                $leaks[] = "{$fqcn}::\${$prop->getName()} → {$hit}";
+            }
+        }
+    }
+
+    expect($leaks)->toBe([], sprintf(
+        'These @api signatures expose an @internal type — either @api the type, or '
+        . "mark the method/ctor @internal (if consumers can't reach it):\n- %s",
+        implode("\n- ", $leaks),
+    ));
 });

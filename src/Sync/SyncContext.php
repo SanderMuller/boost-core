@@ -15,6 +15,10 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  */
 final readonly class SyncContext
 {
+    /**
+     * @internal The engine builds the context; FileEmitter implementations
+     *           receive it (and read its public props), they never construct it.
+     */
     public function __construct(
         public string $projectRoot,
         public InstalledPackages $packages,

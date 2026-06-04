@@ -106,9 +106,11 @@ final readonly class AgentDirSymlinkScanner
             if ($entry === '.') {
                 continue;
             }
+
             if ($entry === '..') {
                 continue;
             }
+
             $path = $dir . '/' . $entry;
 
             if (is_link($path)) {

@@ -886,3 +886,84 @@ it('0.18.1 doctor: omits the runtime-manifest line when gitignore management is 
         doctorCleanup($dir);
     }
 });
+
+it('0.23.0 reportDrift is wrapper-aware: never recommends the destructive bare `boost sync` on a project-boost-laravel project (collectiq cuiqtty0)', function (): void {
+    // A never-synced project with a host skill source drifts under a bare check-sync.
+    // On a WRAPPER project that bare-CLI diff is expected (the wrapper composes the
+    // emit surface), so doctor must NOT steer at `vendor/bin/boost sync` — that
+    // command overwrites the wrapper-composed guidance with the degraded bare version.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+    file_put_contents($dir . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+    try {
+        $packages = new InstalledPackages([
+            'sandermuller/project-boost-laravel' => new PackageInfo(
+                name: 'sandermuller/project-boost-laravel',
+                version: '0.9.0',
+                installPath: $dir,
+            ),
+        ]);
+        $command = new DoctorCommand(injectedPackages: $packages);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('php artisan project-boost:sync --dry-run')
+            ->and($display)->toContain('Do NOT run')
+            // the destructive generic recommendation must NOT fire on a wrapper project
+            ->and($display)->not->toContain('would change. Run `vendor/bin/boost sync`');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.23.0 reportDrift keeps the plain `boost sync` recommendation on a NON-wrapper project', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+    file_put_contents($dir . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+    try {
+        $command = new DoctorCommand(injectedPackages: new InstalledPackages([]));
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('would change. Run `vendor/bin/boost sync`')
+            ->and($display)->not->toContain('project-boost:sync --dry-run');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.23.0 reportUnrenderableSources is wrapper-aware: downgrades the no-renderer skip to a note on a wrapper project (mijntp)', function (): void {
+    // A host .blade.php guideline has no BARE-CLI renderer, but the wrapper Blade-renders
+    // it under `php artisan project-boost:sync`, so doctor must downgrade the bare-CLI
+    // "no renderer" warning to an informational note (not silent data loss).
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.ai/guidelines', 0o755, recursive: true);
+    file_put_contents($dir . '/.ai/guidelines/conventions.blade.php', "Conventions guideline\n");
+
+    try {
+        $packages = new InstalledPackages([
+            'sandermuller/project-boost-laravel' => new PackageInfo(
+                name: 'sandermuller/project-boost-laravel',
+                version: '0.9.0',
+                installPath: $dir,
+            ),
+        ]);
+        $command = new DoctorCommand(injectedPackages: $packages);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        // The note framing only exists on the wrapper path (the non-wrapper path
+        // emits a bare [WARNING] instead). Assert phrases that survive the [NOTE]
+        // block's `! ` line-wrap prefixes.
+        expect($display)->toContain('project-boost-laravel is installed')
+            ->and($display)->toContain('the wrapper renders them under')
+            ->and($display)->toContain('conventions.blade.php');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

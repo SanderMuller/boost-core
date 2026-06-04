@@ -2,8 +2,11 @@
 
 namespace SanderMuller\BoostCore\Commands;
 
+use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
+use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
 use SanderMuller\BoostCore\Sync\EmitterAction;
+use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Sync\UserScopeResult;
@@ -87,7 +90,7 @@ final class SyncCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
-        return $this->report($io, $result, $checkOnly);
+        return $this->report($io, $result, $checkOnly, $projectRoot, $this->configFileOption($input));
     }
 
     private function runUserScope(SymfonyStyle $io, string $packageRoot, bool $checkOnly): int
@@ -193,7 +196,36 @@ final class SyncCommand extends BoostBaseCommand
         return false;
     }
 
-    private function report(SymfonyStyle $io, SyncResult $result, bool $checkOnly): int
+    /**
+     * On-disk conventions-token leak scan for `--check` — the same scan
+     * `validate --strict` runs (symlink-following, #88), so both CI gates fail
+     * identically on a leaked token. Returns FAILURE when any leak is found,
+     * SUCCESS otherwise. A config that fails to (re)load is a no-op here — that
+     * failure already surfaced on the sync itself.
+     */
+    private function conventionTokenLeakError(SymfonyStyle $io, string $projectRoot, ?string $configFile): int
+    {
+        $config = $this->loadConfig($io, $projectRoot, $configFile);
+        if (! $config instanceof BoostConfig) {
+            return self::SUCCESS;
+        }
+
+        $leaks = ConventionTokenLeakScanner::fromConfig(InstalledPackages::fromComposer(), $config)
+            ->errorDiagnostics($projectRoot, $config);
+        if ($leaks === []) {
+            return self::SUCCESS;
+        }
+
+        foreach ($leaks as $leak) {
+            $io->error($leak->message);
+        }
+
+        $io->error('Leaked conventions token(s) in emitted output. A skill whose output path is a symlink serves its SOURCE raw, so its `boost:conv` tokens never resolve — remove the symlink and re-sync (or fix the token).');
+
+        return self::FAILURE;
+    }
+
+    private function report(SymfonyStyle $io, SyncResult $result, bool $checkOnly, string $projectRoot, ?string $configFile): int
     {
         // Render diagnostics BEFORE the error short-circuit. Render-fail
         // warnings and other safety-gate diagnostics carry
@@ -218,6 +250,18 @@ final class SyncCommand extends BoostBaseCommand
             $io->error('Conventions error: a vendor\'s required schema-version is not satisfied by the host — its conventions were NOT applied (see the diagnostics above). Align the host schema-version or the vendor allowlist.');
 
             return self::FAILURE;
+        }
+
+        // --check fails on a leaked conventions token in EMITTED output — parity
+        // with `validate --strict`. The scan follows symlinked emitted files, so it
+        // catches a token served RAW through a SKIPPED_SYMLINK skill output (a real
+        // correctness leak the inline self-check above can't see, since that content
+        // was never written). Plain sync stays lenient — this is the CI gate only.
+        if ($checkOnly) {
+            $leak = $this->conventionTokenLeakError($io, $projectRoot, $configFile);
+            if ($leak !== self::SUCCESS) {
+                return $leak;
+            }
         }
 
         if ($checkOnly && $result->hasDrift()) {

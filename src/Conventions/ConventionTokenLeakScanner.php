@@ -72,6 +72,27 @@ final readonly class ConventionTokenLeakScanner
     }
 
     /**
+     * The emitted-file leak scan as ERROR-level diagnostics — one per leaked
+     * token, slotted by its path. The shared form behind `validate --strict` AND
+     * `sync --check`, so both CI gates fail identically on a leaked conventions
+     * token — including one served RAW through a SKIPPED_SYMLINK output (the scan
+     * follows symlinked emitted files, #88, so a token in a skill whose output is
+     * a pre-existing symlink is caught even though sync skipped writing it).
+     *
+     * @return list<Diagnostic>
+     */
+    public function errorDiagnostics(string $projectRoot, BoostConfig $config): array
+    {
+        return array_map(
+            static fn (TokenLeak $leak): Diagnostic => Diagnostic::error(
+                $leak->path,
+                sprintf('leaked conventions token at %s — %s', $leak->location(), $leak->cause),
+            ),
+            $this->scanEmitted($projectRoot, $config),
+        );
+    }
+
+    /**
      * @return list<TokenLeak>
      */
     public function scan(string $relativePath, string $content): array

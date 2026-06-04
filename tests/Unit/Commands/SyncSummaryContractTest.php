@@ -78,3 +78,50 @@ it('lists the skipped symlink paths inline and references no nonexistent command
         @rmdir($dir);
     }
 });
+
+it('0.23.x sync --check FAILS on a conv-token leaked through a symlinked skill output (#146, hihaho)', function (): void {
+    // A skill whose OUTPUT path is a symlink is SKIPPED_SYMLINK by the writer, so
+    // the symlink's target (here a source carrying a raw boost:conv token) is what
+    // the agent reads — the token leaks verbatim. `sync --check` must catch it
+    // (parity with `validate --strict`), even though the engine's inline self-check
+    // can't see it (that content was never written).
+    $dir = sys_get_temp_dir() . '/boost-leak-symlink-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/.ai/skills/foo', 0o755, recursive: true);
+    file_put_contents(
+        $dir . '/boost.php',
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE]);\n",
+    );
+    // Clean source → a clean first sync (no leak from the engine).
+    file_put_contents($dir . '/.ai/skills/foo/SKILL.md', "---\nname: foo\n---\n# Foo\n");
+
+    try {
+        (new CommandTester(new SyncCommand()))->execute(['--working-dir' => $dir]);
+
+        // Now make the EMITTED Claude output a symlink to a source that DOES carry a
+        // raw boost:conv token — the leak vector. The next sync skips it (symlink),
+        // so the token never resolves; --check's on-disk scan (symlink-following)
+        // must surface it.
+        $leakSource = $dir . '/.ai/skills/foo/leaked-source.md';
+        file_put_contents($leakSource, "---\nname: foo\n---\n<!--boost:conv path=\"x.y\" mode=\"inline\"-->\n");
+        $emitted = $dir . '/.claude/skills/foo/SKILL.md';
+        @unlink($emitted);
+        symlink($leakSource, $emitted);
+
+        $tester = new CommandTester(new SyncCommand());
+        $exit = $tester->execute(['--working-dir' => $dir, '--check' => true]);
+
+        expect($exit)->toBe(1)
+            ->and($tester->getDisplay())->toContain('leaked conventions token');
+    } finally {
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        /** @var SplFileInfo $f */
+        foreach ($it as $f) {
+            $f->isLink() || $f->isFile() ? @unlink($f->getPathname()) : @rmdir($f->getPathname());
+        }
+
+        @rmdir($dir);
+    }
+});

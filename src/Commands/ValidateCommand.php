@@ -10,7 +10,6 @@ use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\EmittedAgentFiles;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
-use SanderMuller\BoostCore\Conventions\TokenLeak;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -126,15 +125,7 @@ final class ValidateCommand extends BoostBaseCommand
      */
     private function leakDiagnostics(string $projectRoot, BoostConfig $config, InstalledPackages $packages): array
     {
-        $leaks = ConventionTokenLeakScanner::fromConfig($packages, $config)->scanEmitted($projectRoot, $config);
-
-        return array_map(
-            static fn (TokenLeak $leak): Diagnostic => Diagnostic::error(
-                $leak->path,
-                sprintf('leaked conventions token at %s — %s', $leak->location(), $leak->cause),
-            ),
-            $leaks,
-        );
+        return ConventionTokenLeakScanner::fromConfig($packages, $config)->errorDiagnostics($projectRoot, $config);
     }
 
     /**

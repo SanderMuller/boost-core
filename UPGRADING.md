@@ -38,7 +38,7 @@ Each emitted file is validated, written, and reported independently (one `Emitte
 | `->withTags('php', 'jira')` | `->withTags(['php', 'jira'])` |
 | `->withTags(Tag::Php)` | `->withTags([Tag::Php])` |
 
-`boost install`'s tag picker now writes the array form, and `boost sync` still parses + migrates an existing variadic `withTags(...)` it finds in your `boost.php` — but update the call by hand to avoid a `TypeError` the next time the config is loaded directly.
+`boost install`'s tag picker now writes the array form. **You must update an existing variadic `withTags(...)` by hand** — a stale variadic call throws a `TypeError` at the point `boost.php` is loaded (during `require`), which is *before* any tooling could rewrite it, so there is no automatic migration on this path. Since 0.23.0 boost-core catches that load-time failure and surfaces it as a clear `InvalidBoostConfigException` ("wrap the arguments in an array — `->withTags([...])`") instead of a raw fatal that aborts `composer update`, but the fix is still the one-line hand-edit above.
 
 ### Plugin contracts locked — no action
 

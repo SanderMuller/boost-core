@@ -358,6 +358,41 @@ it('prunes DEAD symlinks in a DE-CONFIGURED agent dir too, preserving live ones 
     }
 });
 
+it('does NOT follow a symlinked agent ROOT dir when pruning — never prunes outside the project tree (codex P1)', function (): void {
+    // The nasty no-clobber edge: if an agent ROOT dir is itself a symlink to a
+    // shared location, `is_dir()` follows it, so without the top-of-scanDir guard
+    // the dead-symlink prune would descend into the external target and unlink its
+    // broken links — outside the project tree. The child-entry is_link check
+    // doesn't cover the root dir handed to the scanner.
+    $root = makeEndToEndProject();
+    $external = sys_get_temp_dir() . '/boost-external-' . bin2hex(random_bytes(8));
+    mkdir($external, 0o755, recursive: true);
+    $externalDead = $external . '/dead';
+    symlink(sys_get_temp_dir() . '/boost-gone-' . bin2hex(random_bytes(6)), $externalDead); // dead
+
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        // A de-configured agent ROOT dir (.cursor/skills) is itself a symlink to the
+        // external shared dir.
+        mkdir($root . '/.cursor', 0o755, recursive: true);
+        symlink($external, $root . '/.cursor/skills');
+
+        expect(is_link($externalDead))->toBeTrue()->and(file_exists($externalDead))->toBeFalse();
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(is_link($externalDead))->toBeTrue('a dead link inside a symlinked agent root must NOT be pruned (would be outside the project tree)')
+            ->and(is_link($root . '/.cursor/skills'))->toBeTrue('the symlinked agent root itself is preserved');
+    } finally {
+        @unlink($root . '/.cursor/skills'); // drop the symlink before recursing $root
+        @unlink($externalDead);
+        @rmdir($external);
+        rmTreeE2E($root);
+    }
+});
+
 it('leaves live symlinks alone (does not chase or unlink valid links)', function (): void {
     $root = makeEndToEndProject();
     try {

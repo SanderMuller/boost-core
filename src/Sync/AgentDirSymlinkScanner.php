@@ -93,6 +93,15 @@ final readonly class AgentDirSymlinkScanner
      */
     private function scanDir(string $projectRoot, string $dir, array &$dead, array &$live): void
     {
+        // NEVER descend through a symlinked directory — `is_dir()` follows links,
+        // so without this an agent ROOT that is itself a symlink (e.g. `.claude` →
+        // a shared location) would be traversed and its links pruned OUTSIDE the
+        // project tree. The same guard inside the loop (is_link before recursion)
+        // covers child dirs; this covers the top dir handed to scan().
+        if (is_link($dir)) {
+            return;
+        }
+
         if (! is_dir($dir)) {
             return;
         }

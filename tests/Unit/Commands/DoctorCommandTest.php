@@ -961,8 +961,39 @@ it('0.23.0 reportUnrenderableSources is wrapper-aware: downgrades the no-rendere
         // emits a bare [WARNING] instead). Assert phrases that survive the [NOTE]
         // block's `! ` line-wrap prefixes.
         expect($display)->toContain('project-boost-laravel is installed')
-            ->and($display)->toContain('the wrapper renders them under')
+            ->and($display)->toContain('the wrapper Blade-renders them under')
             ->and($display)->toContain('conventions.blade.php');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('0.23.2 reportUnrenderableSources keeps a NON-blade unrenderable as a WARNING even on a wrapper project (codex P2)', function (): void {
+    // The wrapper only registers a Blade renderer — a genuinely-unsupported source
+    // (e.g. .rst) is skipped by both entry points, so it must NOT be downgraded to
+    // "the wrapper renders it". A .blade.php skip in the same run still downgrades.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.ai/guidelines', 0o755, recursive: true);
+    file_put_contents($dir . '/.ai/guidelines/blade-one.blade.php', "Blade\n");
+    file_put_contents($dir . '/.ai/guidelines/notes.rst', "Restructured text\n");
+
+    try {
+        $packages = new InstalledPackages([
+            'sandermuller/project-boost-laravel' => new PackageInfo(
+                name: 'sandermuller/project-boost-laravel',
+                version: '0.15.0',
+                installPath: $dir,
+            ),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        // .blade.php → downgraded note; .rst → genuine [WARNING], not claimed-handled.
+        expect($display)->toContain('the wrapper Blade-renders them under')
+            ->and($display)->toContain('blade-one.blade.php')
+            ->and($display)->toContain('[WARNING]')
+            ->and($display)->toContain('notes.rst');
     } finally {
         doctorCleanup($dir);
     }

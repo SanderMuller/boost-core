@@ -361,25 +361,35 @@ final class DoctorCommand extends BoostBaseCommand
             return;
         }
 
-        if ($packages->has('sandermuller/project-boost-laravel')) {
-            // Wrapper-aware: the bare CLI ships only PassthroughRenderer(.md), but the
-            // wrapper registers renderers the bare engine lacks (e.g. Blade for
-            // `.blade.php`) and renders these under `php artisan project-boost:sync`.
-            // So a bare-CLI "no renderer" skip is NOT silent data loss on a wrapper
-            // project — downgrade from a warning to an informational note.
-            $io->note(
-                'project-boost-laravel is installed: the source(s) below have no BARE-CLI renderer, but the wrapper '
-                . 'renders them under `php artisan project-boost:sync` (e.g. Blade for `.blade.php`). '
-                . 'Only a concern if you sync via bare `vendor/bin/boost sync`.',
-            );
-            foreach ($skips as $skip) {
-                $io->writeln('  <comment>·</comment> ' . $skip);
+        // Wrapper-aware, but SCOPED: project-boost-laravel registers a Blade
+        // renderer, so a `.blade.php` skip is not data loss under
+        // `php artisan project-boost:sync` — downgrade ONLY those to a note. A skip
+        // for ANY OTHER extension is genuinely dropped by both entry points (the
+        // wrapper doesn't render it either), so it stays a warning even on a wrapper
+        // project — never claim the wrapper handles something it doesn't.
+        $wrapperInstalled = $packages->has('sandermuller/project-boost-laravel');
+        $wrapperHandled = [];
+        $genuinelySkipped = [];
+        foreach ($skips as $skip) {
+            if ($wrapperInstalled && str_contains($skip, '.blade.php')) {
+                $wrapperHandled[] = $skip;
+            } else {
+                $genuinelySkipped[] = $skip;
             }
-
-            return;
         }
 
-        foreach ($skips as $warning) {
+        if ($wrapperHandled !== []) {
+            $io->note(
+                'project-boost-laravel is installed: the `.blade.php` source(s) below have no BARE-CLI renderer, '
+                . 'but the wrapper Blade-renders them under `php artisan project-boost:sync`. '
+                . 'Only a concern if you sync via bare `vendor/bin/boost sync`.',
+            );
+            foreach ($wrapperHandled as $skip) {
+                $io->writeln('  <comment>·</comment> ' . $skip);
+            }
+        }
+
+        foreach ($genuinelySkipped as $warning) {
             $io->warning($warning);
         }
     }
@@ -645,15 +655,15 @@ final class DoctorCommand extends BoostBaseCommand
             $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
             if ($packages->has('sandermuller/project-boost-laravel')) {
                 // Wrapper-aware: this drift was computed by a BARE-CLI sync, which
-                // composes guidance WITHOUT the wrapper's injected skills/guidelines —
-                // so a diff here is EXPECTED on a wrapper project, not real drift.
-                // Steering at `vendor/bin/boost sync` would be destructive: it bypasses
-                // the wrapper and overwrites the wrapper-composed CLAUDE.md/AGENTS.md
-                // with the degraded bare version. Verify via the wrapper instead.
+                // composes guidance WITHOUT the wrapper's injected skills/guidelines.
+                // So a bare diff here is AMBIGUOUS — it can't distinguish the expected
+                // wrapper-composition delta from genuinely stale output. Surface the
+                // count (don't hide it) but route to the authoritative check; steering
+                // at `vendor/bin/boost sync` would be destructive — it bypasses the
+                // wrapper and overwrites the wrapper-composed CLAUDE.md/AGENTS.md.
                 $io->warning(sprintf(
-                    '%d file(s) differ from a BARE-CLI sync — but `sandermuller/project-boost-laravel` is installed and composes the emit surface '
-                    . "(CLAUDE.md/AGENTS.md include its injected skills + guidelines), so this is expected, not real drift.\n"
-                    . 'Verify with `php artisan project-boost:sync --dry-run`. Do NOT run `vendor/bin/boost sync` — it bypasses the wrapper and overwrites the wrapper-composed guidance with a degraded bare version.',
+                    "%d file(s) differ from a BARE-CLI sync. `sandermuller/project-boost-laravel` is installed and composes the emit surface, so a bare diff CANNOT tell expected wrapper-composition from genuinely stale output.\n"
+                    . 'Check real drift with `php artisan project-boost:sync --dry-run` (authoritative). Do NOT run `vendor/bin/boost sync` — it bypasses the wrapper and overwrites the wrapper-composed guidance with a degraded bare version.',
                     $result->countWouldChange(),
                 ));
 

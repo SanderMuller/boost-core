@@ -388,7 +388,7 @@ boost-core follows [Semantic Versioning](https://semver.org). The semver promise
 - Everything marked `@internal` — the whole engine (`Sync\`, `Discovery\`, `Conventions\`, `Agents\`, `Commands\`, `Skills\` internals). Don't import these.
 - On-disk regenerable state: the sync manifest, the remote-skill ledger, the user-scope manifests under `~/.boost/`, the `.boost/` ⁄ `.config/boost/` runtime dir, and the cache sentinel. These are engine internals; their schema is not a contract.
 
-The committed surface is enumerated in [`PUBLIC_API.md`](PUBLIC_API.md). Pre-`1.0.0`, MINOR bumps may still break the public API — those are called out in `CHANGELOG.md` and `UPGRADING.md`.
+The committed surface is enumerated in [`PUBLIC_API.md`](PUBLIC_API.md). From `1.0.0` on, breaking changes to it land only in a MAJOR bump; MINOR and PATCH releases stay backward-compatible. Every breaking change is called out in `CHANGELOG.md` and `UPGRADING.md`.
 
 ## Upgrading
 

@@ -130,21 +130,35 @@ final class SkillTagDiagnostics
      * Flag tag pairs where one string contains the other (`jira` vs
      * `jira-cloud`) — a cheap heuristic for accidental tag drift.
      *
+     * A containment overlap between two tags that are BOTH shipped by an
+     * installed skill is two distinct real tags (`laravel` / `laravel-cloud`),
+     * never a typo — pass those via `$usedTags` to suppress the false positive.
+     * The signal is meaningful only when one side is a declared-but-unused
+     * lookalike of a used tag.
+     *
      * @param  list<string>  $tags
+     * @param  list<string>  $usedTags  tags actually published by an installed skill/guideline
      * @return list<array{0: string, 1: string}>
      */
-    public function nearDuplicates(array $tags): array
+    public function nearDuplicates(array $tags, array $usedTags = []): array
     {
         $tags = array_values(array_unique($tags));
+        $used = array_flip($usedTags);
 
         /** @var list<array{0: string, 1: string}> $pairs */
         $pairs = [];
         $count = count($tags);
         for ($i = 0; $i < $count; ++$i) {
             for ($j = $i + 1; $j < $count; ++$j) {
-                if (str_contains($tags[$i], $tags[$j]) || str_contains($tags[$j], $tags[$i])) {
-                    $pairs[] = [$tags[$i], $tags[$j]];
+                if (! str_contains($tags[$i], $tags[$j]) && ! str_contains($tags[$j], $tags[$i])) {
+                    continue;
                 }
+
+                if (isset($used[$tags[$i]], $used[$tags[$j]])) {
+                    continue;
+                }
+
+                $pairs[] = [$tags[$i], $tags[$j]];
             }
         }
 

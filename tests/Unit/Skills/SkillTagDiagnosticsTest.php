@@ -93,6 +93,30 @@ it('reports no near-duplicates for distinct tags', function (): void {
         ->toBeEmpty();
 });
 
+it('does not flag a containment pair when BOTH tags are real used tags (hihaho dogfood)', function (): void {
+    // `laravel` + `laravel-cloud` (and `github` + `github-issues`) are two
+    // distinct tags each shipped by an installed skill — a substring overlap,
+    // not a typo. Flagging them was a doctor false positive.
+    $pairs = (new SkillTagDiagnostics())->nearDuplicates(
+        ['laravel', 'laravel-cloud', 'github', 'github-issues'],
+        usedTags: ['laravel', 'laravel-cloud', 'github', 'github-issues'],
+    );
+
+    expect($pairs)->toBeEmpty();
+});
+
+it('still flags a containment pair when one side is a declared-but-unused candidate typo', function (): void {
+    // `jira` is declared but matched by no installed skill; `jira-cloud` is the
+    // real shipped tag. A declared-but-unused lookalike of a used tag is the
+    // genuine typo signal — keep firing.
+    $pairs = (new SkillTagDiagnostics())->nearDuplicates(
+        ['jira', 'jira-cloud'],
+        usedTags: ['jira-cloud'],
+    );
+
+    expect($pairs)->toBe([['jira', 'jira-cloud']]);
+});
+
 it('groups filtered skills by the tag needed to enable them', function (): void {
     $groups = (new SkillTagDiagnostics())->filteredSkillsByMissingTags(
         [

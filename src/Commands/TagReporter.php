@@ -213,7 +213,7 @@ final readonly class TagReporter
         // (probable misspelling of an existing tag). Fires alongside the
         // forward-compat / bare-CLI wording above when both apply (a typo'd
         // declaration is also declared-but-unused).
-        foreach ($this->diagnostics->nearDuplicates([...$tagUnion, ...$config->tags]) as $pair) {
+        foreach ($this->diagnostics->nearDuplicates([...$tagUnion, ...$config->tags], $tagUnion) as $pair) {
             $io->writeln('<comment>Possible tag typo — these look alike: '
                 . $pair[0] . ' / ' . $pair[1] . '</comment>');
         }

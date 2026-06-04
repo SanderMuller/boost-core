@@ -8,6 +8,7 @@ use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Sync\UserScopeResult;
 use SanderMuller\BoostCore\Sync\WriteAction;
+use SanderMuller\BoostCore\Sync\WrittenFile;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -257,9 +258,18 @@ final class SyncCommand extends BoostBaseCommand
         $symlinkSummary = $skippedSymlink > 0 ? sprintf(' skipped-symlink=%d', $skippedSymlink) : '';
 
         if ($skippedSymlink > 0) {
+            $skippedPaths = array_values(array_map(
+                static fn (WrittenFile $write): string => $write->relativePath,
+                array_filter(
+                    $result->writes,
+                    static fn (WrittenFile $write): bool => $write->action === WriteAction::SKIPPED_SYMLINK,
+                ),
+            ));
+
             $io->warning(sprintf(
-                '%d file(s) skipped because a path segment is a user-placed symlink. Sync did not follow the link; the source file behind the symlink was not overwritten. Inspect with `vendor/bin/boost --check` to see which paths.',
+                "%d file(s) skipped because a path segment is a user-placed symlink. Sync did not follow the link; the source file behind the symlink was not overwritten:\n  - %s",
                 $skippedSymlink,
+                implode("\n  - ", $skippedPaths),
             ));
         }
 

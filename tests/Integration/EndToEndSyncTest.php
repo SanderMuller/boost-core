@@ -257,6 +257,47 @@ it('prunes dead symlinks in managed agent skills dirs (vendor-rename migration)'
     }
 });
 
+it('does not delete UNCHANGED guidance files listed in a PRIOR (pre-0.12) gitignore block (a4bg5vbh)', function (): void {
+    // Regression: migrating FROM the pre-0.12 gitignored-guidance layout, the
+    // prior managed block still lists CLAUDE.md/AGENTS.md. An UNCHANGED guidance
+    // file is absent from this run's $writes (GuidanceWriter omits UNCHANGED), so
+    // cleanupStaleManagedFiles — which reaps prior-managed files not in $writes —
+    // deleted it on the first post-migration sync (recreated only on a 2nd pass).
+    // Guidance files are GuidanceWriter-owned, never reaped by the gitignore-pattern
+    // cleanup; this asserts that invariant the cleanup comment already claims.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
+
+        // Sync 1: emits CLAUDE.md (boost content) + a 0.12+ block (guidance NOT listed).
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $claudeMd = $root . '/CLAUDE.md';
+        expect(file_exists($claudeMd))->toBeTrue('CLAUDE.md should emit on the first sync');
+        $content = (string) file_get_contents($claudeMd);
+
+        // Simulate the leftover pre-0.12 managed block that still gitignores the
+        // guidance file (the real migration state a consumer carries in).
+        $gitignore = $root . '/.gitignore';
+        $patched = str_replace(
+            '# >>> boost (managed) >>>',
+            "# >>> boost (managed) >>>\nCLAUDE.md",
+            (string) file_get_contents($gitignore),
+        );
+        file_put_contents($gitignore, $patched);
+
+        // Sync 2: CLAUDE.md is UNCHANGED (content matches) ⇒ absent from $writes;
+        // the prior block lists it ⇒ the stale-managed cleanup must NOT reap it.
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(file_exists($claudeMd))->toBeTrue('CLAUDE.md must survive — GuidanceWriter-owned, not a stale managed file')
+            ->and((string) file_get_contents($claudeMd))->toBe($content)
+            ->and($result->countByAction(WriteAction::DELETED))->toBe(0);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('leaves live symlinks alone (does not chase or unlink valid links)', function (): void {
     $root = makeEndToEndProject();
     try {

@@ -5,6 +5,7 @@ namespace SanderMuller\BoostCore\Sync;
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Enums\Agent;
@@ -98,17 +99,36 @@ final readonly class StaleFileCleaner
      *   declared by `BoostWrapper` classes from installed wrapper packages —
      *   excluded from "stale-to-delete" classification so bare-CLI doesn't
      *   false-positive-flag wrapper-injected files for deletion.
+     * @param  list<AgentTarget>  $agentTargets  whose guidance files
+     *   (CLAUDE.md/AGENTS.md/GEMINI.md/…) are GuidanceWriter-owned and exempt
+     *   from this cleanup. A PRIOR managed block from the pre-0.12
+     *   gitignored-guidance era lists them; without this exemption an UNCHANGED
+     *   guidance file (absent from `$writes`) is wrongly reaped on the first
+     *   post-migration sync. A de-selected agent's guidance is reaped by the
+     *   manifest-gated OrphanReaper, not here.
      * @return list<WrittenFile>
      */
-    public function cleanupStaleManagedFiles(string $projectRoot, array $priorManagedFiles, array $writes, bool $checkOnly, array $wrapperExcludedPaths = []): array
+    public function cleanupStaleManagedFiles(string $projectRoot, array $priorManagedFiles, array $writes, bool $checkOnly, array $wrapperExcludedPaths = [], array $agentTargets = []): array
     {
         $writtenPaths = [];
         foreach ($writes as $w) {
             $writtenPaths[$w->relativePath] = true;
         }
 
+        $guidancePaths = [];
+        foreach ($agentTargets as $target) {
+            $guidanceRelative = $target->guidelinesFileRelative();
+            if ($guidanceRelative !== null) {
+                $guidancePaths[$guidanceRelative] = true;
+            }
+        }
+
         foreach ($priorManagedFiles as $relativePath) {
             if (isset($writtenPaths[$relativePath])) {
+                continue;
+            }
+
+            if (isset($guidancePaths[$relativePath])) {
                 continue;
             }
 

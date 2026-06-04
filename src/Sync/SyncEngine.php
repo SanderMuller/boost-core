@@ -821,12 +821,18 @@ final readonly class SyncEngine
         // excludes those paths from stale-file classification.
         // ($wrapperEmits already computed above to feed the gitignore pass.)
         if (! $hasAnyError) {
+            // Guidance files (CLAUDE.md/AGENTS.md/GEMINI.md/…) are managed wholesale
+            // by GuidanceWriter, NEVER by this gitignore-pattern stale cleanup — the
+            // cleaner exempts them (passed the agent targets) so a PRIOR managed block
+            // from the pre-0.12 gitignored-guidance era can't reap an UNCHANGED guidance
+            // file (absent from $writes) on the first post-migration sync.
             $writes = $this->staleFileCleaner->cleanupStaleManagedFiles(
                 $projectRoot,
                 $priorManagedFiles,
                 $writes,
                 $checkOnly,
                 $wrapperEmits['paths'],
+                $this->agentTargets,
             );
         }
 

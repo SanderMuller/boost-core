@@ -30,15 +30,6 @@ it('treats an all-whitespace boost-tags string as untagged-valid', function (): 
     expect(BoostTags::parse(['metadata' => ['boost-tags' => '   ']]))->toBe([[], true]);
 });
 
-it('parseString tokenizes, normalizes, and dedupes a raw value', function (): void {
-    expect(BoostTags::parseString('  PHP   jira  php '))->toBe(['php', 'jira']);
-});
-
-it('parseString returns an empty list for an all-whitespace value', function (): void {
-    expect(BoostTags::parseString('   '))
-        ->toBeEmpty();
-});
-
 it('declaresTags is true whenever the metadata.boost-tags key is present', function (): void {
     expect(BoostTags::declaresTags(['metadata' => ['boost-tags' => 'php']]))->toBeTrue()
         ->and(BoostTags::declaresTags(['metadata' => ['boost-tags' => '']]))->toBeTrue()

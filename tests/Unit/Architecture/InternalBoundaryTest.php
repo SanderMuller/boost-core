@@ -12,6 +12,7 @@ use SanderMuller\BoostCore\Config\BoostConfigWriter;
 use SanderMuller\BoostCore\Config\InvalidBoostConfigException;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Env;
+use SanderMuller\BoostCore\Skills\BoostTags;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\ParsedDocument;
@@ -88,6 +89,10 @@ const ENGINE_PUBLIC_API = [
     // parity instead of rolling its own YAML-head parse.
     FrontmatterParser::class,
     ParsedDocument::class,
+    // Tag-parse seam (0.23.0) — the FrontmatterParser promotion's other half:
+    // a wrapper computes the same [tags, valid] (incl. fail-closed) via the
+    // canonical path instead of reinventing metadata.boost-tags tokenize+validate.
+    BoostTags::class,
     PassthroughRenderer::class,
     InvalidSkillRendererException::class,
     SkillRenderException::class,
@@ -289,6 +294,27 @@ it('freezes the config exceptions thrown by BoostConfig::load() as @api (project
         $short = (new ReflectionClass($fqcn))->getShortName();
         expect($loadDoc)->toContain("@throws {$short}");
     }
+});
+
+it('freezes BoostTags NARROW: parse + declaresTags @api, parseString stays @internal (0.23.0, project-boost-laravel)', function (): void {
+    // The tag-parse seam — a wrapper computes the canonical [tags, valid] instead
+    // of reinventing it (and diverging fail-open on a malformed boost-tags value).
+    // The lexer parseString() is NOT part of the frozen promise.
+    $rc = new ReflectionClass(BoostTags::class);
+
+    foreach (['parse', 'declaresTags'] as $name) {
+        $doc = (string) $rc->getMethod($name)->getDocComment();
+        expect(hasInternalTag($doc))->toBeFalse("BoostTags::{$name}() is the frozen @api surface; must not be @internal");
+    }
+
+    expect(hasInternalTag((string) $rc->getMethod('parseString')->getDocComment()))
+        ->toBeTrue('BoostTags::parseString() is the internal lexer; must carry method-level @internal');
+
+    // parse() returns the frozen [tags, valid] shape the fail-closed contract rides on.
+    [$tags, $valid] = BoostTags::parse(['metadata' => ['boost-tags' => ['not', 'a', 'string']]]);
+    expect($tags)
+        ->toBeEmpty()
+        ->and($valid)->toBeFalse('a non-string boost-tags is fail-closed (valid=false)');
 });
 
 it('never exposes an @internal type in an @api method signature or public property', function (): void {

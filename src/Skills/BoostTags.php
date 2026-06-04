@@ -22,13 +22,22 @@ use SanderMuller\BoostCore\Enums\Tag;
  * skill or guideline. A missing `metadata`, a `metadata` that is not a map,
  * or an absent `boost-tags` key is untagged-valid.
  *
- * @internal
+ * The `@api` tag-parse seam — the counterpart to the `@api` {@see FrontmatterParser}
+ * (which yields the frontmatter map this consumes). A wrapper that injects skills
+ * or guidelines computes the SAME `[tags, valid]` the engine does — including the
+ * fail-closed semantics — instead of reinventing `metadata.boost-tags` tokenize +
+ * validate (and diverging on the malformed-value case). `parseString()` is the
+ * internal lexer, not part of the frozen surface.
+ *
+ * @api
  */
 final class BoostTags
 {
     /**
      * @param  array<string, mixed>  $frontmatter
      * @return array{0: list<string>, 1: bool}  [normalized tags, valid]
+     *
+     * @api
      */
     public static function parse(array $frontmatter): array
     {
@@ -53,6 +62,8 @@ final class BoostTags
      * declaration wins, even when malformed).
      *
      * @param  array<string, mixed>  $frontmatter
+     *
+     * @api
      */
     public static function declaresTags(array $frontmatter): bool
     {
@@ -69,6 +80,9 @@ final class BoostTags
      * by the caller before it reaches here.
      *
      * @return list<string>
+     *
+     * @internal The internal lexer behind parse() + the guideline manifest —
+     * NOT part of the frozen @api surface. Wrappers use parse()/declaresTags().
      */
     public static function parseString(string $raw): array
     {

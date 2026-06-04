@@ -256,6 +256,48 @@ it('freezes the SyncResult wrapper-read surface (0.22.0)', function (): void {
     // The count helpers take the @api enums.
     expect((string) $rc->getMethod('countByAction')->getParameters()[0]->getType())->toBe(WriteAction::class)
         ->and((string) $rc->getMethod('countEmittersByAction')->getParameters()[0]->getType())->toBe(EmitterAction::class);
+
+    // $errors stays a plain `list<string>` — a consumer interpolates each entry
+    // directly ("{$err}"), so swapping it to a value object/array would throw
+    // "Array to string conversion". Guard the array-ness (the list<string> shape
+    // is doc-frozen in the @api docblock).
+    expect((string) $rc->getProperty('errors')->getType())->toBe('array');
+});
+
+it('freezes @api value-object + method PARAMETER NAMES — the 1.0 named-arg contract (project-boost-laravel)', function (): void {
+    // Consumers construct @api value objects and call @api methods with NAMED ARGS,
+    // so the parameter NAMES are part of the contract: a rename is breaking even
+    // though the @api CLASS is unchanged. Several of these (WrittenFile/EmitterResult/
+    // Diagnostic) are read off SyncResult by PROPERTY and never imported, so an
+    // import-scanning closure guard can't see them — pin the names by reflection here
+    // so a rename or reorder trips CI directly.
+    $frozenConstructorParams = [
+        Skill::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid'],
+        Guideline::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid'],
+        RenderContext::class => ['sourcePath', 'sourceVendor', 'frontmatter', 'projectRoot'],
+        WrittenFile::class => ['relativePath', 'absolutePath', 'action'],
+        EmitterResult::class => ['fqcn', 'vendor', 'action', 'relativePath', 'reason'],
+        Diagnostic::class => ['level', 'slot', 'message', 'vendor'],
+    ];
+
+    foreach ($frozenConstructorParams as $fqcn => $expected) {
+        $names = array_map(
+            static fn (ReflectionParameter $p): string => $p->getName(),
+            (new ReflectionClass($fqcn))->getConstructor()?->getParameters() ?? [],
+        );
+        expect($names)->toBe($expected, "{$fqcn} constructor param names are a frozen @api named-arg contract");
+    }
+
+    // BoostConfig::load — called with named args; param names frozen.
+    $loadParams = array_map(
+        static fn (ReflectionParameter $p): string => $p->getName(),
+        (new ReflectionMethod(BoostConfig::class, 'load'))->getParameters(),
+    );
+    expect($loadParams)->toBe(['projectRoot', 'configFile']);
+
+    // Diagnostic->level is a STRING contract (`error`|`warning`|`info`), NOT an enum —
+    // consumers match raw strings; enum-ifying it within 1.x would break them.
+    expect((string) (new ReflectionClass(Diagnostic::class))->getProperty('level')->getType())->toBe('string');
 });
 
 it('exposes a string-based @api skill emit-path helper (0.22.0)', function (): void {

@@ -32,6 +32,14 @@ final class SkillSourceScope
 
     public static function isSkillSource(SplFileInfo $file): bool
     {
+        // Backup / editor-temp files are never skills — a `SKILL.md.bak` parked
+        // beside the real `SKILL.md` (it starts with `SKILL.`), or a top-level
+        // `foo.md~`, would otherwise be discovered and then warned about as having
+        // no renderer for its `.bak`/`~` extension. Exclude them up front.
+        if (self::isBackupOrTempFile($file->getFilename())) {
+            return false;
+        }
+
         // Finder's getRelativePath() is the DIRECTORY portion relative to the
         // scanned root: '' for a top-level file, 'foo' for foo/SKILL.md,
         // 'foo/references' for foo/references/app.md.
@@ -45,5 +53,16 @@ final class SkillSourceScope
         return ! str_contains($relativeDir, '/')
             && ! str_contains($relativeDir, '\\')
             && str_starts_with($file->getFilename(), self::ENTRY_PREFIX);
+    }
+
+    /**
+     * A backup / editor-temp filename: a trailing `~`, or a final extension of
+     * `.bak` / `.orig` / `.tmp` / `.swp` / `.swo` (case-insensitive). Catches
+     * `SKILL.md.bak`, `foo.md.orig`, `foo.md~` — never an intended skill source.
+     */
+    private static function isBackupOrTempFile(string $filename): bool
+    {
+        return str_ends_with($filename, '~')
+            || preg_match('/\.(?:bak|orig|tmp|swp|swo)$/i', $filename) === 1;
     }
 }

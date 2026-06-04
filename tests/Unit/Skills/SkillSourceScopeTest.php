@@ -34,3 +34,14 @@ it('rejects nested reference/example files (the phantom-skill bug)', function ()
     expect(SkillSourceScope::isSkillSource(scopeFile('mcp-development/references', 'mcp-development/references/app.md', 'app.md')))->toBeFalse()
         ->and(SkillSourceScope::isSkillSource(scopeFile('mcp-development/references', 'mcp-development/references/SKILL.md', 'SKILL.md')))->toBeFalse();
 });
+
+it('rejects backup/editor-temp files so they are not discovered or warned as skills (#145, hihaho)', function (): void {
+    // SKILL.md.bak beside a real SKILL.md starts with `SKILL.` (would match the
+    // depth-1 entry rule); foo.md~ / foo.md.orig sit top-level. None are skills.
+    expect(SkillSourceScope::isSkillSource(scopeFile('mcp-development', 'mcp-development/SKILL.md.bak', 'SKILL.md.bak')))->toBeFalse()
+        ->and(SkillSourceScope::isSkillSource(scopeFile('mcp-development', 'mcp-development/SKILL.md.swp', 'SKILL.md.swp')))->toBeFalse()
+        ->and(SkillSourceScope::isSkillSource(scopeFile('', 'foo.md.orig', 'foo.md.orig')))->toBeFalse()
+        ->and(SkillSourceScope::isSkillSource(scopeFile('', 'foo.md~', 'foo.md~')))->toBeFalse()
+        // sanity: the real entry still passes
+        ->and(SkillSourceScope::isSkillSource(scopeFile('mcp-development', 'mcp-development/SKILL.md', 'SKILL.md')))->toBeTrue();
+});

@@ -324,6 +324,40 @@ it('does not delete UNCHANGED guidance files listed in a PRIOR (pre-0.12) gitign
     }
 });
 
+it('prunes DEAD symlinks in a DE-CONFIGURED agent dir too, preserving live ones (project-boost ^0.8 span)', function (): void {
+    // The ^0.8-span migration case: CURSOR was dropped from withAgents, but .cursor/
+    // still holds symlink-era orphans. The old prune only scanned CONFIGURED agents,
+    // so those lingered (dead → skipped-symlink rot; live → preserved). 0.23.0 prunes
+    // DEAD links across ALL agent dirs (a broken link serves nothing) while never
+    // touching LIVE ones (boost can't prove it owns them).
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);"); // CURSOR NOT configured
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        mkdir($root . '/.cursor/skills/oldvendor', 0o755, recursive: true);
+        $deadLink = $root . '/.cursor/skills/oldvendor/dead';
+        symlink(sys_get_temp_dir() . '/boost-gone-' . bin2hex(random_bytes(6)), $deadLink); // target never created → dead
+        $liveTarget = sys_get_temp_dir() . '/boost-live-' . bin2hex(random_bytes(6));
+        file_put_contents($liveTarget, "real\n");
+        $liveLink = $root . '/.cursor/skills/oldvendor/live';
+        symlink($liveTarget, $liveLink);
+
+        try {
+            expect(is_link($deadLink))->toBeTrue()->and(file_exists($deadLink))->toBeFalse();
+
+            SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+            expect(is_link($deadLink))->toBeFalse('dead symlink in a de-configured agent dir must be pruned')
+                ->and(is_link($liveLink))->toBeTrue('live symlink must be preserved (boost never unlinks a resolving link)');
+        } finally {
+            @unlink($liveTarget);
+        }
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('leaves live symlinks alone (does not chase or unlink valid links)', function (): void {
     $root = makeEndToEndProject();
     try {

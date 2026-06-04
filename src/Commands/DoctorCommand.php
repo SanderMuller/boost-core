@@ -12,6 +12,7 @@ use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Skills\UnrenderableSourceScanner;
+use SanderMuller\BoostCore\Sync\AgentDirSymlinkScanner;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncManifest;
@@ -123,6 +124,7 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportShadows($io, $driftResult);
         $this->reportConventionsBlock($io, $driftResult);
         $this->reportConventionTokenLeaks($io, $projectRoot, $config);
+        $this->reportAgentDirSymlinks($io, $projectRoot);
         if ($input->getOption('check-versions') === true) {
             $this->reportPathRepoShadows($io, $projectRoot);
         }
@@ -379,6 +381,39 @@ final class DoctorCommand extends BoostBaseCommand
 
         foreach ($skips as $warning) {
             $io->warning($warning);
+        }
+    }
+
+    /**
+     * Detect symlinks in agent skill/command dirs (across ALL known agents, so a
+     * de-configured agent's dir is covered too). DEAD links are stale rot the next
+     * sync prunes; LIVE links are preserved by design (boost never follows/overwrites
+     * a symlink it can't prove it owns) — likely legacy symlink-era artifacts the
+     * operator can convert to copies by hand. Quiet when there are none.
+     */
+    private function reportAgentDirSymlinks(SymfonyStyle $io, string $projectRoot): void
+    {
+        $scan = (new AgentDirSymlinkScanner())->scan($projectRoot, SyncEngine::allAgentTargets());
+        if ($scan['dead'] === [] && $scan['live'] === []) {
+            return;
+        }
+
+        $io->section('Agent-dir symlinks');
+
+        if ($scan['dead'] !== []) {
+            $io->warning(sprintf(
+                "%d dead (broken) symlink(s) in agent dirs — the next `vendor/bin/boost sync` prunes them:\n  - %s",
+                count($scan['dead']),
+                implode("\n  - ", $scan['dead']),
+            ));
+        }
+
+        if ($scan['live'] !== []) {
+            $io->note(sprintf(
+                "%d live symlink(s) in agent dirs — preserved by design (boost never follows or overwrites a symlink it can't prove it owns). Likely legacy symlink-era artifacts; sync keeps them. To switch to plain copies, remove them and re-sync (`find .claude .agents .cursor -type l -delete && vendor/bin/boost sync`):\n  - %s",
+                count($scan['live']),
+                implode("\n  - ", $scan['live']),
+            ));
         }
     }
 

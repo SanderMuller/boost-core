@@ -967,3 +967,28 @@ it('0.23.0 reportUnrenderableSources is wrapper-aware: downgrades the no-rendere
         doctorCleanup($dir);
     }
 });
+
+it('0.23.0 doctor reports dead + live agent-dir symlinks across all agents (project-boost)', function (): void {
+    // Scans ALL known agent dirs (incl de-configured) — plant orphans under .cursor/
+    // even though only CLAUDE_CODE is configured.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.cursor/skills/oldvendor', 0o755, recursive: true);
+    symlink($dir . '/gone-' . bin2hex(random_bytes(4)), $dir . '/.cursor/skills/oldvendor/deadlink'); // target absent → dead
+    $liveTarget = $dir . '/livetarget';
+    file_put_contents($liveTarget, "x\n");
+    symlink($liveTarget, $dir . '/.cursor/skills/oldvendor/livelink'); // resolves → live
+
+    try {
+        $command = new DoctorCommand(injectedPackages: new InstalledPackages([]));
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('Agent-dir symlinks')
+            ->and($display)->toContain('deadlink')
+            ->and($display)->toContain('livelink')
+            ->and($display)->toContain('preserved by design');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

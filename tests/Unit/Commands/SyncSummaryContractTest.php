@@ -59,8 +59,9 @@ it('lists the skipped symlink paths inline and references no nonexistent command
         $tester->execute(['--working-dir' => $dir]);
         $display = $tester->getDisplay();
 
-        expect($display)->toContain('user-placed symlink')
-            // The fix: name the actual skipped path inline …
+        // 0.23.0: a live symlink skip is a NOTE ("preserved by design"), not a warning.
+        expect($display)->toContain('preserved by design')
+            // names the actual skipped path inline …
             ->and($display)->toContain('.claude/skills/foo/SKILL.md')
             // … instead of pointing at a command that does not exist.
             ->and($display)->not->toContain('boost --check');

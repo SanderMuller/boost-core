@@ -266,8 +266,13 @@ final class SyncCommand extends BoostBaseCommand
                 ),
             ));
 
-            $io->warning(sprintf(
-                "%d file(s) skipped because a path segment is a user-placed symlink. Sync did not follow the link; the source file behind the symlink was not overwritten:\n  - %s",
+            // A NOTE, not a warning: a path with a live symlink segment is preserved
+            // BY DESIGN — boost never follows or overwrites a symlink it can't prove
+            // it owns (it may be a legacy symlink-era artifact or an intentional
+            // operator link). Nothing is wrong; it just won't converge to a plain copy
+            // until the operator removes the link. (Dead/broken symlinks are auto-pruned.)
+            $io->note(sprintf(
+                "%d file(s) skipped — a path segment is a live (resolving) symlink, preserved by design (boost does not follow or overwrite it). To switch to a plain copy, remove the link and re-sync (e.g. `find .claude .agents .cursor -type l -delete && vendor/bin/boost sync`):\n  - %s",
                 $skippedSymlink,
                 implode("\n  - ", $skippedPaths),
             ));

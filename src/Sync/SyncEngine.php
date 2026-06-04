@@ -1833,13 +1833,17 @@ final readonly class SyncEngine
         $toPrune = $this->filteredSkillPruner->candidates($skills, $droppedSkillNames);
         $skipGuidelineWrites = $guidelineRenderErrors !== [];
 
+        // Prune DEAD (broken) symlinks across ALL agent dirs — configured or not —
+        // so a de-configured agent's dir (e.g. .cursor/ after dropping CURSOR) also
+        // sheds its symlink-era orphans. A broken link points nowhere, so removal is
+        // always safe; live symlinks are never touched (see AgentDirSymlinkScanner).
+        if (! $checkOnly) {
+            (new AgentDirSymlinkScanner())->pruneDead($projectRoot, $this->agentTargets);
+        }
+
         foreach ($this->agentTargets as $target) {
             if (! $config->hasAgent($target->agent())) {
                 continue;
-            }
-
-            if (! $checkOnly) {
-                $this->pruneDeadSymlinks($projectRoot . '/' . $target->skillsDirectoryRelative());
             }
 
             foreach ($toPrune as $name) {
@@ -1877,56 +1881,6 @@ final readonly class SyncEngine
         }
 
         return [$writes, $errors];
-    }
-
-    /**
-     * Best-effort: walk a managed agent skills dir, unlink every dead
-     * symlink (link whose target no longer exists).
-     *
-     * Migrations that remove a previously-installed vendor (e.g. swapping
-     * `sandermuller/package-boost` for the renamed `package-boost-php`)
-     * leave behind dangling symlinks under `.{agent}/skills/<old-pkg>/`
-     * that point into the now-absent `vendor/<old-pkg>/`. This prune treats
-     * dead links in managed dirs as stale state that sync owns and cleans up.
-     *
-     * Live symlinks (target exists) are left alone and not recursed into,
-     * so the prune is safe against link loops and against legitimate
-     * symlinks the consumer may have placed there intentionally.
-     */
-    private function pruneDeadSymlinks(string $dir): void
-    {
-        if (! is_dir($dir)) {
-            return;
-        }
-
-        $entries = @scandir($dir);
-        if ($entries === false) {
-            return;
-        }
-
-        foreach ($entries as $entry) {
-            if ($entry === '.') {
-                continue;
-            }
-
-            if ($entry === '..') {
-                continue;
-            }
-
-            $path = $dir . '/' . $entry;
-
-            if (is_link($path)) {
-                if (! file_exists($path)) {
-                    @unlink($path);
-                }
-
-                continue;
-            }
-
-            if (is_dir($path)) {
-                $this->pruneDeadSymlinks($path);
-            }
-        }
     }
 
     /**

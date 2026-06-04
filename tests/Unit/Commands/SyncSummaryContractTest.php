@@ -64,7 +64,14 @@ it('lists the skipped symlink paths inline and references no nonexistent command
             // names the actual skipped path inline …
             ->and($display)->toContain('.claude/skills/foo/SKILL.md')
             // … instead of pointing at a command that does not exist.
-            ->and($display)->not->toContain('boost --check');
+            ->and($display)->not->toContain('boost --check')
+            // 1.0: the cleanup `find` targets the ACTUAL root of the skipped path
+            // (`.claude` here), not a hardcoded `.claude .agents .cursor` triplet
+            // that would mislead on other agent roots. Absence assertions are
+            // wrap-robust (Symfony's NOTE block injects `! ` line-prefixes that
+            // split a positive substring match unpredictably by terminal width).
+            ->and($display)->not->toContain('.agents')
+            ->and($display)->not->toContain('.cursor');
     } finally {
         $it = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),

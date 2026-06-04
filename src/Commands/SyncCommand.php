@@ -5,6 +5,7 @@ namespace SanderMuller\BoostCore\Commands;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
 use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
+use SanderMuller\BoostCore\Sync\AgentDirSymlinkScanner;
 use SanderMuller\BoostCore\Sync\EmitterAction;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
@@ -316,8 +317,9 @@ final class SyncCommand extends BoostBaseCommand
             // operator link). Nothing is wrong; it just won't converge to a plain copy
             // until the operator removes the link. (Dead/broken symlinks are auto-pruned.)
             $io->note(sprintf(
-                "%d file(s) skipped — a path segment is a live (resolving) symlink, preserved by design (boost does not follow or overwrite it). To switch to a plain copy, remove the link and re-sync (e.g. `find .claude .agents .cursor -type l -delete && vendor/bin/boost sync`):\n  - %s",
+                "%d file(s) skipped — a path segment is a live (resolving) symlink, preserved by design (boost does not follow or overwrite it). To switch to a plain copy, remove the link and re-sync (e.g. `find %s -type l -delete && vendor/bin/boost sync`):\n  - %s",
                 $skippedSymlink,
+                AgentDirSymlinkScanner::cleanupRootsFor($skippedPaths),
                 implode("\n  - ", $skippedPaths),
             ));
         }

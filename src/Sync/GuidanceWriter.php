@@ -37,11 +37,16 @@ final readonly class GuidanceWriter
     /**
      * @param  list<Guideline>  $resolvedGuidelines
      * @param  list<KeepReason>  $skillKeepReasons  conventions keep-reasons already collected from skills
-     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>, ownedGuidancePaths: list<string>, conventionsErrors: list<string>, conventionsKeepReasons: list<KeepReason>, conventionsBlockKept: bool, conventionsEvaluated: bool}
+     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>, ownedGuidancePaths: list<string>, emittedGuidancePaths: list<string>, conventionsErrors: list<string>, conventionsKeepReasons: list<KeepReason>, conventionsBlockKept: bool, conventionsEvaluated: bool}
      *   `ownedGuidancePaths` = relative paths boost wrote with NON-empty content
      *   this sync (boost-owned guidance), for recording in the new manifest so a
      *   later empty sync can prove ownership + converge. Excludes preserved
-     *   operator files and empty/cleared files. `conventionsErrors` = guidance-side
+     *   operator files and empty/cleared files. `emittedGuidancePaths` = every
+     *   guidance file boost is RESPONSIBLE for this sync (CONFIGURED agents +
+     *   conventions-CLAUDE.md), changed or unchanged or left-intact — the set the
+     *   stale-managed cleanup must EXEMPT from reaping. Scoped to configured
+     *   agents so a DROPPED agent's guidance is NOT exempt and gets reaped.
+     *   `conventionsErrors` = guidance-side
      *   render-class token errors (fail --check), from the ConventionsPass gate.
      *   `conventionsKeepReasons` / `conventionsBlockKept` = why the `## Project
      *   Conventions` block was kept (empty + false when dropped).
@@ -74,7 +79,7 @@ final readonly class GuidanceWriter
             // No ownedGuidancePaths reported on this gate — the render failed,
             // so the manifest write is skipped at the call site anyway (the
             // prior manifest stays last-known-good).
-            return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => [], 'conventionsErrors' => $conventionsErrors, 'conventionsKeepReasons' => [], 'conventionsBlockKept' => false, 'conventionsEvaluated' => false];
+            return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => [], 'emittedGuidancePaths' => [], 'conventionsErrors' => $conventionsErrors, 'conventionsKeepReasons' => [], 'conventionsBlockKept' => false, 'conventionsEvaluated' => false];
         }
 
         $guidanceFiles = $this->collectGuidanceFiles($config, $resolvedGuidelines, $conventionsPass->section());
@@ -90,6 +95,13 @@ final readonly class GuidanceWriter
             $skillKeepReasons,
         );
         $diagnostics = [...$diagnostics, ...$guidanceSelfCheck];
+
+        // Every guidance file boost is responsible for THIS sync (configured
+        // agents + conventions-CLAUDE.md), independent of whether it ends up
+        // written, unchanged, or left-intact. The stale-managed cleanup exempts
+        // exactly this set — a dropped agent's guidance is absent here and so
+        // stays reapable.
+        $emittedGuidancePaths = array_keys($guidanceFiles);
 
         foreach ($guidanceFiles as $file => $info) {
             $assembled = $composer->assemble($info['isClaude'] ? $effectiveSection : null, $info['body']);
@@ -175,7 +187,7 @@ final readonly class GuidanceWriter
             }
         }
 
-        return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => $ownedGuidancePaths, 'conventionsErrors' => $conventionsErrors, 'conventionsKeepReasons' => $conventionsKeepReasons, 'conventionsBlockKept' => $conventionsBlockKept, 'conventionsEvaluated' => true];
+        return ['writes' => $writes, 'diagnostics' => $diagnostics, 'ownedGuidancePaths' => $ownedGuidancePaths, 'emittedGuidancePaths' => $emittedGuidancePaths, 'conventionsErrors' => $conventionsErrors, 'conventionsKeepReasons' => $conventionsKeepReasons, 'conventionsBlockKept' => $conventionsBlockKept, 'conventionsEvaluated' => true];
     }
 
     /**

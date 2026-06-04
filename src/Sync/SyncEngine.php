@@ -821,18 +821,21 @@ final readonly class SyncEngine
         // excludes those paths from stale-file classification.
         // ($wrapperEmits already computed above to feed the gitignore pass.)
         if (! $hasAnyError) {
-            // Guidance files (CLAUDE.md/AGENTS.md/GEMINI.md/…) are managed wholesale
-            // by GuidanceWriter, NEVER by this gitignore-pattern stale cleanup — the
-            // cleaner exempts them (passed the agent targets) so a PRIOR managed block
-            // from the pre-0.12 gitignored-guidance era can't reap an UNCHANGED guidance
-            // file (absent from $writes) on the first post-migration sync.
+            // Guidance files boost EMITTED this sync (configured agents +
+            // conventions-CLAUDE.md) are managed wholesale by GuidanceWriter, NEVER
+            // by this gitignore-pattern stale cleanup — the cleaner exempts exactly
+            // that emitted set so a PRIOR managed block from the pre-0.12
+            // gitignored-guidance era can't reap an UNCHANGED guidance file (absent
+            // from $writes) on the first post-migration sync. The exemption is
+            // scoped to the EMITTED set (not all known agents) so a DROPPED agent's
+            // stale guidance is still reaped rather than lingering forever.
             $writes = $this->staleFileCleaner->cleanupStaleManagedFiles(
                 $projectRoot,
                 $priorManagedFiles,
                 $writes,
                 $checkOnly,
                 $wrapperEmits['paths'],
-                $this->agentTargets,
+                $guidanceResult['emittedGuidancePaths'],
             );
         }
 
@@ -1155,17 +1158,21 @@ final readonly class SyncEngine
             }
         }
 
-        // Ignore the sync ownership manifest dir. Added when this sync will write
-        // a manifest ($includeManifestDir) OR any remote source is declared — the
-        // remote-skill orphan ledger now lives inside this dir (0.19.0+), so its
+        // The legacy root `.boost/` (on the `.config/` layout) is kept ignored
+        // PERMANENTLY — independent of whether this sync writes a manifest — so a
+        // teammate's stale root `.boost/manifest.json` never surfaces as untracked
+        // mid-migration, even when the migrated project owns nothing this sync and
+        // emits no manifest. See SyncManifest::legacyIgnorePatternsFor.
+        $patterns = [...$patterns, ...SyncManifest::legacyIgnorePatternsFor($inConfigDir)];
+
+        // Ignore the ACTIVE sync ownership manifest dir. Added when this sync will
+        // write a manifest ($includeManifestDir) OR any remote source is declared —
+        // the remote-skill orphan ledger now lives inside this dir (0.19.0+), so its
         // presence alone requires the dir be ignored even if no ownership manifest
         // is written. enumerateManagedFiles() skips this dir so the stale-cleanup
         // pass never deletes the manifest (or ledger) it relies on.
         if ($includeManifestDir || $config->remoteSkills !== []) {
-            // The active manifest dir — plus, on the `.config/` layout, the legacy
-            // root `.boost/` (kept permanently so a teammate's stale root manifest
-            // never surfaces as untracked mid-migration). See SyncManifest::ignorePatternsFor.
-            $patterns = [...$patterns, ...SyncManifest::ignorePatternsFor($inConfigDir)];
+            $patterns[] = SyncManifest::activeIgnorePatternFor($inConfigDir);
         }
 
         // Wrapper-claimed paths land in the managed block so bare-CLI sync
@@ -1837,8 +1844,12 @@ final readonly class SyncEngine
         // so a de-configured agent's dir (e.g. .cursor/ after dropping CURSOR) also
         // sheds its symlink-era orphans. A broken link points nowhere, so removal is
         // always safe; live symlinks are never touched (see AgentDirSymlinkScanner).
+        // Use the FULL target set, not $this->agentTargets: a subset-constructed
+        // engine (a wrapper, or a test) would otherwise leave stale links under the
+        // agents outside its fan-out untouched, while `boost doctor` (which scans
+        // allAgentTargets()) still reports them — prune what doctor promises to.
         if (! $checkOnly) {
-            (new AgentDirSymlinkScanner())->pruneDead($projectRoot, $this->agentTargets);
+            (new AgentDirSymlinkScanner())->pruneDead($projectRoot, self::allAgentTargets());
         }
 
         foreach ($this->agentTargets as $target) {

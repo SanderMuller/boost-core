@@ -58,7 +58,10 @@ final readonly class GuidelineLoader
         $strict = Env::flagEnabled(Env::RENDER_STRICT);
         $manifest = GuidelineTagManifest::load($directory);
 
-        $warnings = [...$warnings, ...(new UnrenderableSourceScanner())->guidelineSkips($directory, $dispatcher)];
+        $warnings = [...$warnings, ...array_map(
+            static fn (UnrenderableSource $source): string => $source->message,
+            (new UnrenderableSourceScanner())->guidelineSkips($directory, $dispatcher),
+        )];
 
         $finder = (new Finder())
             ->files()

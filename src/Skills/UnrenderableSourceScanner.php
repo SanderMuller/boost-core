@@ -51,7 +51,7 @@ final readonly class UnrenderableSourceScanner
      * (and warns on) — so `boost doctor` doesn't report a clean bill of health
      * while sync would drop a vendor-provided skill/guideline.
      *
-     * @return list<string>
+     * @return list<UnrenderableSource>
      */
     public function allSourceSkips(BoostConfig $config, InstalledPackages $packages): array
     {
@@ -80,7 +80,7 @@ final readonly class UnrenderableSourceScanner
     }
 
     /**
-     * @return list<string>
+     * @return list<UnrenderableSource>
      */
     public function guidelineSkips(string $directory, SkillRendererDispatcher $dispatcher): array
     {
@@ -88,7 +88,7 @@ final readonly class UnrenderableSourceScanner
     }
 
     /**
-     * @return list<string>
+     * @return list<UnrenderableSource>
      */
     public function skillSkips(string $directory, SkillRendererDispatcher $dispatcher): array
     {
@@ -101,7 +101,7 @@ final readonly class UnrenderableSourceScanner
 
     /**
      * @param  Closure(SplFileInfo): bool|null  $filter
-     * @return list<string>
+     * @return list<UnrenderableSource>
      */
     private function scan(string $directory, SkillRendererDispatcher $dispatcher, string $label, string $renameHint, ?Closure $filter = null): array
     {
@@ -130,11 +130,14 @@ final readonly class UnrenderableSourceScanner
                 continue;
             }
 
-            $warnings[] = sprintf(
-                '%s `%s` skipped — no renderer registered for its extension. Register a SkillRenderer for it via withSkillRenderers() (e.g. a BladeRenderer for `.blade.php`), or rename the file to `%s`.',
-                $label,
+            $warnings[] = new UnrenderableSource(
                 $file->getRelativePathname(),
-                $renameHint,
+                sprintf(
+                    '%s `%s` skipped — no renderer registered for its extension. Register a SkillRenderer for it via withSkillRenderers() (e.g. a BladeRenderer for `.blade.php`), or rename the file to `%s`.',
+                    $label,
+                    $file->getRelativePathname(),
+                    $renameHint,
+                ),
             );
         }
 

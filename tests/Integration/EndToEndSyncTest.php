@@ -324,6 +324,45 @@ it('does not delete UNCHANGED guidance files listed in a PRIOR (pre-0.12) gitign
     }
 });
 
+it('reaps a DROPPED agent guidance file listed in a PRIOR (pre-0.12) block — exemption is scoped to CONFIGURED agents (codex)', function (): void {
+    // Companion to the a4bg5vbh test above. That test proves a CONFIGURED agent's
+    // UNCHANGED guidance survives the stale-managed cleanup. This proves the dual:
+    // a guidance file for an agent NO LONGER configured (here AGENTS.md, with no
+    // Codex/Amp/OpenCode in withAgents) must NOT be exempt — otherwise, because the
+    // exemption was keyed on ALL known agents, a pre-0.12 block listing AGENTS.md
+    // could never reap it (OrphanReaper is manifest-gated and has no entry on the
+    // first post-migration sync), so the dropped agent's guidance lingered forever.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);"); // Codex (AGENTS.md) NOT configured
+        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
+
+        // Sync 1: emits CLAUDE.md + a 0.12+ block (guidance NOT listed).
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Leftover from when Codex WAS configured: a stale AGENTS.md on disk, and a
+        // pre-0.12 managed block that still lists it (the real migration carry-in).
+        $agentsMd = $root . '/AGENTS.md';
+        file_put_contents($agentsMd, "Stale guidance from a since-removed Codex agent.\n");
+        $gitignore = $root . '/.gitignore';
+        $patched = str_replace(
+            '# >>> boost (managed) >>>',
+            "# >>> boost (managed) >>>\nAGENTS.md",
+            (string) file_get_contents($gitignore),
+        );
+        file_put_contents($gitignore, $patched);
+
+        // Sync 2: AGENTS.md is not emitted (Codex dropped) and not exempt (not a
+        // configured-agent guidance file) ⇒ the stale-managed cleanup reaps it.
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(file_exists($agentsMd))->toBeFalse("a dropped agent's stale guidance must be reaped, not exempted")
+            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue("the configured agent's guidance must survive");
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('prunes DEAD symlinks in a DE-CONFIGURED agent dir too, preserving live ones (project-boost ^0.8 span)', function (): void {
     // The ^0.8-span migration case: CURSOR was dropped from withAgents, but .cursor/
     // still holds symlink-era orphans. The old prune only scanned CONFIGURED agents,
@@ -389,6 +428,94 @@ it('does NOT follow a symlinked agent ROOT dir when pruning — never prunes out
         @unlink($root . '/.cursor/skills'); // drop the symlink before recursing $root
         @unlink($externalDead);
         @rmdir($external);
+        rmTreeE2E($root);
+    }
+});
+
+it('does NOT follow a symlinked agent PARENT dir when pruning — guard covers ancestors, not just the managed dir (codex P1)', function (): void {
+    // Sibling of the ROOT-dir test above. There the MANAGED dir (`.cursor/skills`)
+    // was itself the symlink, caught by `is_link($dir)`. Here the PARENT (`.cursor`)
+    // is the symlink and `skills` is a REAL dir inside the external target — so
+    // `is_link('.cursor/skills')` is FALSE while `is_dir()` still follows the parent
+    // link into the external tree. Without a realpath-containment guard the prune
+    // would unlink that external target's broken links — outside the project tree.
+    $root = makeEndToEndProject();
+    $external = sys_get_temp_dir() . '/boost-extparent-' . bin2hex(random_bytes(8));
+    mkdir($external . '/skills', 0o755, recursive: true);
+    $externalDead = $external . '/skills/dead';
+    symlink(sys_get_temp_dir() . '/boost-gone-' . bin2hex(random_bytes(6)), $externalDead); // dead
+
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        // The agent PARENT dir (.cursor) is the symlink; `.cursor/skills` resolves
+        // through it to the external (real) skills dir holding the dead link.
+        symlink($external, $root . '/.cursor');
+
+        expect(is_link($externalDead))->toBeTrue()->and(file_exists($externalDead))->toBeFalse();
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(is_link($externalDead))->toBeTrue('a dead link reached through a symlinked agent PARENT must NOT be pruned (outside the project tree)')
+            ->and(is_link($root . '/.cursor'))->toBeTrue('the symlinked agent parent itself is preserved');
+    } finally {
+        @unlink($root . '/.cursor'); // drop the symlink before recursing $root
+        @unlink($externalDead);
+        @rmdir($external . '/skills');
+        @rmdir($external);
+        rmTreeE2E($root);
+    }
+});
+
+it('prunes a dead symlink that IS the managed agent dir itself (codex — classify the root link, do not skip it)', function (): void {
+    // When the managed dir itself is a broken symlink (e.g. `.cursor/skills` →
+    // gone), the scanner used to return early at `is_link($dir)` WITHOUT classifying
+    // it — so the broken root link was never pruned and never reported by doctor.
+    // It must be classified like any child link: dead → pruned (the link is inside
+    // the project; only its target is gone), live → preserved.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        // `.cursor/skills` is itself a DEAD symlink (target never created).
+        mkdir($root . '/.cursor', 0o755, recursive: true);
+        $deadDirLink = $root . '/.cursor/skills';
+        symlink(sys_get_temp_dir() . '/boost-gone-' . bin2hex(random_bytes(6)), $deadDirLink);
+        expect(is_link($deadDirLink))->toBeTrue()->and(file_exists($deadDirLink))->toBeFalse();
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(is_link($deadDirLink))->toBeFalse('a dead symlink that IS the managed dir must be pruned, not skipped');
+    } finally {
+        @unlink($root . '/.cursor/skills');
+        rmTreeE2E($root);
+    }
+});
+
+it('a SUBSET-constructed engine still prunes dead symlinks across ALL agent dirs (codex — match what doctor reports)', function (): void {
+    // `boost doctor` scans dead links across allAgentTargets(), but the sync prune
+    // once passed $this->agentTargets — so an engine built with a SUBSET (a wrapper,
+    // or a test constructing `[new ClaudeCodeTarget()]`) left stale links under the
+    // agents outside its fan-out untouched forever. Prune must cover the full set,
+    // independent of construction, so sync cleans exactly what doctor promises.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        // A dead symlink-era orphan under a NON-Claude agent dir (.cursor/).
+        mkdir($root . '/.cursor/skills/oldvendor', 0o755, recursive: true);
+        $deadLink = $root . '/.cursor/skills/oldvendor/dead';
+        symlink(sys_get_temp_dir() . '/boost-gone-' . bin2hex(random_bytes(6)), $deadLink); // dead
+        expect(is_link($deadLink))->toBeTrue()->and(file_exists($deadLink))->toBeFalse();
+
+        // Engine built with ONLY the Claude target — .cursor/ is outside its fan-out.
+        (new SyncEngine(agentTargets: [new ClaudeCodeTarget()], installedPackages: emptyInstalledPackages()))->sync($root);
+
+        expect(is_link($deadLink))->toBeFalse('a dead link under a non-fanned-out agent dir must still be pruned by a subset engine');
+    } finally {
         rmTreeE2E($root);
     }
 });
@@ -3574,6 +3701,32 @@ it('0.23.0 .config/ layout keeps the legacy root .boost/ ignored in the managed 
         } finally {
             rmTreeE2E($rootProject);
         }
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('1.0 .config/ layout keeps the legacy root .boost/ ignored even when NO manifest is written (codex — migration race in the empty-own case)', function (): void {
+    // The teammate-pull race must hold even when the migrated project currently
+    // owns NOTHING (agents declared but no skills/guidelines/conventions), so no
+    // manifest is written this sync. The legacy `.boost/` ignore was gated on
+    // "will write a manifest", so an empty-own `.config/` project dropped it from
+    // the managed block — re-exposing a teammate's stale root .boost/manifest.json.
+    $root = makeEndToEndProject();
+    mkdir($root . '/.config', 0o755, recursive: true);
+    try {
+        file_put_contents(
+            $root . '/.config/boost.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);\n",
+        );
+        // Deliberately NO .ai/ skills/guidelines/conventions ⇒ nothing to own ⇒ no manifest.
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($root . '/.config/boost/manifest.json')->not->toBeFile('precondition: this sync writes no manifest');
+
+        $gitignore = (string) file_get_contents($root . '/.gitignore');
+        expect($gitignore)->toContain("\n.boost/");
     } finally {
         rmTreeE2E($root);
     }

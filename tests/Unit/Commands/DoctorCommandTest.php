@@ -990,10 +990,41 @@ it('0.23.2 reportUnrenderableSources keeps a NON-blade unrenderable as a WARNING
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
 
         // .blade.php → downgraded note; .rst → genuine [WARNING], not claimed-handled.
+        // Bind `notes.rst` to the WARNING block specifically — asserting a bare
+        // `[WARNING]` exists is a false pass (the entry-point banner also emits one).
         expect($display)->toContain('the wrapper Blade-renders them under')
             ->and($display)->toContain('blade-one.blade.php')
-            ->and($display)->toContain('[WARNING]')
-            ->and($display)->toContain('notes.rst');
+            ->and($display)->toContain('[WARNING] guideline `notes.rst`');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('1.0 reportUnrenderableSources: a wrapper project with ONLY a non-blade source shows NO wrapper note (codex — message embeds `.blade.php` example)', function (): void {
+    // Regression: the wrapper downgrade once classified on `str_contains($message,
+    // ".blade.php")`, but EVERY skip message embeds the advisory example
+    // "a BladeRenderer for `.blade.php`". So a project with only a `.rst` source
+    // would wrongly emit the wrapper "Blade-renders them" note and suppress the
+    // genuine data-loss warning. With NOTHING blade-renderable, that note must
+    // not appear at all and the `.rst` must stay a hard warning.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.ai/guidelines', 0o755, recursive: true);
+    file_put_contents($dir . '/.ai/guidelines/notes.rst', "Restructured text\n");
+
+    try {
+        $packages = new InstalledPackages([
+            'sandermuller/project-boost-laravel' => new PackageInfo(
+                name: 'sandermuller/project-boost-laravel',
+                version: '0.15.0',
+                installPath: $dir,
+            ),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->not->toContain('the wrapper Blade-renders them under')
+            ->and($display)->toContain('[WARNING] guideline `notes.rst`');
     } finally {
         doctorCleanup($dir);
     }
@@ -1018,7 +1049,12 @@ it('0.23.0 doctor reports dead + live agent-dir symlinks across all agents (proj
         expect($display)->toContain('Agent-dir symlinks')
             ->and($display)->toContain('deadlink')
             ->and($display)->toContain('livelink')
-            ->and($display)->toContain('preserved by design');
+            ->and($display)->toContain('preserved by design')
+            // 1.0: the cleanup `find` derives its roots from the reported paths
+            // (`.cursor` here), not a hardcoded `.claude .agents .cursor` triplet —
+            // `.agents` is absent (no Codex/Copilot link reported). Absence assertion
+            // is wrap-robust (Symfony NOTE blocks inject `! ` line-prefixes).
+            ->and($display)->not->toContain('.agents');
     } finally {
         doctorCleanup($dir);
     }

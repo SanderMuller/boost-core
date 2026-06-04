@@ -101,20 +101,29 @@ final readonly class SyncManifest
     }
 
     /**
-     * The managed-gitignore pattern(s) for the runtime manifest dir. The active
-     * dir always; on the `.config/` layout ALSO the legacy root `.boost/` — kept
-     * permanently so a teammate who pulls a freshly-migrated repo before their own
-     * sync doesn't see a stale (never-tracked) root `.boost/manifest.json` surface
-     * as untracked. enumerateManagedFiles skips both dirs (engine-internal state),
-     * so the extra line is pure-ignore, never a cleanup target.
+     * The managed-gitignore pattern for the ACTIVE runtime manifest dir
+     * (`.config/boost/` on the `.config/` layout, else `.boost/`). Added when a
+     * manifest/ledger actually lives there this sync. enumerateManagedFiles skips
+     * it (engine-internal state), so the line is pure-ignore, never a cleanup target.
+     */
+    public static function activeIgnorePatternFor(bool $inConfigDir): string
+    {
+        return self::dirFor($inConfigDir) . '/';
+    }
+
+    /**
+     * The PERMANENT legacy-dir ignore pattern(s) — independent of whether this sync
+     * writes a manifest. On the `.config/` layout the legacy root `.boost/` is kept
+     * ignored forever so a teammate who pulls a freshly-migrated repo before their
+     * own sync never sees a stale (never-tracked) root `.boost/manifest.json` surface
+     * as untracked — even when the migrated project currently owns nothing and emits
+     * no manifest. Empty on the root layout (there `.boost/` IS the active dir).
      *
      * @return list<string>
      */
-    public static function ignorePatternsFor(bool $inConfigDir): array
+    public static function legacyIgnorePatternsFor(bool $inConfigDir): array
     {
-        return $inConfigDir
-            ? [self::CONFIG_DIR . '/', self::DIR . '/']
-            : [self::DIR . '/'];
+        return $inConfigDir ? [self::DIR . '/'] : [];
     }
 
     /**

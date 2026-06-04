@@ -367,11 +367,16 @@ final class DoctorCommand extends BoostBaseCommand
         // for ANY OTHER extension is genuinely dropped by both entry points (the
         // wrapper doesn't render it either), so it stays a warning even on a wrapper
         // project — never claim the wrapper handles something it doesn't.
+        // Classify on the actual source EXTENSION, never a substring of the skip
+        // MESSAGE: every message embeds the advisory example ``a BladeRenderer
+        // for `.blade.php` ``, so `str_contains($message, '.blade.php')` matches
+        // every skip and would downgrade a genuinely-dropped `.rst`/`.mdx` to the
+        // wrapper note too — hiding real data loss on a wrapper project.
         $wrapperInstalled = $packages->has('sandermuller/project-boost-laravel');
         $wrapperHandled = [];
         $genuinelySkipped = [];
         foreach ($skips as $skip) {
-            if ($wrapperInstalled && str_contains($skip, '.blade.php')) {
+            if ($wrapperInstalled && $skip->hasExtension('.blade.php')) {
                 $wrapperHandled[] = $skip;
             } else {
                 $genuinelySkipped[] = $skip;
@@ -385,12 +390,12 @@ final class DoctorCommand extends BoostBaseCommand
                 . 'Only a concern if you sync via bare `vendor/bin/boost sync`.',
             );
             foreach ($wrapperHandled as $skip) {
-                $io->writeln('  <comment>·</comment> ' . $skip);
+                $io->writeln('  <comment>·</comment> ' . $skip->message);
             }
         }
 
         foreach ($genuinelySkipped as $warning) {
-            $io->warning($warning);
+            $io->warning($warning->message);
         }
     }
 
@@ -420,8 +425,9 @@ final class DoctorCommand extends BoostBaseCommand
 
         if ($scan['live'] !== []) {
             $io->note(sprintf(
-                "%d live symlink(s) in agent dirs — preserved by design (boost never follows or overwrites a symlink it can't prove it owns). Likely legacy symlink-era artifacts; sync keeps them. To switch to plain copies, remove them and re-sync (`find .claude .agents .cursor -type l -delete && vendor/bin/boost sync`):\n  - %s",
+                "%d live symlink(s) in agent dirs — preserved by design (boost never follows or overwrites a symlink it can't prove it owns). Likely legacy symlink-era artifacts; sync keeps them. To switch to plain copies, remove them and re-sync (`find %s -type l -delete && vendor/bin/boost sync`):\n  - %s",
                 count($scan['live']),
+                AgentDirSymlinkScanner::cleanupRootsFor($scan['live']),
                 implode("\n  - ", $scan['live']),
             ));
         }

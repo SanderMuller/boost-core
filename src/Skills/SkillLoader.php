@@ -62,7 +62,10 @@ final readonly class SkillLoader
         $dispatcher = $renderers ?? new SkillRendererDispatcher([new PassthroughRenderer()]);
         $strict = Env::flagEnabled(Env::RENDER_STRICT);
 
-        $warnings = [...$warnings, ...(new UnrenderableSourceScanner())->skillSkips($directory, $dispatcher)];
+        $warnings = [...$warnings, ...array_map(
+            static fn (UnrenderableSource $source): string => $source->message,
+            (new UnrenderableSourceScanner())->skillSkips($directory, $dispatcher),
+        )];
 
         $finder = (new Finder())
             ->files()

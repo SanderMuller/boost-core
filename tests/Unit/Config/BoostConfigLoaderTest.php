@@ -72,6 +72,48 @@ it('throws when boost.php returns the wrong type', function (): void {
     );
 })->throws(InvalidBoostConfigException::class, 'BoostConfigBuilder');
 
+it('converts a stale pre-0.20 variadic withTags() fatal into an actionable InvalidBoostConfigException, not a raw TypeError (mijntp/project-boost/LQI)', function (): void {
+    // The 0.20 array-only break: a require of this file fatals at the call site
+    // INSIDE boost.php (the TypeError fires before any migration can run), which
+    // would otherwise escape as a raw fatal and 500 `composer update`. The loader
+    // must translate it to a typed, catchable, migration-pointing exception.
+    $path = sys_get_temp_dir() . '/boost-variadic-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($path, <<<'PHP'
+        <?php declare(strict_types=1);
+
+        use SanderMuller\BoostCore\Config\BoostConfig;
+        use SanderMuller\BoostCore\Enums\Tag;
+
+        return BoostConfig::configure()
+            ->withTags(Tag::Php, 'jira');
+        PHP);
+
+    try {
+        (new BoostConfigLoader())->load(dirname($path), $path);
+        throw new RuntimeException('Expected InvalidBoostConfigException');
+    } catch (InvalidBoostConfigException $invalidBoostConfigException) {
+        expect($invalidBoostConfigException->getMessage())->toContain('withTags([')
+            ->and($invalidBoostConfigException->getMessage())->toContain('0.20')
+            ->and($invalidBoostConfigException->configPath)->toBe($path)
+            // The original TypeError is preserved as the cause for debugging.
+            ->and($invalidBoostConfigException->getPrevious())->toBeInstanceOf(TypeError::class);
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('wraps any other boost.php evaluation throw in InvalidBoostConfigException (no raw fatal escapes)', function (): void {
+    $path = sys_get_temp_dir() . '/boost-throws-' . bin2hex(random_bytes(6)) . '.php';
+    file_put_contents($path, "<?php\n\nthrow new \\RuntimeException('boom from user config');\n");
+
+    try {
+        expect(fn (): mixed => (new BoostConfigLoader())->load(dirname($path), $path))
+            ->toThrow(InvalidBoostConfigException::class, 'boom from user config');
+    } finally {
+        @unlink($path);
+    }
+});
+
 it('defaults `load($root)` to looking at $root/boost.php', function (): void {
     // No fixture exists at /fake/project/boost.php — should hit the not-found path.
     (new BoostConfigLoader())->load('/fake/project');

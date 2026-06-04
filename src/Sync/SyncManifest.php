@@ -101,6 +101,23 @@ final readonly class SyncManifest
     }
 
     /**
+     * The managed-gitignore pattern(s) for the runtime manifest dir. The active
+     * dir always; on the `.config/` layout ALSO the legacy root `.boost/` — kept
+     * permanently so a teammate who pulls a freshly-migrated repo before their own
+     * sync doesn't see a stale (never-tracked) root `.boost/manifest.json` surface
+     * as untracked. enumerateManagedFiles skips both dirs (engine-internal state),
+     * so the extra line is pure-ignore, never a cleanup target.
+     *
+     * @return list<string>
+     */
+    public static function ignorePatternsFor(bool $inConfigDir): array
+    {
+        return $inConfigDir
+            ? [self::CONFIG_DIR . '/', self::DIR . '/']
+            : [self::DIR . '/'];
+    }
+
+    /**
      * Load the prior manifest from a project root. Absent or corrupt → empty
      * (backward-safe: no ownership asserted).
      *

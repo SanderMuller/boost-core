@@ -1162,7 +1162,10 @@ final readonly class SyncEngine
         // is written. enumerateManagedFiles() skips this dir so the stale-cleanup
         // pass never deletes the manifest (or ledger) it relies on.
         if ($includeManifestDir || $config->remoteSkills !== []) {
-            $patterns[] = SyncManifest::dirFor($inConfigDir) . '/';
+            // The active manifest dir — plus, on the `.config/` layout, the legacy
+            // root `.boost/` (kept permanently so a teammate's stale root manifest
+            // never surfaces as untracked mid-migration). See SyncManifest::ignorePatternsFor.
+            $patterns = [...$patterns, ...SyncManifest::ignorePatternsFor($inConfigDir)];
         }
 
         // Wrapper-claimed paths land in the managed block so bare-CLI sync

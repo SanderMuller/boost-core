@@ -2,6 +2,8 @@
 
 Breaking changes per major/minor bump.
 
+> **Standing note — a `composer update` can produce a guidance-file diff to commit.** Since 0.12 the agent-guidance files (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`/`.github/copilot-instructions.md`) are boost-owned but **tracked** (committed, not gitignored), and the post-install/update hook runs a sync. So when a dependency update changes synced content (a vendor ships a new skill/guideline, or boost-core's own output changes), the next `composer update` rewrites those tracked files → a dirty working tree you commit alongside the dependency bump. This is expected, not drift: the sync is a no-op when nothing changed (so the tree only goes dirty on a real content change), and the diff is reviewable. Commit it as part of the update.
+
 ## 0.20 → 0.21
 
 > **⚠️ Migrate your `emit()` signature FIRST.** If you ship a `FileEmitter`, change its `emit()` signature to `iterable` BEFORE you bump boost-core to 0.21+. A still-`?EmittedFile` implementation **hard-fatals** the moment boost-core loads your class (`Declaration … must be compatible with FileEmitter::emit(): iterable`) — a raw PHP fatal at sync startup, not a graceful diagnostic, so it blocks the entire sync. Do this one edit before anything else in this upgrade.

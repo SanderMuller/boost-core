@@ -257,6 +257,32 @@ it('prunes dead symlinks in managed agent skills dirs (vendor-rename migration)'
     }
 });
 
+it('sync is idempotent: one sync converges — a check right after is clean + a 2nd sync is a no-op (1.0 invariant)', function (): void {
+    // Hard 1.0 invariant (the broader guarantee behind the guidance-deletion fix):
+    // a SINGLE sync must fully converge. No delete-then-recreate across passes, no
+    // "[OK] sync" that leaves doctor/--check in drift. Two dogfood reports showed a
+    // two-pass thrash on a wrapper's 0.14 emit; this pins core idempotency.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types.\n");
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // A check immediately after the first sync must report NO drift.
+        $check = SyncEngine::default(emptyInstalledPackages())->sync($root, checkOnly: true);
+        expect($check->hasDrift())->toBeFalse('one sync must converge — the check right after must be clean');
+
+        // And a second real sync must be a pure no-op — no writes, no deletes.
+        $second = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect($second->countByAction(WriteAction::WROTE))->toBe(0)
+            ->and($second->countByAction(WriteAction::DELETED))->toBe(0);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('does not delete UNCHANGED guidance files listed in a PRIOR (pre-0.12) gitignore block (a4bg5vbh)', function (): void {
     // Regression: migrating FROM the pre-0.12 gitignored-guidance layout, the
     // prior managed block still lists CLAUDE.md/AGENTS.md. An UNCHANGED guidance
@@ -3436,8 +3462,49 @@ it('0.18.0 .config/boost.php layout: the runtime manifest lands at .config/boost
         expect($root . '/.boost/manifest.json')->not->toBeFile();
 
         $gitignore = (string) file_get_contents($root . '/.gitignore');
+        // 0.23.0: the active manifest dir is .config/boost/, AND the legacy root
+        // .boost/ is now KEPT in the managed block on the .config/ layout (the
+        // teammate-pull race — see the dedicated test below). No .boost/manifest.json
+        // is written; .boost/ is a pure permanent legacy ignore.
         expect($gitignore)->toContain('.config/boost/')
-            ->and($gitignore)->not->toContain("\n.boost/");
+            ->and($gitignore)->toContain("\n.boost/");
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('0.23.0 .config/ layout keeps the legacy root .boost/ ignored in the managed block (teammate-pull race, mijntp)', function (): void {
+    // A teammate who pulls a freshly-.config/-migrated repo before running their own
+    // sync may still hold a stale (never-tracked) .boost/manifest.json from the old
+    // layout. Keeping .boost/ permanently in the .config/-layout managed block means
+    // that stale root manifest never surfaces as untracked → no accidental commit.
+    $root = makeEndToEndProject();
+    mkdir($root . '/.config', 0o755, recursive: true);
+    try {
+        file_put_contents(
+            $root . '/.config/boost.php',
+            "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);\n",
+        );
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\ndescription: A foo skill.\n---\n# Foo body\n");
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        $gitignore = (string) file_get_contents($root . '/.gitignore');
+        expect($gitignore)->toContain('.config/boost/')
+            ->and($gitignore)->toContain("\n.boost/");
+
+        // A root-layout project must NOT gain a spurious .config/boost/ ignore.
+        $rootProject = makeEndToEndProject();
+        try {
+            writeBoostPhp($rootProject, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+            file_put_contents($rootProject . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+            SyncEngine::default(emptyInstalledPackages())->sync($rootProject);
+            $rootGitignore = (string) file_get_contents($rootProject . '/.gitignore');
+            expect($rootGitignore)->toContain("\n.boost/")
+                ->and($rootGitignore)->not->toContain('.config/boost/');
+        } finally {
+            rmTreeE2E($rootProject);
+        }
     } finally {
         rmTreeE2E($root);
     }

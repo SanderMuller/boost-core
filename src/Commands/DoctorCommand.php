@@ -113,6 +113,12 @@ final class DoctorCommand extends BoostBaseCommand
         }
 
         $this->reportEntryPointMismatch($io);
+        (new CoexistenceReporter())->report(
+            $io,
+            $projectRoot,
+            $this->injectedPackages ?? InstalledPackages::fromComposer(),
+            $configFile->inConfigDir,
+        );
         $this->reportAgents($io, $config);
         $this->reportSourcePaths($io, $config, $configFile->inConfigDir);
         $this->reportCommandLimitations($io, $config);

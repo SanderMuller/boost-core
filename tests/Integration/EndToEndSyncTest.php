@@ -324,6 +324,36 @@ it('does not delete UNCHANGED guidance files listed in a PRIOR (pre-0.12) gitign
     }
 });
 
+it('1.0 warn-and-overwrite guard: warns when a non-owned foreign guidance file is wholesale-overwritten, then steady-state is silent (spec §5)', function (): void {
+    // The never-lossy guard's non-empty sibling: a pre-existing CLAUDE.md authored by
+    // another tool (no boost markers, not boost-owned) is about to be wholesale-replaced
+    // by the assembly. The default is warn-AND-overwrite (MINOR-safe) — the file IS taken
+    // over, but a warning surfaces the takeover. On the next sync boost owns it → silent.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
+
+        // Foreign-authored CLAUDE.md (no boost markers), content NOT in .ai/guidelines.
+        file_put_contents($root . '/CLAUDE.md', "# Seeded by another tool\n\nBespoke guidance not mirrored into .ai/.\n");
+
+        $first = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $firstMessages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $first->diagnostics));
+
+        expect($firstMessages)->toContain('was authored outside boost-core')
+            // warn-AND-overwrite default: boost takes the file over.
+            ->and((string) file_get_contents($root . '/CLAUDE.md'))->toContain('Use strict types everywhere')
+            ->and((string) file_get_contents($root . '/CLAUDE.md'))->not->toContain('Seeded by another tool');
+
+        // Second sync: boost now owns CLAUDE.md (manifest sha-match) → guard stays silent.
+        $second = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $secondMessages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $second->diagnostics));
+        expect($secondMessages)->not->toContain('was authored outside boost-core');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('reaps a DROPPED agent guidance file listed in a PRIOR (pre-0.12) block — exemption is scoped to CONFIGURED agents (codex)', function (): void {
     // Companion to the a4bg5vbh test above. That test proves a CONFIGURED agent's
     // UNCHANGED guidance survives the stale-managed cleanup. This proves the dual:

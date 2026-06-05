@@ -1000,6 +1000,62 @@ it('0.23.2 reportUnrenderableSources keeps a NON-blade unrenderable as a WARNING
     }
 });
 
+it('1.0 doctor: reports the laravel/boost coexistence section when laravel/boost + the wrapper are installed', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+            'sandermuller/project-boost-laravel' => new PackageInfo(name: 'sandermuller/project-boost-laravel', version: '0.15.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('laravel/boost coexistence')
+            ->and($display)->toContain('project-boost:sync');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('1.0 doctor: WARNS when laravel/boost is installed WITHOUT the wrapper (wholesale-own-guidance risk)', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        // Single-token assertions are wrap-robust (Symfony WARNING blocks word-wrap).
+        expect($display)->toContain('laravel/boost coexistence')
+            ->and($display)->toContain('sandermuller/project-boost-laravel');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('1.0 doctor: flags a foreign-seeded guidance file (laravel/boost marker, not boost-owned) + offers reconcile', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    // A CLAUDE.md carrying laravel/boost's marker, with no prior boost manifest → not boost-owned.
+    file_put_contents($dir . '/CLAUDE.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
+    try {
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+            'sandermuller/project-boost-laravel' => new PackageInfo(name: 'sandermuller/project-boost-laravel', version: '0.15.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('CLAUDE.md')
+            ->and($display)->toContain('project-boost:reconcile');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
 it('1.0 reportUnrenderableSources: a wrapper project with ONLY a non-blade source shows NO wrapper note (codex — message embeds `.blade.php` example)', function (): void {
     // Regression: the wrapper downgrade once classified on `str_contains($message,
     // ".blade.php")`, but EVERY skip message embeds the advisory example

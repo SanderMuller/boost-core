@@ -36,6 +36,7 @@ final class InstallCommand extends BoostBaseCommand
         private readonly BoostConfigLoader $loader = new BoostConfigLoader(),
         private readonly BoostConfigWriter $writer = new BoostConfigWriter(),
         private readonly FirstPartyPrefixes $firstParty = new FirstPartyPrefixes(),
+        private readonly ?InstalledPackages $injectedPackages = null,
     ) {
         parent::__construct();
     }
@@ -98,12 +99,14 @@ final class InstallCommand extends BoostBaseCommand
             return self::FAILURE;
         }
 
-        $packages = InstalledPackages::fromComposer();
+        $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
         $availableVendors = $this->discoverPublishers($packages);
 
         $agents = $this->pickAgents($config);
-        $vendors = $this->pickVendors($config, $availableVendors);
-        $tags = $this->pickTags($config, $vendors, $packages);
+        $vendors = $this->pickVendors($io, $config, $availableVendors);
+        $tags = $this->pickTags($io, $config, $vendors, $packages);
+
+        $this->noteLaravelBoostCoexistence($io, $packages);
 
         try {
             $this->writer->update(
@@ -154,9 +157,18 @@ final class InstallCommand extends BoostBaseCommand
      * @param  list<string>  $availableVendors
      * @return list<string>
      */
-    private function pickVendors(BoostConfig $config, array $availableVendors): array
+    private function pickVendors(SymfonyStyle $io, BoostConfig $config, array $availableVendors): array
     {
         if ($availableVendors === []) {
+            // Don't prompt an empty list — but say WHY, so the operator isn't left
+            // thinking install ignored vendors. "Publishes" = ships a
+            // `resources/boost/skills` or `resources/boost/guidelines` dir.
+            $io->note(
+                'No installed Composer package publishes boost-core skills/guidelines '
+                . '(a `resources/boost/skills` or `resources/boost/guidelines` directory), '
+                . 'so the vendor allowlist picker was skipped. Your existing allowlist is kept.',
+            );
+
             return $config->allowedVendors;
         }
 
@@ -197,10 +209,17 @@ final class InstallCommand extends BoostBaseCommand
      * @param  list<string>  $vendors  vendor names from the vendor picker
      * @return list<string>|null
      */
-    private function pickTags(BoostConfig $config, array $vendors, InstalledPackages $packages): ?array
+    private function pickTags(SymfonyStyle $io, BoostConfig $config, array $vendors, InstalledPackages $packages): ?array
     {
         $available = (new AvailableTagsDiscovery($packages))->discover($vendors, $config->skillRenderers);
         if ($available === []) {
+            // Same transparency as the vendor picker: explain the skip rather than
+            // silently no-op (returning null leaves the existing withTags untouched).
+            $io->note(
+                'None of the selected vendors publish tagged skills/guidelines, so the '
+                . 'tag picker was skipped. Your existing tags (if any) are kept.',
+            );
+
             return null;
         }
 
@@ -231,6 +250,41 @@ final class InstallCommand extends BoostBaseCommand
         );
 
         return self::mergePickedWithPreserved($picked, $preserved);
+    }
+
+    /**
+     * laravel/boost ships its bundled skills + guidelines through the
+     * project-boost-laravel WRAPPER's `project-boost:sync` injection, NOT boost-core's
+     * vendor allowlist — so it never appears in the vendor picker. Say so on detection
+     * (independent of whether the picker skipped) so the operator isn't left wondering
+     * why laravel/boost isn't pickable. Points at `boost doctor` for the full picture.
+     */
+    private function noteLaravelBoostCoexistence(SymfonyStyle $io, InstalledPackages $packages): void
+    {
+        if (! $packages->has('laravel/boost')) {
+            return;
+        }
+
+        // Branch on wrapper presence — without it, `project-boost:sync` does NOT
+        // exist, so pointing the operator at it (right when they notice laravel/boost
+        // is absent from the picker) would be a wrong next step.
+        if (! $packages->has('sandermuller/project-boost-laravel')) {
+            $io->note(
+                'laravel/boost is installed, but the project-boost-laravel wrapper is NOT — so there is no '
+                . "coexistence sync path yet, and laravel/boost's bundled skills/guidelines are not pickable "
+                . 'here. Install sandermuller/project-boost-laravel to bridge them into boost-core (then sync '
+                . 'with `php artisan project-boost:sync`). Run `boost doctor` for details.',
+            );
+
+            return;
+        }
+
+        $io->note(
+            'laravel/boost is installed — its bundled skills + guidelines ship through the '
+            . "project-boost-laravel wrapper (`php artisan project-boost:sync`), not boost-core's "
+            . 'vendor allowlist, so it does not appear in the picker above. Run `boost doctor` for '
+            . 'the full coexistence picture.',
+        );
     }
 
     /**

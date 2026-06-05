@@ -153,6 +153,19 @@ final readonly class GuidanceWriter
                 // '') returns '' → writes empty → converges to empty.
             }
 
+            // Warn-and-overwrite guard (§5 — the never-lossy guard's non-empty
+            // sibling). boost is about to wholesale-replace a NON-empty guidance file
+            // it does NOT own (no prior-manifest sha-match) whose content differs from
+            // the assembly — i.e. a foreign or operator writer authored it. The
+            // overwrite still proceeds (the MINOR-safe default; a preserve mode is a
+            // future opt-in), but surface a WARNING so the takeover is visible. Skipped
+            // for marker-bearing files (migrate() preserves their residual losslessly)
+            // and for boost-owned files (steady-state convergence). The message stays
+            // tool-agnostic — the advisory layer (doctor) names a specific tool.
+            if ($this->shouldWarnOverwrite($assembled, $existing, $file, $composer, $priorManifest)) {
+                $diagnostics[] = Diagnostic::warning(null, $this->guidanceOverwriteMessage($file));
+            }
+
             $migration = $composer->migrate($existing, $assembled);
 
             // Warn only on the actual marker→markerless transition with genuine
@@ -259,6 +272,40 @@ final readonly class GuidanceWriter
     {
         return sprintf(
             'boost-core resolved no guidelines or conventions this sync, so `%s` was left untouched rather than blanked. Add guidelines under `.ai/guidelines/` (or declare conventions in `boost.php`) to populate it; delete the file manually if you want it empty.',
+            $file,
+        );
+    }
+
+    /**
+     * The warn-and-overwrite guard's predicate (§5): a NON-empty assembly is about to
+     * wholesale-replace a non-empty guidance file that differs from it, carries no boost
+     * markers, and is not boost-owned — i.e. a foreign/operator takeover worth surfacing.
+     */
+    private function shouldWarnOverwrite(string $assembled, ?string $existing, string $file, GuidanceComposer $composer, SyncManifest $priorManifest): bool
+    {
+        return $assembled !== ''
+            && $existing !== null
+            && trim($existing) !== ''
+            && $existing !== $assembled
+            && ! $composer->hasManagedMarkers($existing)
+            && ! $priorManifest->ownsGuidance($file, hash('sha256', $existing));
+    }
+
+    /**
+     * WARNING fired by the warn-and-overwrite guard (§5): boost is taking over a
+     * non-empty guidance file it does not own (a foreign or operator writer authored
+     * it). Stays tool-agnostic — accurate whether the file's content reaches boost via
+     * `.ai/guidelines/` / a wrapper's injection (preserved) or not (replaced). The
+     * laravel/boost-specific reconcile steer lives in `boost doctor`.
+     */
+    private function guidanceOverwriteMessage(string $file): string
+    {
+        return sprintf(
+            '`%s` was authored outside boost-core (boost does not own it yet) and is being taken over by the '
+            . "wholesale guidance assembly. Content that reaches boost via `.ai/guidelines/` (or a wrapper's "
+            . 'injected guidelines) is preserved; any OTHER content in the file is replaced. If another tool '
+            . 'seeded this file, run that tool\'s reconcile/sync so its content is captured first — '
+            . '`boost doctor` reports the specifics.',
             $file,
         );
     }

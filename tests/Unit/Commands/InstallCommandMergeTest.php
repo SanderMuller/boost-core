@@ -1,7 +1,47 @@
 <?php declare(strict_types=1);
 
+use Laravel\Prompts\Key;
+use Laravel\Prompts\Prompt;
 use SanderMuller\BoostCore\Commands\InstallCommand;
 use SanderMuller\BoostCore\Config\BoostConfigPath;
+use SanderMuller\BoostCore\Sync\InstalledPackages;
+use SanderMuller\BoostCore\Sync\PackageInfo;
+use Symfony\Component\Console\Tester\CommandTester;
+
+it('1.0 boost install: explains the skipped vendor + tag pickers and notes laravel/boost coexistence', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-install-notes-' . bin2hex(random_bytes(8));
+    mkdir($dir, 0o755, recursive: true);
+    file_put_contents(
+        $dir . '/boost.php',
+        "<?php\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\n\nreturn BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE]);\n",
+    );
+
+    // The only interactive prompt is the agent picker (CLAUDE_CODE pre-checked) — ENTER
+    // accepts it. The vendor + tag pickers skip (no publisher / no tags) before any
+    // prompt; laravel/boost is injected but is not an allowlist publisher.
+    Prompt::fake([Key::ENTER]);
+
+    try {
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new InstallCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir], ['interactive' => true]);
+
+        // Strip Symfony NOTE `!` prefixes + collapse whitespace so wrapped phrases match.
+        $clean = (string) preg_replace('/\s+/', ' ', str_replace('!', ' ', $tester->getDisplay()));
+
+        expect($clean)->toContain('vendor allowlist picker was skipped')
+            ->and($clean)->toContain('tag picker was skipped')
+            // laravel/boost WITHOUT the wrapper (codex P2): the note must steer to
+            // INSTALLING the wrapper, NOT to a `project-boost:sync` command they lack.
+            ->and($clean)->toContain('no coexistence sync path')
+            ->and($clean)->toContain('Install sandermuller/project-boost-laravel');
+    } finally {
+        @unlink($dir . '/boost.php');
+        @rmdir($dir);
+    }
+});
 
 it('merges picker output with declared-but-not-discovered tags, picker order first, dedup', function (): void {
     $merged = InstallCommand::mergePickedWithPreserved(

@@ -60,11 +60,17 @@ final class CoexistenceReporter
         $foreignSeeded = $this->foreignSeededGuidanceFiles($projectRoot, $inConfigDir);
 
         if ($foreignSeeded !== []) {
+            // Steer to `project-boost:sync` — which EXISTS and re-derives laravel/boost's
+            // bundled guidelines into the assembly (safe for vendor content). Do NOT name
+            // a `project-boost:reconcile` guided-takeover command: it is future wrapper
+            // work and does not exist yet, so pointing at it would be a wrong path. The
+            // genuine at-risk content is a direct HAND-EDIT of the seeded file (it does
+            // not re-derive) — call that out as the thing to capture first.
             $io->warning(sprintf(
-                '%d guidance file(s) carry laravel/boost-authored content boost-core does not own — a bare '
-                . '`vendor/bin/boost sync` would overwrite them, and any hand-edits would be lost. Run '
-                . '`php artisan project-boost:reconcile` to capture that content into `.ai/guidelines/` before '
-                . "the next sync:\n  - %s",
+                '%d guidance file(s) carry laravel/boost-authored content boost-core does not own yet. Run '
+                . "`php artisan project-boost:sync` to take them over — laravel/boost's bundled guidelines "
+                . 're-derive into the assembly safely. If you HAND-EDITED any of these files directly, move '
+                . "those edits into `.ai/guidelines/` first, or the takeover will replace them:\n  - %s",
                 count($foreignSeeded),
                 implode("\n  - ", $foreignSeeded),
             ));

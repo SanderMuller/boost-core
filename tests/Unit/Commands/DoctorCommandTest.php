@@ -1036,7 +1036,7 @@ it('1.0 doctor: WARNS when laravel/boost is installed WITHOUT the wrapper (whole
     }
 });
 
-it('1.0 doctor: flags a foreign-seeded guidance file (laravel/boost marker, not boost-owned) + offers reconcile', function (): void {
+it('1.1.1 doctor: flags a foreign-seeded guidance file + steers to project-boost:sync (NOT the not-yet-built reconcile)', function (): void {
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
     // A CLAUDE.md carrying laravel/boost's marker, with no prior boost manifest → not boost-owned.
     file_put_contents($dir . '/CLAUDE.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
@@ -1050,7 +1050,9 @@ it('1.0 doctor: flags a foreign-seeded guidance file (laravel/boost marker, not 
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
 
         expect($display)->toContain('CLAUDE.md')
-            ->and($display)->toContain('project-boost:reconcile');
+            ->and($display)->toContain('project-boost:sync')
+            // must NOT point at the not-yet-built reconcile command (1.1.1 fix).
+            ->and($display)->not->toContain('project-boost:reconcile');
     } finally {
         doctorCleanup($dir);
     }

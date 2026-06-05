@@ -393,6 +393,37 @@ it('reaps a DROPPED agent guidance file listed in a PRIOR (pre-0.12) block — e
     }
 });
 
+it('#147: counts pruned dead symlinks in the deleted total + delete-attribution', function (): void {
+    // A pruned dead symlink is a real removal boost made — it must show in `deleted=N`
+    // (countByAction(DELETED)) + the delete-attribution, not vanish silently.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        mkdir($root . '/.cursor/skills/oldvendor', 0o755, recursive: true);
+        $deadLink = $root . '/.cursor/skills/oldvendor/dead';
+        symlink(sys_get_temp_dir() . '/boost-gone-' . bin2hex(random_bytes(6)), $deadLink); // target absent → dead
+        expect(is_link($deadLink))->toBeTrue()->and(file_exists($deadLink))->toBeFalse();
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        $deletedPaths = array_map(
+            static fn (WrittenFile $w): string => $w->relativePath,
+            array_filter($result->writes, static fn (WrittenFile $w): bool => $w->action === WriteAction::DELETED),
+        );
+
+        expect(is_link($deadLink))->toBeFalse('dead symlink pruned')
+            ->and($result->countByAction(WriteAction::DELETED))->toBeGreaterThanOrEqual(1)
+            ->and($deletedPaths)->toContain('.cursor/skills/oldvendor/dead')
+            // attribution acknowledges the dead-symlink cause (codex P2) — not just "source no longer eligible".
+            ->and((string) $result->renderDeleteAttribution())->toContain('symlink');
+    } finally {
+        @unlink($root . '/.cursor/skills/oldvendor/dead'); // drop the symlink before recursing $root
+        rmTreeE2E($root);
+    }
+});
+
 it('prunes DEAD symlinks in a DE-CONFIGURED agent dir too, preserving live ones (project-boost ^0.8 span)', function (): void {
     // The ^0.8-span migration case: CURSOR was dropped from withAgents, but .cursor/
     // still holds symlink-era orphans. The old prune only scanned CONFIGURED agents,

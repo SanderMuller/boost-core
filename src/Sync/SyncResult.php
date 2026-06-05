@@ -175,7 +175,7 @@ final readonly class SyncResult
 
         $lines = [
             sprintf(
-                'Deleted %d file(s) from agent dirs. The corresponding sources are no longer eligible (tag-filter, removed `withRemoteSkills` entry, or stale prune). Paths:',
+                'Deleted %d file(s) from agent dirs — each because its source is no longer eligible (tag-filter, removed `withRemoteSkills` entry, or stale prune) OR it was a broken symlink-era link pruned as dead. Paths:',
                 count($deletedPaths),
             ),
         ];

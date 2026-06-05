@@ -1848,8 +1848,14 @@ final readonly class SyncEngine
         // engine (a wrapper, or a test) would otherwise leave stale links under the
         // agents outside its fan-out untouched, while `boost doctor` (which scans
         // allAgentTargets()) still reports them — prune what doctor promises to.
+        // Record each pruned dead symlink as a DELETED write so it flows into the
+        // `deleted=N` summary + the delete-attribution (#147) — the prune was a real
+        // removal boost made and was previously invisible in the count.
         if (! $checkOnly) {
-            (new AgentDirSymlinkScanner())->pruneDead($projectRoot, self::allAgentTargets());
+            $writes = [...$writes, ...array_map(
+                static fn (string $link): WrittenFile => new WrittenFile($link, $projectRoot . '/' . $link, WriteAction::DELETED),
+                (new AgentDirSymlinkScanner())->pruneDead($projectRoot, self::allAgentTargets()),
+            )];
         }
 
         foreach ($this->agentTargets as $target) {

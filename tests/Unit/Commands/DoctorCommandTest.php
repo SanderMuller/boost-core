@@ -1058,6 +1058,46 @@ it('1.1.1 doctor: flags a foreign-seeded guidance file + steers to project-boost
     }
 });
 
+it('1.2.0 doctor: NAMES project-boost:reconcile for a foreign-seeded file once the wrapper is >= 1.1.0', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    file_put_contents($dir . '/CLAUDE.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
+    try {
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+            // wrapper 1.1.0 ships the guided takeover → doctor may name it.
+            'sandermuller/project-boost-laravel' => new PackageInfo(name: 'sandermuller/project-boost-laravel', version: '1.1.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('CLAUDE.md')
+            ->and($display)->toContain('project-boost:reconcile');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('1.2.0 doctor: a dev/unparseable wrapper version falls back to project-boost:sync (conservative — never name a possibly-absent command)', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    file_put_contents($dir . '/CLAUDE.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
+    try {
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+            // dev-main: cannot prove reconcile exists → must NOT name it.
+            'sandermuller/project-boost-laravel' => new PackageInfo(name: 'sandermuller/project-boost-laravel', version: 'dev-main', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('project-boost:sync')
+            ->and($display)->not->toContain('project-boost:reconcile');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
 it('1.0 reportUnrenderableSources: a wrapper project with ONLY a non-blade source shows NO wrapper note (codex — message embeds `.blade.php` example)', function (): void {
     // Regression: the wrapper downgrade once classified on `str_contains($message,
     // ".blade.php")`, but EVERY skip message embeds the advisory example

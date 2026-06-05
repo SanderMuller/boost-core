@@ -2,10 +2,13 @@
 
 namespace SanderMuller\BoostCore\Commands;
 
+use Composer\Semver\Comparator;
+use Composer\Semver\VersionParser;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncManifest;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use UnexpectedValueException;
 
 /**
  * Reports the laravel/boost ↔ boost-core coexistence state in `boost doctor`.
@@ -28,6 +31,13 @@ final class CoexistenceReporter
     private const LARAVEL_BOOST_MARKER = '<laravel-boost-guidelines>';
 
     private const WRAPPER_PACKAGE = 'sandermuller/project-boost-laravel';
+
+    /**
+     * The wrapper release that introduced `project-boost:reconcile` — the guided
+     * takeover purpose-built for foreign-seeded files. Below this, the command does
+     * not exist, so the foreign-seeded warning must steer to `project-boost:sync`.
+     */
+    private const RECONCILE_MIN_WRAPPER_VERSION = '1.1.0';
 
     public function report(SymfonyStyle $io, string $projectRoot, InstalledPackages $packages, bool $inConfigDir): void
     {
@@ -60,20 +70,55 @@ final class CoexistenceReporter
         $foreignSeeded = $this->foreignSeededGuidanceFiles($projectRoot, $inConfigDir);
 
         if ($foreignSeeded !== []) {
-            // Steer to `project-boost:sync` — which EXISTS and re-derives laravel/boost's
-            // bundled guidelines into the assembly (safe for vendor content). Do NOT name
-            // a `project-boost:reconcile` guided-takeover command: it is future wrapper
-            // work and does not exist yet, so pointing at it would be a wrong path. The
-            // genuine at-risk content is a direct HAND-EDIT of the seeded file (it does
-            // not re-derive) — call that out as the thing to capture first.
+            // Prefer the purpose-built `project-boost:reconcile` guided takeover — but ONLY
+            // when the installed wrapper is >= 1.1.0, the release that introduced it. On an
+            // older wrapper that command does not exist, so steer to `project-boost:sync`,
+            // which re-derives laravel/boost's bundled guidelines into the assembly safely.
+            // (Conservative: a dev/unparseable wrapper version falls back to :sync too —
+            // naming a possibly-absent command is the wrong-path bug we are avoiding.) The
+            // genuine at-risk content is a direct HAND-EDIT of the seeded file (it does not
+            // re-derive) — call that out as the thing to capture first, either way.
+            $command = $this->wrapperHasReconcile($packages)
+                ? 'project-boost:reconcile'
+                : 'project-boost:sync';
+
             $io->warning(sprintf(
                 '%d guidance file(s) carry laravel/boost-authored content boost-core does not own yet. Run '
-                . "`php artisan project-boost:sync` to take them over — laravel/boost's bundled guidelines "
-                . 're-derive into the assembly safely. If you HAND-EDITED any of these files directly, move '
-                . "those edits into `.ai/guidelines/` first, or the takeover will replace them:\n  - %s",
+                . "`php artisan %s` to take them over — laravel/boost's bundled guidelines re-derive into the "
+                . 'assembly safely. If you HAND-EDITED any of these files directly, move those edits into '
+                . "`.ai/guidelines/` first, or the takeover will replace them:\n  - %s",
                 count($foreignSeeded),
+                $command,
                 implode("\n  - ", $foreignSeeded),
             ));
+        }
+    }
+
+    /**
+     * Whether the installed wrapper is recent enough to expose the
+     * `project-boost:reconcile` guided takeover (>= {@see RECONCILE_MIN_WRAPPER_VERSION}).
+     *
+     * Both versions are normalized before comparison so a `v`-prefixed or
+     * multi-part Composer version (`v1.1.0`, `1.1.0.0`) compares correctly. Any
+     * unparseable / dev-branch version (`dev-main`) yields a conservative `false`
+     * — we only name the command when the install demonstrably carries it.
+     */
+    private function wrapperHasReconcile(InstalledPackages $packages): bool
+    {
+        $version = $packages->version(self::WRAPPER_PACKAGE);
+        if ($version === null || $version === '') {
+            return false;
+        }
+
+        $parser = new VersionParser();
+
+        try {
+            return Comparator::greaterThanOrEqualTo(
+                $parser->normalize($version),
+                $parser->normalize(self::RECONCILE_MIN_WRAPPER_VERSION),
+            );
+        } catch (UnexpectedValueException) {
+            return false; // dev-main / branch ref / unparseable → conservative :sync
         }
     }
 

@@ -55,7 +55,7 @@
         "rector/type-perfect": "^2.1",
         "sandermuller/boost-skills": "^2.0",
         "spaze/phpstan-disallowed-calls": "^4.10",
-        "stolt/lean-package-validator": "^5.7",
+        "stolt/lean-package-validator": "^5.7 || ^6.0",
         "symplify/phpstan-extensions": "^12.0",
         "tomasvotruba/cognitive-complexity": "^1.1",
         "tomasvotruba/type-coverage": "^2.1"

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.1.1...HEAD)
 
+- Broadened the `symfony/console`, `symfony/finder`, `symfony/process`, and `symfony/yaml` constraints to `^6.4||^7.0||^8.0` (was `^7.0||^8.0`) so boost-core installs alongside symfony 6.4 LTS consumers — e.g. `rectorphp/rector-src`, which pins `symfony/console ^6.4`. Runtime code only uses basic Console/Finder/Process/Yaml APIs (`execute(): int`, no `#[AsCommand]`), verified by installing and running `boost sync` on a symfony 6.4.41 install. The runtime dependency `laravel/prompts` already allows `symfony/console ^6.2`; only the dev toolchain (pest/paratest) requires symfony ≥7.4, so CI continues on 7.4/8.
+
 ## [1.1.1](https://github.com/sandermuller/boost-core/compare/1.1.0...1.1.1) - 2026-06-05
 
 <!-- verified-sha: 8e433805d7736c42acaac54bc2a94412daee3b08 -->

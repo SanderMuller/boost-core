@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.1.2...HEAD)
 
+### Added
+
+- **Generated guidance files now carry a "do not edit" banner.** Every non-empty emitted guidance file (`CLAUDE.md` / `AGENTS.md` / `GEMINI.md`) leads with an HTML-comment banner stating it is generated and to edit `.ai/` (or `.config/boost.php`) and run `vendor/bin/boost sync` instead — direct edits are overwritten on the next sync. It is most valuable when `withGitignoreManagement(false)` commits the files (they look hand-editable); in the default gitignored mode it reinforces the `.gitignore` note. The banner is omitted from an empty assembly, so the empty-assembly guard that protects a new adopter's hand-authored file is unaffected.
+
 ## [1.1.2](https://github.com/sandermuller/boost-core/compare/1.1.1...1.1.2) - 2026-06-14
 
 <!-- verified-sha: 1eae26f5e20cdb25c87ae140c08800299f7cecbe -->

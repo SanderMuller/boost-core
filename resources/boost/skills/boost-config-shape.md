@@ -22,7 +22,7 @@ use SanderMuller\BoostCore\Enums\Agent;
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE, Agent::CURSOR])
     ->withAllowedVendors([
-        'sandermuller/project-boost',
+        'sandermuller/project-boost-php',
     ])
     ->withDisabledEmitters([]);
 ```

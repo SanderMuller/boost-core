@@ -1,3 +1,4 @@
+<!-- AI agents: read llms.txt for a structured overview, and llms-install.md for the step-by-step install guide. -->
 # boost-core
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/sandermuller/boost-core.svg?style=flat-square)](https://packagist.org/packages/sandermuller/boost-core)
@@ -22,11 +23,11 @@
 You author three kinds of content under `.ai/`, and `boost sync` fans each out to
 every agent you selected in `withAgents(...)`. One source, many agent-native copies:
 
-| You write in       | What it is                          | `boost sync` fans it out to                          |
-|---------------------|-------------------------------------|------------------------------------------------------|
-| `.ai/skills/`       | Agent Skills (`<name>/SKILL.md`)    | `.{agent}/skills/<name>/SKILL.md` per agent          |
-| `.ai/guidelines/`   | Always-loaded guidance             | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot file  |
-| `.ai/commands/`     | Slash-command prompt templates      | Per-agent command dirs (see [Commands](#commands))   |
+| You write in      | What it is                       | `boost sync` fans it out to                         |
+|-------------------|----------------------------------|-----------------------------------------------------|
+| `.ai/skills/`     | Agent Skills (`<name>/SKILL.md`) | `.{agent}/skills/<name>/SKILL.md` per agent         |
+| `.ai/guidelines/` | Always-loaded guidance           | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot file |
+| `.ai/commands/`   | Slash-command prompt templates   | Per-agent command dirs (see [Commands](#commands))  |
 
 Skills and commands land in gitignored per-agent directories; the guidance files
 stay tracked. See [File ownership](#file-ownership) for why.
@@ -37,13 +38,34 @@ stay tracked. See [File ownership](#file-ownership) for why.
 the **family package** (a thin wrapper that bundles boost-core with a curated
 skill set) that matches what you're building, and it pulls `boost-core` in.
 
+### Let your AI agent install it
+
+Don't want to pick? Paste this prompt to your coding agent from the repo root —
+it picks the right family member, installs it, configures agents + tags, and
+verifies. Nothing installs until it runs `composer require`:
+
+```text
+Install the boost AI-config toolkit in this repository. Read
+https://raw.githubusercontent.com/sandermuller/boost-core/main/llms-install.md
+and follow it exactly: inspect the repo, pick the single best-fit family member,
+install it, and configure boost.php for my stack — the agents I use and matching
+tags. Then run the first sync, verify, and tell me what you installed, why, how
+it works, and any follow-ups.
+```
+
+Prefer to choose yourself? Use the table below.
+
 | You're building                       | Install                                                                                       | Ships                                                                                      |
 |---------------------------------------|-----------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------|
-| A PHP application (not a package)      | [`sandermuller/project-boost`](https://github.com/sandermuller/project-boost)                 | App-dev skills — DDD layering, repository pattern, DI, domain modeling, legacy coexistence |
-| A Laravel application                  | [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) | `laravel/boost` MCP coexistence + nine-agent fanout + tag filter + remote skills           |
-| A framework-agnostic Composer package  | [`sandermuller/package-boost-php`](https://github.com/sandermuller/package-boost-php)          | Package-author skills + `lean` / `gitattributes` commands                                  |
-| A Laravel package                      | [`sandermuller/package-boost-laravel`](https://github.com/sandermuller/package-boost-laravel)  | Laravel-package skills + `McpJsonEmitter`                                                  |
-| **Your own skill bundle / tooling**    | **`sandermuller/boost-core` directly**                                                         | **Just the sync engine — you supply the skills  ← you are here**                           |
+| A PHP application (not a package)     | [`sandermuller/project-boost-php`](https://github.com/sandermuller/project-boost-php)         | App-dev skills — dependency injection, legacy coexistence + the `foundation` guideline      |
+| A Laravel application                 | [`sandermuller/project-boost-laravel`](https://github.com/sandermuller/project-boost-laravel) | `laravel/boost` MCP coexistence + nine-agent fanout + tag filter + remote skills           |
+| A framework-agnostic Composer package | [`sandermuller/package-boost-php`](https://github.com/sandermuller/package-boost-php)         | Package-author skills + `lean` / `gitattributes` commands                                  |
+| A Laravel package                     | [`sandermuller/package-boost-laravel`](https://github.com/sandermuller/package-boost-laravel) | Laravel-package skills + `McpJsonEmitter`                                                  |
+| **Your own skill bundle / tooling**   | **`sandermuller/boost-core` directly**                                                        | **Just the sync engine — you supply the skills  ← you are here**                           |
+
+Most users install a wrapper from the table above. Only when you want the bare
+engine — the last row, where you supply your own skills — install `boost-core`
+directly:
 
 ```bash
 composer require --dev sandermuller/boost-core
@@ -70,11 +92,14 @@ use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Enums\Agent;
 
 return BoostConfig::configure()
-    ->withAgents([Agent::CLAUDE_CODE, Agent::CURSOR]);
+    ->withAgents([
+        Agent::CLAUDE_CODE,
+        Agent::CURSOR,
+    ]);
 ```
 
-boost-core runs no install-time code of its own. It's a plain library, not a
-Composer plugin. Run `vendor/bin/boost sync` yourself (e.g. in CI), or wire the
+boost-core is a plain library and runs no install-time code of its own. Run
+`vendor/bin/boost sync` yourself (e.g. in CI), or wire the
 [autosync hook](#automating-the-sync) to re-sync on `composer install`.
 
 ## What you get
@@ -191,7 +216,10 @@ use SanderMuller\BoostCore\Enums\Tag;
 
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE])
-    ->withTags([Tag::Php, Tag::Jira])        // Tag enum cases or raw strings
+    ->withTags([                             // Tag enum cases or raw strings
+        Tag::Php,
+        Tag::Jira,
+    ])
     ->withExcludedSkills(['acme/pack:unwanted-skill'])
     ->withExcludedGuidelines(['acme/pack:unwanted-guideline']);
 ```
@@ -280,11 +308,11 @@ renderers, `FileEmitter`s, or a `BoostWrapperContract` should work from
 boost-core ships no Composer plugin, so a `composer install` re-sync is opt-in.
 Pick the entry point that fits:
 
-| Entry point                                  | Use for                                                              |
-|----------------------------------------------|---------------------------------------------------------------------|
-| `BoostAutoSync::run`                          | `post-install-cmd` / `post-update-cmd` hooks — silent on a no-op     |
-| `BoostAutoSync::runWithSummary`               | User-invoked scripts (`composer sync-ai`) — prints a summary always  |
-| `BoostAutoSync::syncUserScopeOnce`            | A globally-installed CLI tool self-syncing its own bundled skills    |
+| Entry point                        | Use for                                                             |
+|------------------------------------|---------------------------------------------------------------------|
+| `BoostAutoSync::run`               | `post-install-cmd` / `post-update-cmd` hooks — silent on a no-op    |
+| `BoostAutoSync::runWithSummary`    | User-invoked scripts (`composer sync-ai`) — prints a summary always |
+| `BoostAutoSync::syncUserScopeOnce` | A globally-installed CLI tool self-syncing its own bundled skills   |
 
 All three honor `BOOST_SKIP_AUTOSYNC=1`.
 
@@ -389,24 +417,24 @@ lifecycle reap, the empty-assembly guard, `.config/` layout + relocation, manage
 
 ## CLI reference
 
-| Command                              | Purpose                                                                          |
-|--------------------------------------|----------------------------------------------------------------------------------|
-| `boost install`                      | Scaffold `boost.php` (if missing) + interactive agent / vendor / tag picker       |
-| `boost sync`                         | Fan out skills / guidelines / commands to selected agents                         |
-| `boost sync --check`                 | Dry run — report drift, no writes (offline; gate CI on this)                      |
-| `boost sync --scope=user [--all]`    | User-scope sync for globally-installed CLI tools                                  |
-| `boost where`                        | Origin-traced listing of every skill / guideline / command that would ship       |
-| `boost where --diff=<name>`          | Unified diff (skill OR guideline) between a host override and the vendor copy     |
-| `boost where --conventions [--json]` | Effective resolved conventions slots + provenance + block keep/drop status        |
+| Command                              | Purpose                                                                                                                              |
+|--------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `boost install`                      | Scaffold `boost.php` (if missing) + interactive agent / vendor / tag picker                                                          |
+| `boost sync`                         | Fan out skills / guidelines / commands to selected agents                                                                            |
+| `boost sync --check`                 | Dry run — report drift, no writes (offline; gate CI on this)                                                                         |
+| `boost sync --scope=user [--all]`    | User-scope sync for globally-installed CLI tools                                                                                     |
+| `boost where`                        | Origin-traced listing of every skill / guideline / command that would ship                                                           |
+| `boost where --diff=<name>`          | Unified diff (skill OR guideline) between a host override and the vendor copy                                                        |
+| `boost where --conventions [--json]` | Effective resolved conventions slots + provenance + block keep/drop status                                                           |
 | `boost doctor`                       | Offline health check — config, remote sources, cache, emitters, token leaks. **Advisory only** — exits 0 unless config fails to load |
-| `boost doctor --check-versions`      | Opt-in Packagist comparison for path-repo shadows (one HTTP call per package)     |
-| `boost doctor --check-conventions`   | Report conventions slot status (missing, unknown, file-existence)                 |
-| `boost doctor --check-stale-paths`   | Read-only audit of the retired-paths registry — what the next sync would clean up |
-| `boost tags`                         | List available tags + their unlock counts across allowlisted vendors             |
-| `boost validate [--strict]`          | Validate `withConventions([...])` + scan for leaked tokens (`--strict` fails CI)  |
-| `boost slots [--missing\|--filled]`  | List conventions slots, optionally filtered by fill state                         |
-| `boost paths`                        | List path globs boost-core manages                                               |
-| `boost convert-conventions`          | Legacy one-shot: extract 0.8.x marker YAML into `boost.php` (hidden, not a contract) |
+| `boost doctor --check-versions`      | Opt-in Packagist comparison for path-repo shadows (one HTTP call per package)                                                        |
+| `boost doctor --check-conventions`   | Report conventions slot status (missing, unknown, file-existence)                                                                    |
+| `boost doctor --check-stale-paths`   | Read-only audit of the retired-paths registry — what the next sync would clean up                                                    |
+| `boost tags`                         | List available tags + their unlock counts across allowlisted vendors                                                                 |
+| `boost validate [--strict]`          | Validate `withConventions([...])` + scan for leaked tokens (`--strict` fails CI)                                                     |
+| `boost slots [--missing\|--filled]`  | List conventions slots, optionally filtered by fill state                                                                            |
+| `boost paths`                        | List path globs boost-core manages                                                                                                   |
+| `boost convert-conventions`          | Legacy one-shot: extract 0.8.x marker YAML into `boost.php` (hidden, not a contract)                                                 |
 
 Exit codes: `0` ok, `1` failure, `2` usage. `boost doctor` is advisory, so gate CI
 on `sync --check` / `validate --strict` instead.
@@ -415,14 +443,14 @@ on `sync --check` / `validate --strict` instead.
 
 Every variable is opt-in; unset = default behavior.
 
-| Variable                 | Effect                                                                                  |
-|--------------------------|-----------------------------------------------------------------------------------------|
-| `BOOST_SKIP_AUTOSYNC=1`  | Skip the `BoostAutoSync` composer-hook sync entirely                                     |
-| `BOOST_SKIP_GITIGNORE=1` | Skip managed `.gitignore` updates (handy for CI / ephemeral Docker installs)             |
-| `BOOST_GITHUB_TOKEN`     | GitHub token (`public_repo` scope) — lifts remote-skill fetches from 60 to 5000 req/h   |
+| Variable                 | Effect                                                                                     |
+|--------------------------|--------------------------------------------------------------------------------------------|
+| `BOOST_SKIP_AUTOSYNC=1`  | Skip the `BoostAutoSync` composer-hook sync entirely                                       |
+| `BOOST_SKIP_GITIGNORE=1` | Skip managed `.gitignore` updates (handy for CI / ephemeral Docker installs)               |
+| `BOOST_GITHUB_TOKEN`     | GitHub token (`public_repo` scope) — lifts remote-skill fetches from 60 to 5000 req/h      |
 | `BOOST_REMOTE_STRICT=1`  | Escalate any remote-skill source failure to a sync-aborting error (default: warn-and-skip) |
-| `BOOST_RENDER_STRICT=1`  | Escalate the first skill-render failure to a sync-aborting error (default: warn-and-skip)   |
-| `BOOST_CACHE_HOME`       | Override the remote-skill cache root (defaults to `$XDG_CACHE_HOME` / `~/.cache`)        |
+| `BOOST_RENDER_STRICT=1`  | Escalate the first skill-render failure to a sync-aborting error (default: warn-and-skip)  |
+| `BOOST_CACHE_HOME`       | Override the remote-skill cache root (defaults to `$XDG_CACHE_HOME` / `~/.cache`)          |
 
 ## Versioning & stability
 
@@ -445,6 +473,8 @@ on, breaking changes land only in a MAJOR bump and are called out in
 
 ## More
 
+- [`llms.txt`](llms.txt) — structured overview for AI agents (what this package is, key docs)
+- [`llms-install.md`](llms-install.md) — step-by-step install guide an agent can execute
 - [`UPGRADING.md`](UPGRADING.md) — breaking-change migrations between versions
 - [`CHANGELOG.md`](CHANGELOG.md) — full release history ([releases page](https://github.com/sandermuller/boost-core/releases) has per-version notes)
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, test conventions, pre-release gauntlet

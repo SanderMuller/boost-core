@@ -1,0 +1,70 @@
+# boost-core
+
+> Framework-agnostic AI agent configuration sync for any PHP project. Author
+> skills, guidelines, and slash-commands once under `.ai/`; `boost sync` fans
+> them out to up to nine agents (Claude Code, Cursor, Copilot, Codex, Gemini,
+> Junie, Kiro, OpenCode, Amp). No framework dependency. `boost-core` is the sync
+> engine; users normally install a thin **family wrapper** that bundles it with a
+> curated skill set for what they are building.
+
+Key facts for agents:
+
+- `boost-core` is a plain Composer **library** with a `vendor/bin/boost` CLI. It
+  runs no install-time code: sync is explicit (`vendor/bin/boost sync`) or opt-in
+  via a `BoostAutoSync` Composer hook.
+- Config lives at `boost.php` (repo root) or `.config/boost.php`, built with
+  `BoostConfig::configure()->withAgents([...])` and optional `withTags()`,
+  `withAllowedVendors()`, `withRemoteSkills()`, `withConventions()`.
+- Skills come from three places: host `.ai/skills/`, allowlisted Composer vendor
+  packages, and `withRemoteSkills()` GitHub sources. Tag filtering scopes vendor
+  and remote skills per project.
+- Guidance files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot) are markerless,
+  boost-owned, regenerated on every sync, but kept tracked. Skill and command
+  directories are gitignored. A hand-edited file is never blanked.
+- Coexists with [`laravel/boost`](https://github.com/laravel/boost) in Laravel
+  projects via the `project-boost-laravel` wrapper (laravel/boost owns the MCP
+  server and Laravel docs; the wrapper owns agent-file fan-out).
+
+Links are absolute so they resolve when this file is fetched outside the repo;
+the install guide is linked as raw Markdown for direct agent fetching.
+
+## Installing (agents start here)
+
+- [llms-install.md](https://raw.githubusercontent.com/sandermuller/boost-core/main/llms-install.md):
+  Executable, step-by-step install guide — detect the repo type, pick the right
+  family member, install, configure agents and tags, sync, and verify. **Read
+  this when asked to install or set up boost.**
+
+## Docs
+
+- [README.md](https://github.com/sandermuller/boost-core/blob/main/README.md):
+  Full documentation — how sync works, skill sources, tag filtering, commands,
+  skill rendering, autosync, file ownership, the complete CLI reference, and
+  environment variables.
+- [PUBLIC_API.md](https://github.com/sandermuller/boost-core/blob/main/PUBLIC_API.md):
+  The frozen SemVer surface — config authoring API, CLI commands/options/
+  exit-codes, Composer hooks, and plugin contracts.
+- [docs/file-ownership.md](https://github.com/sandermuller/boost-core/blob/main/docs/file-ownership.md):
+  The sync manifest, lifecycle reaping, the empty-assembly guard, `.config/`
+  layout, and managed `.gitignore`.
+- [docs/conventions.md](https://github.com/sandermuller/boost-core/blob/main/docs/conventions.md):
+  Project Conventions — JSONSchema slot fill-in that injects project-specific
+  context into vendor skills.
+- [UPGRADING.md](https://github.com/sandermuller/boost-core/blob/main/UPGRADING.md):
+  Breaking-change migrations between versions.
+- [CHANGELOG.md](https://github.com/sandermuller/boost-core/blob/main/CHANGELOG.md):
+  Full release history.
+
+## Family wrappers
+
+- [project-boost-laravel](https://github.com/sandermuller/project-boost-laravel):
+  Laravel applications — `laravel/boost` MCP coexistence + nine-agent fan-out.
+- [project-boost-php](https://github.com/sandermuller/project-boost-php): PHP
+  applications on any framework or none.
+- [package-boost-php](https://github.com/sandermuller/package-boost-php):
+  Framework-agnostic Composer packages — package-author skills + `lean` /
+  `gitattributes` commands.
+- [package-boost-laravel](https://github.com/sandermuller/package-boost-laravel):
+  Laravel packages — Testbench skills + `McpJsonEmitter`.
+- [boost-skills](https://github.com/sandermuller/boost-skills): An example
+  Composer-distributed skill catalog consumed via the vendor allowlist.

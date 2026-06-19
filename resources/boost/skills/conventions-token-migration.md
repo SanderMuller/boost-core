@@ -64,6 +64,50 @@ mode must be one of them.
   (→ ` ```yaml `). A token in a PLAIN fence (no `boost:conv`) or an inline-code
   span is left literal — that's how you show a token as documentation.
 
+## Paired visible-default form (cross-engine portability, 1.2.0+)
+
+A bare token resolves only under boost-core. An engine with no resolver — most
+importantly **`laravel/boost`**, which installs a package's `SKILL.md` and
+preserves HTML comments verbatim — leaves a bare token inert. Because an HTML
+comment renders to nothing, `Write tests in <!--boost:conv …-->.` reads as a word
+gap (`Write tests in .`); the `fallback="…"` lives inside the comment, where it is
+invisible.
+
+The **paired form** closes that gap. Wrap a VISIBLE DEFAULT between the token and a
+`<!--boost:conv:end-->` marker:
+
+```
+Write tests in <!--boost:conv path="testing.backend_framework" mode="inline"-->Pest<!--boost:conv:end-->.
+```
+
+- **boost-core** replaces the WHOLE span (open comment + visible default + end
+  marker) with the resolved value. The visible default doubles as the inline
+  fallback, so you don't repeat it in a `fallback=` attribute (an explicit
+  `fallback=` still wins if you want boost-core to emit different prose than the
+  no-resolver default).
+- **laravel/boost** (and any comment-preserving, non-resolving engine) leaves both
+  comments inert, so the reader sees `Write tests in Pest.` — clean prose, no gap.
+
+Resolution is unchanged: `declared → schema default → visible-default-as-fallback`.
+
+Fenced (`yaml`/`json`) blocks take the same markers; the visible default is the
+block body:
+
+````
+```yaml boost:conv
+<!--boost:conv path="branches.patterns" mode="yaml"-->
+- pattern: feature/*
+  base: main
+<!--boost:conv:end-->
+```
+````
+
+**Prefer the paired form for any skill that ships to mixed engines** (a public
+Composer catalog consumed by both boost-core and laravel/boost). Use the bare form
+only when the content is boost-core-only. Paired tokens require boost-core **1.2.0+**; an older engine leaves the visible default in place AND inlines the
+value, producing a duplicate — raise the consuming package's boost-core floor when
+you adopt them.
+
 ## Footguns (learned the hard way)
 
 - **An inline-code-wrapped token stays literal.** `` `<!--boost:conv …-->` `` is

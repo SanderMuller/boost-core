@@ -33,6 +33,22 @@ final readonly class ConventionsInliner
 {
     private const TOKEN = '/<!--(\\\\?)boost:conv\s+(.*?)-->/s';
 
+    /**
+     * Paired visible-default span: an open token, a VISIBLE DEFAULT, and an end
+     * marker — `<!--boost:conv path="x" mode="inline"-->Pest<!--boost:conv:end-->`.
+     * boost-core replaces the WHOLE span with the resolved value (the visible
+     * default doubles as the inline fallback). An engine with no resolver (e.g.
+     * `laravel/boost`, which preserves HTML comments verbatim) leaves both
+     * comments inert, so the visible default reads as ordinary prose — no word
+     * gap. Resolved BEFORE {@see TOKEN} so the span's own open comment is not
+     * consumed as a bare unpaired token. `/s` lets the visible default span lines
+     * (a `mode="yaml"` block inside an opt-in fence).
+     */
+    private const PAIRED_TOKEN = '/<!--boost:conv\s+(.*?)-->(.*?)<!--boost:conv:end-->/s';
+
+    /** The closing marker of a paired span. */
+    private const END_MARKER = '<!--boost:conv:end-->';
+
     /** A line that opens a fenced code block (` ``` ` / ` ~~~ `). */
     private const CTX_FENCE_OPEN = 'fence_open';
 
@@ -76,29 +92,31 @@ final readonly class ConventionsInliner
         // the fence. Plain fences + prose stream
         // through unchanged.
         //
-        // @var array{open: string, body: list<string>, errorsBefore: int}|null $fence
+        // @var array{open: string, body: list<string>}|null $fence
         $fence = null;
 
         $this->walkLines($body, function (int $_lineNo, string $line, string $context, bool $optIn) use (&$out, &$errors, &$inlinedCount, &$fence): void {
             if ($fence !== null) {
                 if ($context === self::CTX_FENCE_CLOSE) {
-                    $this->flushOptInFence($out, $fence, $errors, $line);
+                    $this->flushOptInFence($out, $fence, $errors, $inlinedCount, $line);
                     $fence = null;
 
                     return;
                 }
 
-                // Body of the buffered opt-in fence: resolve tokens (a
-                // fence-marker-looking line that doesn't close stays verbatim).
-                $fence['body'][] = $context === self::CTX_FENCE_BODY
-                    ? $this->resolveTokens($line, $errors, $inlinedCount)
-                    : $line;
+                // Body of the buffered opt-in fence: buffered RAW and resolved as
+                // one block at flush, so a multi-line paired span (open token,
+                // visible default lines, end marker) resolves across line breaks.
+                // A fence-marker-looking line that doesn't close stays verbatim —
+                // resolveTokens only rewrites token text, so passing it through is
+                // harmless.
+                $fence['body'][] = $line;
 
                 return;
             }
 
             if ($context === self::CTX_FENCE_OPEN && $optIn) {
-                $fence = ['open' => $line, 'body' => [], 'errorsBefore' => count($errors)];
+                $fence = ['open' => $line, 'body' => []];
 
                 return;
             }
@@ -113,7 +131,7 @@ final readonly class ConventionsInliner
         // An unterminated opt-in fence (no closing marker before EOF) still flushes
         // — never drop buffered lines.
         if ($fence !== null) {
-            $this->flushOptInFence($out, $fence, $errors, null);
+            $this->flushOptInFence($out, $fence, $errors, $inlinedCount, null);
         }
 
         $result = implode("\n", $out);
@@ -122,19 +140,25 @@ final readonly class ConventionsInliner
     }
 
     /**
-     * Emit a buffered opt-in fence: opener (info-string stripped only if the body
-     * resolved without error), the resolved body, then the close line (null at
-     * EOF for an unterminated fence).
+     * Emit a buffered opt-in fence: resolve the whole body as one block (so a
+     * multi-line paired span resolves across line breaks), then emit the opener
+     * (info-string stripped only if the body resolved without error), the resolved
+     * body, and the close line (null at EOF for an unterminated fence).
      *
      * @param  list<string>  $out
-     * @param  array{open: string, body: list<string>, errorsBefore: int}  $fence
+     * @param  array{open: string, body: list<string>}  $fence
      * @param  list<string>  $errors
      */
-    private function flushOptInFence(array &$out, array $fence, array $errors, ?string $closeLine): void
+    private function flushOptInFence(array &$out, array $fence, array &$errors, int &$inlinedCount, ?string $closeLine): void
     {
-        $erroredInFence = count($errors) > $fence['errorsBefore'];
+        $errorsBefore = count($errors);
+        $resolvedBody = $fence['body'] === []
+            ? []
+            : explode("\n", $this->resolveTokens(implode("\n", $fence['body']), $errors, $inlinedCount));
+        $erroredInFence = count($errors) > $errorsBefore;
+
         $out[] = $erroredInFence ? $fence['open'] : rtrim(str_replace('boost:conv', '', $fence['open']));
-        foreach ($fence['body'] as $bodyLine) {
+        foreach ($resolvedBody as $bodyLine) {
             $out[] = $bodyLine;
         }
 
@@ -294,9 +318,64 @@ final readonly class ConventionsInliner
     }
 
     /**
+     * Resolve both token forms in one pass: paired visible-default spans FIRST
+     * (so a span's open comment is not consumed as a bare unpaired token), then
+     * legacy unpaired tokens.
+     *
      * @param  list<string>  $errors
      */
     private function resolveTokens(string $text, array &$errors, int &$inlinedCount): string
+    {
+        $text = $this->resolvePairedTokens($text, $errors, $inlinedCount);
+
+        return $this->resolveUnpairedTokens($text, $errors, $inlinedCount);
+    }
+
+    /**
+     * Resolve paired visible-default spans. The visible default doubles as the
+     * inline fallback; an explicit `fallback="…"` attribute, if present, still
+     * wins (lets an author emit different prose to boost-core on an unset slot
+     * than the visible default a no-resolver engine shows).
+     *
+     * @param  list<string>  $errors
+     */
+    private function resolvePairedTokens(string $text, array &$errors, int &$inlinedCount): string
+    {
+        $replaced = preg_replace_callback(self::PAIRED_TOKEN, function (array $m) use (&$errors, &$inlinedCount): string {
+            $attrs = $this->parseAttributes($m[1]);
+            $visibleDefault = $m[2];
+
+            if ($attrs['path'] === null) {
+                $errors[] = 'boost:conv token missing required attribute "path"';
+
+                return $m[0];
+            }
+
+            if ($attrs['mode'] === null) {
+                $errors[] = sprintf('boost:conv token for "%s" missing required attribute "mode"', $attrs['path']);
+
+                return $m[0];
+            }
+
+            $resolution = $this->resolver->resolve($attrs['path'], $attrs['mode'], $attrs['fallback'] ?? $visibleDefault);
+            if (! $resolution->ok) {
+                $errors[] = (string) $resolution->error;
+
+                return $m[0];
+            }
+
+            ++$inlinedCount;
+
+            return $resolution->output;
+        }, $text);
+
+        return $replaced ?? $text;
+    }
+
+    /**
+     * @param  list<string>  $errors
+     */
+    private function resolveUnpairedTokens(string $text, array &$errors, int &$inlinedCount): string
     {
         $replaced = preg_replace_callback(self::TOKEN, function (array $m) use (&$errors, &$inlinedCount): string {
             // Escaped token (`<!--\boost:conv …-->`) → render the literal token.
@@ -365,7 +444,7 @@ final readonly class ConventionsInliner
             return true;
         }
 
-        if (str_contains($body, '<!--boost:conv ') || str_contains($body, '<!--\\boost:conv ')) {
+        if (str_contains($body, '<!--boost:conv ') || str_contains($body, '<!--\\boost:conv ') || str_contains($body, self::END_MARKER)) {
             return true;
         }
 
@@ -385,7 +464,7 @@ final readonly class ConventionsInliner
         // An unresolved token in preserved/existing content also depends on the
         // block (it never got inlined) — check it alongside legacy refs +
         // pointers so residual a migration carries forward keeps the block.
-        if (str_contains($text, '<!--boost:conv ') || str_contains($text, '<!--\\boost:conv ')) {
+        if (str_contains($text, '<!--boost:conv ') || str_contains($text, '<!--\\boost:conv ') || str_contains($text, self::END_MARKER)) {
             return true;
         }
 

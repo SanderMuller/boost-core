@@ -64,7 +64,7 @@ mode must be one of them.
   (→ ` ```yaml `). A token in a PLAIN fence (no `boost:conv`) or an inline-code
   span is left literal — that's how you show a token as documentation.
 
-## Paired visible-default form (cross-engine portability, 1.2.0+)
+## Paired visible-default form (cross-engine portability, 1.2.1+)
 
 A bare token resolves only under boost-core. An engine with no resolver — most
 importantly **`laravel/boost`**, which installs a package's `SKILL.md` and
@@ -104,9 +104,10 @@ block body:
 
 **Prefer the paired form for any skill that ships to mixed engines** (a public
 Composer catalog consumed by both boost-core and laravel/boost). Use the bare form
-only when the content is boost-core-only. Paired tokens require boost-core **1.2.0+**; an older engine leaves the visible default in place AND inlines the
-value, producing a duplicate — raise the consuming package's boost-core floor when
-you adopt them.
+only when the content is boost-core-only. Paired tokens require boost-core **1.2.1+**
+(1.2.0 was published empty); an older engine leaves the visible default in place AND
+inlines the value, producing a duplicate — raise the consuming package's boost-core
+floor to `^1.2.1` when you adopt them.
 
 ## Footguns (learned the hard way)
 

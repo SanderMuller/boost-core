@@ -47,7 +47,7 @@ one of `inline` (scalars + comma-joined scalar lists), `bullets`, `yaml`, or
 `json`. A type×mode mismatch, an unknown slot, or an unset slot with no default
 and no fallback is a render-class error that fails `boost sync --check`.
 
-#### Paired visible-default form (1.2.0+)
+#### Paired visible-default form (1.2.1+)
 
 A bare `<!--boost:conv …-->` token resolves only under boost-core. An engine with
 no resolver — notably `laravel/boost`, which installs a package's `SKILL.md` and

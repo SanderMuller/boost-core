@@ -395,7 +395,8 @@ block in `CLAUDE.md`. `boost validate --strict` hard-fails CI on a leaked token;
 `boost slots` / `boost where --conventions` audit what's set.
 
 **See [`docs/conventions.md`](docs/conventions.md)** for the full reference:
-inline tokens, observability, legacy-ref migration, and migrating vendor skills.
+inline tokens, the paired visible-default form (survives resolver-less engines like
+`laravel/boost`), observability, legacy-ref migration, and migrating vendor skills.
 
 ## File ownership
 

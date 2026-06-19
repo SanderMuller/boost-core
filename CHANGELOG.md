@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.1.2...1.2.0
 
+### Added
+
+- **Paired visible-default conventions tokens.** A bare `<!--boost:conv ...-->` token resolves only under boost-core; engines with no resolver — notably `laravel/boost`, which installs a package's `SKILL.md` and preserves HTML comments verbatim — leave it inert, so an inline token reads as a word gap and its fallback stays hidden inside the comment. The paired form `<!--boost:conv path="x" mode="inline"-->Pest<!--boost:conv:end-->` closes that gap: boost-core replaces the whole span with the resolved value (the visible default doubles as the inline fallback; an explicit `fallback=` still wins), while a resolver-less engine leaves both comments inert so the visible default reads as ordinary prose. Resolution order is unchanged (declared → schema default → fallback). Fenced yaml/json opt-in blocks take the same markers and are buffered so a multi-line span resolves as one block; paired spans resolve before bare tokens; inline-code and plain-fence examples stay literal; an orphan end marker keeps the conventions block. The new authoring skill `conventions-token-migration` documents the paired form.
+
 ## [1.1.2](https://github.com/sandermuller/boost-core/compare/1.1.1...1.1.2) - 2026-06-14
 
 <!-- verified-sha: 1eae26f5e20cdb25c87ae140c08800299f7cecbe -->

@@ -47,6 +47,33 @@ one of `inline` (scalars + comma-joined scalar lists), `bullets`, `yaml`, or
 `json`. A type×mode mismatch, an unknown slot, or an unset slot with no default
 and no fallback is a render-class error that fails `boost sync --check`.
 
+#### Paired visible-default form (1.2.0+)
+
+A bare `<!--boost:conv …-->` token resolves only under boost-core. An engine with
+no resolver — notably `laravel/boost`, which installs a package's `SKILL.md` and
+preserves HTML comments verbatim — leaves it inert, so an inline token reads as a
+**word gap** and its fallback stays hidden inside the comment.
+
+The paired form closes that gap by wrapping a visible default between an open and
+an end marker:
+
+```
+Run <!--boost:conv path="testing.runner" mode="inline"-->Pest<!--boost:conv:end--> to verify.
+```
+
+- boost-core replaces the whole span (open comment → `<!--boost:conv:end-->`) with
+  the resolved value; the visible default doubles as the inline fallback (an
+  explicit `fallback=` still wins).
+- A resolver-less engine leaves both comments inert, so the visible default reads
+  as ordinary prose — `Run Pest to verify.` — no gap.
+
+The ` ```boost:conv ` fence takes the same `<!--boost:conv:end-->` marker and
+buffers its body as one block, so a multi-line span resolves whole. Paired spans
+resolve before bare tokens, so an open comment is never consumed as a stray
+unpaired token; inline-code and plain-fence examples stay literal; an orphan end
+marker is inert and keeps the Project Conventions block. Prefer this form for any
+token that may ship to a consumer using `laravel/boost`.
+
 ### 2. The `## Project Conventions` block (legacy)
 
 `boost sync` also renders declared values into a markerless `## Project Conventions`

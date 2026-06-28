@@ -3,7 +3,6 @@
 namespace SanderMuller\BoostCore\Conventions;
 
 use InvalidArgumentException;
-use SanderMuller\BoostCore\Sync\SyncResult;
 
 /**
  * Structured diagnostic produced by conventions schema discovery / composition

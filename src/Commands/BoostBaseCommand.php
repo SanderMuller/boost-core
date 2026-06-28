@@ -5,7 +5,6 @@ namespace SanderMuller\BoostCore\Commands;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Config\BoostConfigLoader;
 use SanderMuller\BoostCore\Config\BoostConfigNotFoundException;
-use SanderMuller\BoostCore\Config\BoostConfigPath;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;

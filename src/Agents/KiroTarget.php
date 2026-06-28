@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
+use Override;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;
@@ -39,6 +40,7 @@ final class KiroTarget extends AgentTarget
      *
      * @return array{writes: list<PendingWrite>, warnings: list<string>}
      */
+    #[Override]
     public function planCommands(array $commands): array
     {
         $writes = [];
@@ -65,6 +67,7 @@ final class KiroTarget extends AgentTarget
      * verbatim + warn so the operator can decide whether to author the
      * command differently for Kiro.
      */
+    #[Override]
     public function transpileCommandBody(Command $command): CommandTranspileResult
     {
         $tokens = (new ArgumentParser())->parse($command->body);

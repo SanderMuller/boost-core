@@ -2,7 +2,6 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
-use SanderMuller\BoostCore\Contracts\BoostWrapperContract;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;

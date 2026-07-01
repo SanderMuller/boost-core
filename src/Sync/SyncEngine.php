@@ -258,7 +258,7 @@ final readonly class SyncEngine
                 $emittedPaths[$rewritten] = true;
                 $this->writeAndPrune(
                     $home,
-                    new PendingWrite($rewritten, $pending->content),
+                    new PendingWrite($rewritten, $pending->content, pruneLegacyFlatSibling: $pending->pruneLegacyFlatSibling),
                     $target,
                     $checkOnly,
                     $writes,
@@ -1918,7 +1918,7 @@ final readonly class SyncEngine
         try {
             $writes[] = $this->writer->write($baseDir, $pending, $checkOnly);
             if (! $checkOnly) {
-                $this->pruneLegacyFlatSibling($baseDir, $pending->relativePath);
+                $this->pruneLegacyFlatSibling($baseDir, $pending);
             }
         } catch (Throwable $throwable) {
             $errors[] = sprintf(
@@ -1931,20 +1931,21 @@ final readonly class SyncEngine
     }
 
     /**
-     * For a path ending in `/SKILL.md`, delete the obsolete flat sibling at
-     * `<same-stem>.md` left behind by older boost-core runs. The structural
-     * guard (`str_ends_with /SKILL.md`) is what limits scope — a guideline
-     * file or non-skill output never matches, so unrelated `.md` siblings
-     * are never touched.
+     * For a skill's ENTRY write (`<name>/SKILL.md`), delete the obsolete flat
+     * sibling at `<name>.md` left behind by older boost-core runs. Scope is
+     * limited by the plan-time `pruneLegacyFlatSibling` flag, NOT a path-shape
+     * heuristic — an ASSET write can also end in `/SKILL.md` (e.g.
+     * `examples/SKILL.md`), and pruning from it would delete the skill's own
+     * just-written `examples.md` sibling asset.
      */
-    private function pruneLegacyFlatSibling(string $baseDir, string $relativePath): void
+    private function pruneLegacyFlatSibling(string $baseDir, PendingWrite $pending): void
     {
-        $suffix = '/' . AgentTarget::SKILL_FILE;
-        if (! str_ends_with($relativePath, $suffix)) {
+        if (! $pending->pruneLegacyFlatSibling) {
             return;
         }
 
-        $legacyRelative = substr($relativePath, 0, -strlen($suffix)) . '.md';
+        $suffix = '/' . AgentTarget::SKILL_FILE;
+        $legacyRelative = substr($pending->relativePath, 0, -strlen($suffix)) . '.md';
         @unlink($baseDir . '/' . $legacyRelative);
     }
 }

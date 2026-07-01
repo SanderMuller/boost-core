@@ -232,11 +232,9 @@ final readonly class RemoteSkillIngester
             sourceVendor: $source->source,
             tags: $tags,
             tagsValid: $tagsValid,
-            // Bundle siblings (`scripts/`, `references/`, …) in the cache slot
-            // ride along as assets, so remote skills emit them into agent dirs
-            // identically to local nested skills. Slots whose entry file is
-            // non-canonical (flat `<name>.md`) collect nothing — the collector
-            // only recognises `SKILL.*` entries as having a skill dir to own.
+            // Cache-slot bundle siblings emit as assets, same as local nested
+            // skills. A slot with a flat (non-`SKILL.*`) entry collects none —
+            // its dir isn't skill-owned.
             assets: SkillAssetCollector::collect($skillPath),
         );
     }

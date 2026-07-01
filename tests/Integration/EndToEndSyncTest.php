@@ -4124,3 +4124,25 @@ it('end-to-end: nested skill asset siblings emit beside SKILL.md and are reaped 
         rmTreeE2E($root);
     }
 });
+
+it('does NOT legacy-flat-prune a sibling asset when another asset is a deep SKILL.md (1.3.0)', function (): void {
+    // `examples/SKILL.md` emits to a path ending in `/SKILL.md`; the legacy
+    // flat-sibling prune must not fire for asset writes, or it deletes the
+    // just-written `examples.md` sibling asset.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        mkdir($root . '/.ai/skills/foo/examples', 0o755, true);
+        file_put_contents($root . '/.ai/skills/foo/SKILL.md', "---\nname: foo\n---\nBody.\n");
+        file_put_contents($root . '/.ai/skills/foo/examples.md', "# examples index\n");
+        file_put_contents($root . '/.ai/skills/foo/examples/SKILL.md', "# example of a SKILL.md\n");
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/foo/examples.md'))->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/foo/examples/SKILL.md'))->toBeTrue();
+    } finally {
+        rmTreeE2E($root);
+    }
+});

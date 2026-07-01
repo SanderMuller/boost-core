@@ -4146,3 +4146,43 @@ it('does NOT legacy-flat-prune a sibling asset when another asset is a deep SKIL
         rmTreeE2E($root);
     }
 });
+
+it('remote-skill source: bundle scripts/ siblings emit as assets beside the fanned-out SKILL.md (1.3.0)', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-e2e-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('acme/skills', 'v1.0.0', ['codex-review']),\n    ]);");
+
+        $tmpZip = sys_get_temp_dir() . '/boost-e2e-asset-bundle-' . bin2hex(random_bytes(6)) . '.zip';
+        $zip = new ZipArchive();
+        $zip->open($tmpZip, ZipArchive::CREATE);
+        $zip->addFromString('codex-review/SKILL.md', "---\nname: codex-review\n---\nRun scripts/run.mjs.");
+        $zip->addFromString('codex-review/scripts/run.mjs', "console.log('review');\n");
+        $zip->close();
+        $bundleBytes = (string) file_get_contents($tmpZip);
+        @unlink($tmpZip);
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset('acme/skills', 'v1.0.0', 'codex-review.skill', $bundleBytes);
+
+        $engine = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+
+        $result = $engine->sync($root);
+        expect($result->hasErrors())->toBeFalse('errors=' . json_encode($result->errors));
+
+        $emittedAsset = $root . '/.claude/skills/codex-review/scripts/run.mjs';
+        expect(file_exists($root . '/.claude/skills/codex-review/SKILL.md'))->toBeTrue()
+            ->and(file_exists($emittedAsset))->toBeTrue()
+            ->and(file_get_contents($emittedAsset))->toBe("console.log('review');\n");
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});

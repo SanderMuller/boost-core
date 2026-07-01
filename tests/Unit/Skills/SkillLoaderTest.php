@@ -524,7 +524,8 @@ it('collects asset siblings for a nested skill; flat skills have none (1.3.0)', 
         );
         expect($assetPaths)->toBe(['references/api.md', 'scripts/run-codex-review.mjs'])
             ->and($byName['codex-review']->assets[1]->contents)->toContain("console.log('review');")
-            ->and($byName['flat-skill']->assets)->toBe([]);
+            ->and($byName['flat-skill']->assets)
+            ->toBeEmpty();
     } finally {
         rmTreeSkillLoader($dir);
     }

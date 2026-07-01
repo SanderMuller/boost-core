@@ -7,6 +7,7 @@ use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\SkillAsset;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 
 function loader(): SkillLoader
@@ -491,5 +492,40 @@ it('warns on a SKILL.* file with no renderer, and does NOT false-trigger on asse
         }
 
         @rmdir($dir);
+    }
+});
+
+it('collects asset siblings for a nested skill; flat skills have none (1.3.0)', function (): void {
+    $dir = sys_get_temp_dir() . '/boost-skill-assets-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/codex-review/scripts', 0o755, true);
+    mkdir($dir . '/codex-review/references', 0o755, true);
+    file_put_contents($dir . '/codex-review/SKILL.md', "---\nname: codex-review\n---\nNested skill body.");
+    file_put_contents($dir . '/codex-review/scripts/run-codex-review.mjs', "#!/usr/bin/env node\nconsole.log('review');\n");
+    file_put_contents($dir . '/codex-review/references/api.md', "# api reference\n");
+    // Never assets: entry candidates, backups, hidden files.
+    file_put_contents($dir . '/codex-review/SKILL.md.bak', 'backup');
+    file_put_contents($dir . '/codex-review/scripts/run-codex-review.mjs~', 'editor temp');
+    file_put_contents($dir . '/codex-review/.hidden', 'hidden');
+    file_put_contents($dir . '/flat-skill.md', "---\nname: flat-skill\n---\nFlat body.");
+
+    try {
+        /** @var list<Skill> $skills */
+        $skills = iterator_to_array(loader()->load($dir), false);
+        $byName = [];
+        foreach ($skills as $skill) {
+            $byName[$skill->name] = $skill;
+        }
+
+        expect($byName)->toHaveKeys(['codex-review', 'flat-skill']);
+
+        $assetPaths = array_map(
+            fn (SkillAsset $a): string => $a->relativePath,
+            $byName['codex-review']->assets,
+        );
+        expect($assetPaths)->toBe(['references/api.md', 'scripts/run-codex-review.mjs'])
+            ->and($byName['codex-review']->assets[1]->contents)->toContain("console.log('review');")
+            ->and($byName['flat-skill']->assets)->toBe([]);
+    } finally {
+        rmTreeSkillLoader($dir);
     }
 });

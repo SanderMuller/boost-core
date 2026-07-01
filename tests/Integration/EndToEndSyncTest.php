@@ -4093,3 +4093,34 @@ it('0.19.0: moving boost.php root↔.config carries the remote ledger across lay
         BundleExtractor::recursivelyRemove($cacheRoot);
     }
 });
+
+it('end-to-end: nested skill asset siblings emit beside SKILL.md and are reaped when removed (1.3.0)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        mkdir($root . '/.ai/skills/codex-review/scripts', 0o755, true);
+        file_put_contents($root . '/.ai/skills/codex-review/SKILL.md', "---\nname: codex-review\n---\nRun scripts/run.mjs.\n");
+        file_put_contents($root . '/.ai/skills/codex-review/scripts/run.mjs', "console.log('review');\n");
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect($result->hasErrors())->toBeFalse();
+
+        $emittedAsset = $root . '/.claude/skills/codex-review/scripts/run.mjs';
+        expect(file_exists($root . '/.claude/skills/codex-review/SKILL.md'))->toBeTrue()
+            ->and(file_exists($emittedAsset))->toBeTrue()
+            ->and(file_get_contents($emittedAsset))->toBe("console.log('review');\n");
+
+        // Remove the source asset — re-sync must reap the emitted copy but
+        // keep the skill itself.
+        unlink($root . '/.ai/skills/codex-review/scripts/run.mjs');
+        rmdir($root . '/.ai/skills/codex-review/scripts');
+
+        $second = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect($second->hasErrors())->toBeFalse()
+            ->and(file_exists($emittedAsset))->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/codex-review/SKILL.md'))->toBeTrue();
+    } finally {
+        rmTreeE2E($root);
+    }
+});

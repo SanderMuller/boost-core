@@ -52,7 +52,18 @@ final class SkillSourceScope
         // Exactly one directory deep AND the conventional entry filename.
         return ! str_contains($relativeDir, '/')
             && ! str_contains($relativeDir, '\\')
-            && str_starts_with($file->getFilename(), self::ENTRY_PREFIX);
+            && self::isNestedEntryFilename($file->getFilename());
+    }
+
+    /**
+     * Whether `$filename` is a nested skill's entry-file candidate
+     * (`SKILL.md`, `SKILL.blade.php`, …). Shared with
+     * {@see SkillAssetCollector} so "entry candidate" and "asset" partition
+     * a skill directory identically.
+     */
+    public static function isNestedEntryFilename(string $filename): bool
+    {
+        return str_starts_with($filename, self::ENTRY_PREFIX);
     }
 
     /**
@@ -60,7 +71,7 @@ final class SkillSourceScope
      * `.bak` / `.orig` / `.tmp` / `.swp` / `.swo` (case-insensitive). Catches
      * `SKILL.md.bak`, `foo.md.orig`, `foo.md~` — never an intended skill source.
      */
-    private static function isBackupOrTempFile(string $filename): bool
+    public static function isBackupOrTempFile(string $filename): bool
     {
         return str_ends_with($filename, '~')
             || preg_match('/\.(?:bak|orig|tmp|swp|swo)$/i', $filename) === 1;

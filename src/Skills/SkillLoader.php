@@ -142,6 +142,7 @@ final readonly class SkillLoader
                 sourceVendor: $sourceVendor,
                 tags: $tags,
                 tagsValid: $tagsValid,
+                assets: SkillAssetCollector::collect($this->resolvedPath($file)),
             );
         }
     }

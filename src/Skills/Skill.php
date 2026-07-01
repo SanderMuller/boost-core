@@ -6,9 +6,9 @@ namespace SanderMuller\BoostCore\Skills;
  * A resolved skill — name, frontmatter, body, and provenance.
  *
  * @api Stable as of 1.0 — the value type a wrapper package constructs to inject
- * skills via `BoostSync::sync(injectedVendorSkills: [...])`. The eight
- * constructor properties are frozen; new ones, if ever added, append with a
- * default (non-breaking).
+ * skills via `BoostSync::sync(injectedVendorSkills: [...])`. The original eight
+ * constructor properties are frozen; later additions (`$assets`, 1.3) append
+ * with a default, per the same non-breaking rule.
  */
 final readonly class Skill
 {
@@ -17,6 +17,7 @@ final readonly class Skill
      * @param  string|null  $sourceVendor  Composer vendor/package name that published this skill. `null` = host-authored from .ai/skills/.
      * @param  list<string>  $tags  Normalized tags from the `metadata.boost-tags` frontmatter field. Empty = untagged = ships everywhere.
      * @param  bool  $tagsValid  False when `metadata.boost-tags` is present but malformed — the skill then fails closed (ships nowhere).
+     * @param  list<SkillAsset>  $assets  Companion files from a nested skill dir (`scripts/`, `references/`, …), emitted beside SKILL.md in every agent target. Empty for flat-layout skills.
      */
     public function __construct(
         public string $name,
@@ -27,6 +28,7 @@ final readonly class Skill
         public ?string $sourceVendor,
         public array $tags = [],
         public bool $tagsValid = true,
+        public array $assets = [],
     ) {}
 
     public function isHostAuthored(): bool
@@ -49,6 +51,7 @@ final readonly class Skill
             $this->sourceVendor,
             $this->tags,
             $this->tagsValid,
+            $this->assets,
         );
     }
 

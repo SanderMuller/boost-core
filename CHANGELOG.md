@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.2.1...HEAD)
 
+### Added
+
+- **Skill asset-sibling emission.** A nested skill's companion files — `scripts/`, `references/`, `examples/`, any non-`SKILL.*` file under `<name>/` — now emit verbatim beside the rendered `SKILL.md` in every configured agent's skill directory. Previously the emit plan was body-only, so a skill shipping a runnable script had to embed it in the SKILL.md body and have the agent materialize it at runtime. Assets ride the existing sync manifest and clean-slate stale cleanup (removing an asset, or the whole skill, reaps the emitted copies) and tag-gating (a filtered skill ships no assets). Applies uniformly to host-authored `.ai/skills/`, Composer vendor, injected, and remote skills. New `@api` value type `SkillAsset` (`relativePath`, `contents`); `Skill` gains an appended-with-default `$assets` constructor property, per its frozen-surface append rule.
+
 ## [1.2.1](https://github.com/sandermuller/boost-core/compare/1.2.0...1.2.1) - 2026-06-19
 
 <!-- verified-sha: c91935ac8e9e686a49dc83033da6535a958ac5b4 -->

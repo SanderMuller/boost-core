@@ -13,6 +13,8 @@ use SanderMuller\BoostCore\Agents\OpenCodeTarget;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\SkillAsset;
+use SanderMuller\BoostCore\Sync\PendingWrite;
 
 /**
  * @return list<array{AgentTarget, Agent, string, ?string}> [target, agent, skillsDir, guidelinesFile]
@@ -114,5 +116,32 @@ it('every target plans at least one skill file when given one skill', function (
         expect($writes)->toHaveCount(1)
             ->and($writes[0]->relativePath)
             ->toBe($skillsDir . '/foo/SKILL.md');
+    }
+});
+
+it('every target plans asset writes beside SKILL.md, riding the skill name (1.3.0)', function (): void {
+    $skill = new Skill(
+        name: 'codex-review',
+        description: null,
+        frontmatter: ['name' => 'codex-review'],
+        body: 'body',
+        sourcePath: '/fake',
+        sourceVendor: null,
+        assets: [
+            new SkillAsset(relativePath: 'scripts/run.mjs', contents: "console.log('go');\n"),
+            new SkillAsset(relativePath: 'references/api.md', contents: "# api\n"),
+        ],
+    );
+
+    foreach (allTargets() as [$target, $agent, $skillsDir]) {
+        $writes = $target->plan([$skill], []);
+        $paths = array_map(fn (PendingWrite $w): string => $w->relativePath, $writes);
+
+        expect($paths)->toBe([
+            $skillsDir . '/codex-review/SKILL.md',
+            $skillsDir . '/codex-review/scripts/run.mjs',
+            $skillsDir . '/codex-review/references/api.md',
+        ])
+            ->and($writes[1]->content)->toBe("console.log('go');\n");
     }
 });

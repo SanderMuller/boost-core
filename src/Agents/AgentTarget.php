@@ -122,6 +122,17 @@ abstract class AgentTarget
                 relativePath: $this->skillsDirectoryRelative() . '/' . $this->skillRelativePath($skill),
                 content: $this->formatSkillContent($skill),
             );
+
+            // Asset siblings (`scripts/`, `references/`, …) land beside the
+            // rendered SKILL.md, verbatim. They ride the same manifest +
+            // stale-cleanup as the skill file itself, so removing an asset
+            // from the source (or the whole skill) reaps the emitted copy.
+            foreach ($skill->assets as $asset) {
+                $writes[] = new PendingWrite(
+                    relativePath: $this->skillsDirectoryRelative() . '/' . $skill->name . '/' . $asset->relativePath,
+                    content: $asset->contents,
+                );
+            }
         }
 
         return $writes;

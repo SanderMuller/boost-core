@@ -26,6 +26,7 @@ every agent you selected in `withAgents(...)`. One source, many agent-native cop
 | You write in      | What it is                       | `boost sync` fans it out to                         |
 |-------------------|----------------------------------|-----------------------------------------------------|
 | `.ai/skills/`     | Agent Skills (`<name>/SKILL.md`) | `.{agent}/skills/<name>/SKILL.md` per agent         |
+| `.ai/skills/<name>/scripts/` etc. | Skill asset siblings (scripts, references) | Copied verbatim beside each emitted `SKILL.md` |
 | `.ai/guidelines/` | Always-loaded guidance           | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot file |
 | `.ai/commands/`   | Slash-command prompt templates   | Per-agent command dirs (see [Commands](#commands))  |
 

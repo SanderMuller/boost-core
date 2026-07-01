@@ -11,6 +11,7 @@ use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\SkillAssetCollector;
 use Throwable;
 
 /**
@@ -231,6 +232,12 @@ final readonly class RemoteSkillIngester
             sourceVendor: $source->source,
             tags: $tags,
             tagsValid: $tagsValid,
+            // Bundle siblings (`scripts/`, `references/`, …) in the cache slot
+            // ride along as assets, so remote skills emit them into agent dirs
+            // identically to local nested skills. Slots whose entry file is
+            // non-canonical (flat `<name>.md`) collect nothing — the collector
+            // only recognises `SKILL.*` entries as having a skill dir to own.
+            assets: SkillAssetCollector::collect($skillPath),
         );
     }
 

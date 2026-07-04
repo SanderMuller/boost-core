@@ -1,5 +1,6 @@
 /vendor/
 /.cache/
+/.phpunit.cache/
 composer.lock
 .idea/
 .vscode/

@@ -422,6 +422,8 @@ lifecycle reap, the empty-assembly guard, `.config/` layout + relocation, manage
 | Command                              | Purpose                                                                                                                              |
 |--------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
 | `boost install`                      | Scaffold `boost.php` (if missing) + interactive agent / vendor / tag picker                                                          |
+| `boost new <skill\|guideline> <name>`| Scaffold a new skill or guideline markdown file with a frontmatter template (`--description`, `--force`)                             |
+| `boost scan`                         | Re-run the vendor allowlist picker — use after installing packages that publish skills/guidelines                                    |
 | `boost sync`                         | Fan out skills / guidelines / commands to selected agents                                                                            |
 | `boost sync --check`                 | Dry run — report drift, no writes (offline; gate CI on this)                                                                         |
 | `boost sync --scope=user [--all]`    | User-scope sync for globally-installed CLI tools                                                                                     |

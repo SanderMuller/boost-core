@@ -2,7 +2,6 @@
 
 namespace SanderMuller\BoostCore\Skills;
 
-use SanderMuller\BoostCore\Skills\Remote\RemoteSkillIngester;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\Finder\SplFileInfo;
 
@@ -11,8 +10,8 @@ use Symfony\Component\Finder\SplFileInfo;
  * directory that is not itself a `SKILL.*` entry candidate.
  *
  * Shared by {@see SkillLoader} (local `.ai/skills/<name>/` and vendor dirs)
- * and {@see RemoteSkillIngester}
- * (remote cache slots), so both paths classify assets identically:
+ * and the remote skill ingester (remote cache slots), so both paths classify
+ * assets identically:
  *
  *  - Only NESTED-layout skills have assets — a flat `skills/foo.md` has no
  *    directory to hold siblings, so the collector returns `[]` for it.

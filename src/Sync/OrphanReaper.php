@@ -70,17 +70,20 @@ final class OrphanReaper
     }
 
     /**
-     * Delete boost-owned prior-manifest entries this sync no longer emits. The
-     * delete predicate ({@see isReapableOrphan}) consults the prior manifest's
-     * ownership (not raw gitignore membership), and only a regular, non-aliased
-     * file is unlinked; a delete failure RETAINS ownership so the next sync
-     * retries.
+     * Delete (or, under $checkOnly, PREVIEW) boost-owned prior-manifest entries
+     * this sync no longer emits. The delete predicate ({@see isReapableOrphan})
+     * consults the prior manifest's ownership (not raw gitignore membership),
+     * and only a regular, non-aliased file is unlinked; a delete failure RETAINS
+     * ownership so the next sync retries. Under $checkOnly nothing is unlinked —
+     * each reap candidate is reported as a WOULD_DELETE write so `sync --check`
+     * previews exactly what the real sync would remove.
      *
      * @param  array<string, true>  $intendedEmitterPaths  emitter paths emitted this sync (kept)
      * @param  array<string, true>  $preservedEmitterFqcns  FQCNs DISABLED/errored this sync (files preserved)
      * @param  list<string>  $ownedGuidancePaths  guidance files boost owns this sync (kept)
      * @param  array<string, string>  $wrapperPaths  wrapper-claimed paths (never reaped here)
-     * @return array{writes: list<WrittenFile>, retained: list<string>}  `retained` = orphans whose delete FAILED — ownership kept so the next sync retries
+     * @param  bool  $checkOnly  when true, emit WOULD_DELETE writes and unlink nothing
+     * @return array{writes: list<WrittenFile>, retained: list<string>}  writes = deletions (WOULD_DELETE under $checkOnly); `retained` = orphans whose real delete FAILED — ownership kept so the next sync retries (always empty under $checkOnly)
      */
     public static function reapManifestOrphans(
         string $projectRoot,
@@ -89,6 +92,7 @@ final class OrphanReaper
         array $preservedEmitterFqcns,
         array $ownedGuidancePaths,
         array $wrapperPaths,
+        bool $checkOnly = false,
     ): array {
         $intendedGuidance = array_fill_keys($ownedGuidancePaths, true);
 
@@ -148,6 +152,15 @@ final class OrphanReaper
                     continue;
                 }
             } elseif (isset($liveLowerPaths[strtolower($absolute)])) {
+                continue;
+            }
+
+            // Check mode: preview the deletion, unlink nothing. Placed AFTER the
+            // is_link / is_file / alias guards so the preview reflects the same
+            // "would we actually reap this" decision the real path makes.
+            if ($checkOnly) {
+                $writes[] = new WrittenFile($relativePath, $absolute, WriteAction::WOULD_DELETE);
+
                 continue;
             }
 

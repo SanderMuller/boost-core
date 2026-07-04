@@ -419,6 +419,34 @@ it('#147: counts pruned dead symlinks in the deleted total + delete-attribution'
             // attribution acknowledges the dead-symlink cause (codex P2) — not just "source no longer eligible".
             ->and((string) $result->renderDeleteAttribution())->toContain('symlink');
     } finally {
+        rmTreeE2E($root);
+    }
+});
+
+// Parity companion to #147: `sync --check` must PREVIEW the dead-symlink prune a
+// real sync performs (WOULD_DELETE) and remove nothing — so a --check CI gate
+// predicts the prune instead of the real sync surprising the operator.
+it('#147: sync --check previews a dead-symlink prune as WOULD_DELETE without removing it', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/skills/foo.md', "---\nname: foo\n---\nbody\n");
+
+        mkdir($root . '/.cursor/skills/oldvendor', 0o755, recursive: true);
+        $deadLink = $root . '/.cursor/skills/oldvendor/dead';
+        symlink(sys_get_temp_dir() . '/boost-gone-' . bin2hex(random_bytes(6)), $deadLink); // target absent → dead
+        expect(is_link($deadLink))->toBeTrue()->and(file_exists($deadLink))->toBeFalse();
+
+        $check = SyncEngine::default(emptyInstalledPackages())->sync($root, checkOnly: true);
+
+        $wouldDeletePaths = array_map(
+            static fn (WrittenFile $w): string => $w->relativePath,
+            array_filter($check->writes, static fn (WrittenFile $w): bool => $w->action === WriteAction::WOULD_DELETE),
+        );
+
+        expect($wouldDeletePaths)->toContain('.cursor/skills/oldvendor/dead')
+            ->and(is_link($deadLink))->toBeTrue('--check must not remove the dead symlink');
+    } finally {
         @unlink($root . '/.cursor/skills/oldvendor/dead'); // drop the symlink before recursing $root
         rmTreeE2E($root);
     }
@@ -4184,5 +4212,55 @@ it('remote-skill source: bundle scripts/ siblings emit as assets beside the fann
     } finally {
         rmTreeE2E($root);
         BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+// check==real parity for the manifest-orphan reap: dropping a configured agent
+// makes its guidance file (GEMINI.md) a manifest-owned orphan. `sync --check`
+// must PREVIEW that deletion (WOULD_DELETE) so a CI gate on `--check` predicts
+// what the next real sync deletes — the parity invariant plan 003 restores.
+it('sync --check previews the manifest-orphan reap of a dropped agent guidance file (check==real parity)', function (): void {
+    $root = makeEndToEndProject();
+    file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
+    writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE, Agent::GEMINI]);");
+
+    try {
+        // Sync 1 (two agents): GEMINI.md guidance written and recorded in the manifest.
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+        expect($root . '/GEMINI.md')
+            ->toBeFile();
+
+        // Drop GEMINI — GEMINI.md is now a manifest-owned orphan (nothing re-emits it).
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        // Sync 2a --check: must PREVIEW the GEMINI.md deletion and remove nothing.
+        $check = SyncEngine::default(emptyInstalledPackages())->sync($root, checkOnly: true);
+        $wouldDeletePaths = array_map(
+            static fn (WrittenFile $written): string => $written->relativePath,
+            array_values(array_filter(
+                $check->writes,
+                static fn (WrittenFile $written): bool => $written->action === WriteAction::WOULD_DELETE,
+            )),
+        );
+        expect($wouldDeletePaths)->toContain('GEMINI.md')
+            ->and(is_file($root . '/GEMINI.md'))->toBeTrue('--check must not delete');
+
+        // Sync 2b real: performs the deletion (GEMINI.md still present after the check run).
+        $real = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $deletedPaths = array_map(
+            static fn (WrittenFile $written): string => $written->relativePath,
+            array_values(array_filter(
+                $real->writes,
+                static fn (WrittenFile $written): bool => $written->action === WriteAction::DELETED,
+            )),
+        );
+
+        // Parity: everything the real sync DELETED was previewed as WOULD_DELETE.
+        expect($deletedPaths)->toContain('GEMINI.md')
+            ->and(is_file($root . '/GEMINI.md'))->toBeFalse('real sync deletes the orphan')
+            ->and(array_values(array_diff($deletedPaths, $wouldDeletePaths)))
+            ->toBe([], 'every real DELETED path must have been previewed as WOULD_DELETE under --check');
+    } finally {
+        rmTreeE2E($root);
     }
 });

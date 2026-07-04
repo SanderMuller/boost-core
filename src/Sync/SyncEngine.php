@@ -854,14 +854,19 @@ final readonly class SyncEngine
         // so rewriting the manifest would DROP guidance ownership and a later
         // empty sync could no longer converge previously-owned files. Leaving
         // the prior manifest untouched keeps it last-known-good.
-        if (! $checkOnly && ! $hasAnyError && $gitignoreManaged && $guidelineRenderErrors === []) {
-            // Reconcile-on-sync orphan reap — delete boost-owned files recorded
-            // in the PRIOR manifest that this sync no longer intends to emit (a
-            // dormant FileEmitter, a de-selected agent's guidance file).
-            // Manifest-GATED: the delete predicate consults the prior manifest's
-            // ownership, NOT raw gitignore membership. Runs after all
-            // non-destructive writes + cleanup succeeded, before the new manifest
-            // is written. The reap's targets are absent from the
+        // Runs in BOTH check and real mode: the orphan reap must be PREVIEWED
+        // under `--check` (WOULD_DELETE) so `sync --check` predicts the deletes a
+        // real sync performs — check==real parity. Only the manifest WRITE below
+        // is gated real-only (persisted ownership state is never written on a
+        // check run).
+        if (! $hasAnyError && $gitignoreManaged && $guidelineRenderErrors === []) {
+            // Reconcile-on-sync orphan reap — delete (or, under --check, preview)
+            // boost-owned files recorded in the PRIOR manifest that this sync no
+            // longer intends to emit (a dormant FileEmitter, a de-selected agent's
+            // guidance file). Manifest-GATED: the delete predicate consults the
+            // prior manifest's ownership, NOT raw gitignore membership. Runs after
+            // all non-destructive writes + cleanup succeeded, before the new
+            // manifest is written. The reap's targets are absent from the
             // ownedGuidancePaths / live-emitter sets, so the new manifest below
             // never re-records them.
             $reap = OrphanReaper::reapManifestOrphans(
@@ -871,11 +876,13 @@ final readonly class SyncEngine
                 $preservedEmitterFqcns,
                 $guidanceResult['ownedGuidancePaths'],
                 $wrapperEmits['paths'],
+                $checkOnly,
             );
             $writes = [...$writes, ...$reap['writes']];
 
             // A failed orphan delete keeps its ownership: surface it and carry
-            // the entry forward so the next sync retries.
+            // the entry forward so the next sync retries. (retained is always
+            // empty under --check, so this loop is a no-op in check mode.)
             foreach ($reap['retained'] as $retainedPath) {
                 $reapDiagnostics[] = Diagnostic::warning(
                     null,
@@ -886,21 +893,24 @@ final readonly class SyncEngine
                 );
             }
 
-            $this->manifestWriter->write(
-                $projectRoot,
-                $guidanceResult['ownedGuidancePaths'],
-                $wrapperEmits['paths'],
-                $emitterResults,
-                $priorManifest,
-                $reap['retained'],
-                $ownableEmitterPaths,
-                $inConfigDir,
-                // The engine owns gitignore/cleanup enumeration; hand the writer the
-                // current on-disk managed files (the just-written block — this is the
-                // success path, so updateGitignore already ran) so it records skill/
-                // command emission targets without calling back into the engine.
-                $this->staleFileCleaner->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)),
-            );
+            // Persisted ownership manifest: NEVER on a check run.
+            if (! $checkOnly) {
+                $this->manifestWriter->write(
+                    $projectRoot,
+                    $guidanceResult['ownedGuidancePaths'],
+                    $wrapperEmits['paths'],
+                    $emitterResults,
+                    $priorManifest,
+                    $reap['retained'],
+                    $ownableEmitterPaths,
+                    $inConfigDir,
+                    // The engine owns gitignore/cleanup enumeration; hand the writer the
+                    // current on-disk managed files (the just-written block — this is the
+                    // success path, so updateGitignore already ran) so it records skill/
+                    // command emission targets without calling back into the engine.
+                    $this->staleFileCleaner->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)),
+                );
+            }
         }
 
         // Diagnostic surface for the render-fail-then-write safety gate:
@@ -1801,6 +1811,43 @@ final readonly class SyncEngine
     }
 
     /**
+     * Preview (check) or prune (real) DEAD (broken) symlinks across ALL agent
+     * dirs — configured or not — so a de-configured agent's dir (e.g. `.cursor/`
+     * after dropping CURSOR) also sheds its symlink-era orphans. A broken link
+     * points nowhere, so removal is always safe; live symlinks are never touched
+     * (see {@see AgentDirSymlinkScanner}). The FULL target set is used, not
+     * `$this->agentTargets`: a subset-constructed engine (a wrapper, or a test)
+     * would otherwise leave stale links under agents outside its fan-out
+     * untouched, while `boost doctor` (which scans `allAgentTargets()`) still
+     * reports them. Each removal is a DELETED write so it flows into the
+     * `deleted=N` summary + delete-attribution (#147); under `--check` the
+     * read-only `scan()` previews the same dead set as WOULD_DELETE, so
+     * `sync --check` predicts the prune a real sync performs.
+     *
+     * Known residual (narrow): when a dead link sits at a path this sync also
+     * emits, a real sync prunes it FIRST then writes the file (DELETED + WROTE),
+     * but `--check` leaves the link on disk, so the later FileWriter reports
+     * SKIPPED_SYMLINK instead of WOULD_WRITE — the delete is previewed, the
+     * replacement write is not. Closing this needs the pruned-dead set threaded
+     * into the fan-out's write path; deferred with the SyncEngine decomposition.
+     *
+     * @return list<WrittenFile>
+     */
+    private function deadSymlinkWrites(string $projectRoot, bool $checkOnly): array
+    {
+        $scanner = new AgentDirSymlinkScanner();
+        $dead = $checkOnly
+            ? $scanner->scan($projectRoot, self::allAgentTargets())['dead']
+            : $scanner->pruneDead($projectRoot, self::allAgentTargets());
+        $action = $checkOnly ? WriteAction::WOULD_DELETE : WriteAction::DELETED;
+
+        return array_map(
+            static fn (string $link): WrittenFile => new WrittenFile($link, $projectRoot . '/' . $link, $action),
+            $dead,
+        );
+    }
+
+    /**
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
      * @param  list<Command>  $commands
@@ -1840,23 +1887,9 @@ final readonly class SyncEngine
         $toPrune = $this->filteredSkillPruner->candidates($skills, $droppedSkillNames);
         $skipGuidelineWrites = $guidelineRenderErrors !== [];
 
-        // Prune DEAD (broken) symlinks across ALL agent dirs — configured or not —
-        // so a de-configured agent's dir (e.g. .cursor/ after dropping CURSOR) also
-        // sheds its symlink-era orphans. A broken link points nowhere, so removal is
-        // always safe; live symlinks are never touched (see AgentDirSymlinkScanner).
-        // Use the FULL target set, not $this->agentTargets: a subset-constructed
-        // engine (a wrapper, or a test) would otherwise leave stale links under the
-        // agents outside its fan-out untouched, while `boost doctor` (which scans
-        // allAgentTargets()) still reports them — prune what doctor promises to.
-        // Record each pruned dead symlink as a DELETED write so it flows into the
-        // `deleted=N` summary + the delete-attribution (#147) — the prune was a real
-        // removal boost made and was previously invisible in the count.
-        if (! $checkOnly) {
-            $writes = [...$writes, ...array_map(
-                static fn (string $link): WrittenFile => new WrittenFile($link, $projectRoot . '/' . $link, WriteAction::DELETED),
-                (new AgentDirSymlinkScanner())->pruneDead($projectRoot, self::allAgentTargets()),
-            )];
-        }
+        // Prune (real) or preview (check) DEAD symlinks across all agent dirs —
+        // see deadSymlinkWrites().
+        $writes = [...$writes, ...$this->deadSymlinkWrites($projectRoot, $checkOnly)];
 
         foreach ($this->agentTargets as $target) {
             if (! $config->hasAgent($target->agent())) {

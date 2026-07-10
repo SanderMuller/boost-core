@@ -3,10 +3,12 @@ parameters:
 		# SyncEngine is a known god-object (advisor finding #12 — decomposition is
 		# tracked as plans/003+ backlog). This threshold is the already-accepted
 		# baseline for that debt; it rose 184 -> 185 with the `sync --check`
-		# reap/prune parity fix. The real remedy is decomposing the class, not
-		# shaving decision points here (which would only obscure it further).
+		# reap/prune parity fix, and 185 -> 187 with skill-dependency rescue
+		# (two guards in resolveSkills; the diagnostics mapping already lives in
+		# SkillDependencyDiagnostics). The real remedy is decomposing the class,
+		# not shaving decision points here (which would only obscure it further).
 		-
-			rawMessage: 'Class cognitive complexity is 185, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 187, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Sync/SyncEngine.php

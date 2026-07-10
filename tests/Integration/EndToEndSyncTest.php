@@ -83,14 +83,14 @@ function emptyInstalledPackages(): InstalledPackages
  * EndToEndSyncTest runs in isolation (Pest only auto-loads functions from
  * the test files it's invoked with).
  */
-function e2eMakeBundleBytes(string $skillName, ?string $frontmatterName = null, string $body = 'Body.'): string
+function e2eMakeBundleBytes(string $skillName, ?string $frontmatterName = null, string $body = 'Body.', string $extraFrontmatter = ''): string
 {
     $tmpZip = sys_get_temp_dir() . '/boost-e2e-bundle-' . bin2hex(random_bytes(6)) . '.zip';
     $zip = new ZipArchive();
     $zip->open($tmpZip, ZipArchive::CREATE);
 
     $name = $frontmatterName ?? $skillName;
-    $zip->addFromString($skillName . '/SKILL.md', "---\nname: {$name}\n---\n{$body}");
+    $zip->addFromString($skillName . '/SKILL.md', "---\nname: {$name}\n{$extraFrontmatter}---\n{$body}");
     $zip->close();
 
     $bytes = (string) file_get_contents($tmpZip);
@@ -4260,6 +4260,304 @@ it('sync --check previews the manifest-orphan reap of a dropped agent guidance f
             ->and(is_file($root . '/GEMINI.md'))->toBeFalse('real sync deletes the orphan')
             ->and(array_values(array_diff($deletedPaths, $wouldDeletePaths)))
             ->toBe([], 'every real DELETED path must have been previewed as WOULD_DELETE under --check');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+// ============================================================================
+// Skill dependencies (`metadata.boost-requires`) — rescue, warnings, parity.
+// Spec: internal/specs/skill-dependencies.md §4.2, §4.4, §6.
+// ============================================================================
+
+/**
+ * Vendor package publishing multiple skills at once — the dependency tests
+ * need a dependent and its dep in one package.
+ *
+ * @param  array<string, string>  $skills  skill name => extra frontmatter lines (each newline-terminated)
+ */
+function makeDepVendor(string $root, string $vendor, array $skills): PackageInfo
+{
+    $path = $root . '/vendor/' . $vendor;
+    mkdir($path . '/resources/boost/skills', 0o755, recursive: true);
+    file_put_contents($path . '/composer.json', '{"name":"' . $vendor . '","type":"library"}');
+    foreach ($skills as $skillName => $extraFrontmatter) {
+        file_put_contents(
+            $path . '/resources/boost/skills/' . $skillName . '.md',
+            "---\nname: {$skillName}\n{$extraFrontmatter}---\nBody.\n",
+        );
+    }
+
+    return new PackageInfo($vendor, '1.0.0', $path);
+}
+
+/**
+ * @return list<string>
+ */
+function dependencyDiagnosticMessages(SyncResult $result, string $needle): array
+{
+    $messages = [];
+    foreach ($result->diagnostics as $diagnostic) {
+        if (str_contains($diagnostic->message, $needle)) {
+            $messages[] = $diagnostic->message;
+        }
+    }
+
+    return $messages;
+}
+
+it('dependency rescue: a tag-dropped dep ships because its dependent ships', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeDepVendor($root, 'acme/dep-pack', [
+            'dependent' => "metadata:\n  boost-requires: helper\n",
+            'helper' => "metadata:\n  boost-tags: jira\n",
+        ]);
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/dep-pack"]);',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/dep-pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse('errors=' . json_encode($result->errors))
+            ->and(file_exists($root . '/.claude/skills/dependent/SKILL.md'))->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/helper/SKILL.md'))->toBeTrue()
+            // The rescued skill must not feed the silent-filter nudge.
+            ->and($result->tagFilteredSkillsCount)->toBe(0)
+            ->and(dependencyDiagnosticMessages($result, 'Dependency rescue'))->toHaveCount(1);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('dependency rescue is transitive across tag-dropped skills', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeDepVendor($root, 'acme/dep-pack', [
+            'entry' => "metadata:\n  boost-requires: mid\n",
+            'mid' => "metadata:\n  boost-tags: jira\n  boost-requires: leaf\n",
+            'leaf' => "metadata:\n  boost-tags: jira\n",
+        ]);
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/dep-pack"]);',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/dep-pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/mid/SKILL.md'))->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/leaf/SKILL.md'))->toBeTrue()
+            ->and(dependencyDiagnosticMessages($result, 'Dependency rescue'))->toHaveCount(2);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('dependency rescue: a missing dep warns and the dependent still ships', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeDepVendor($root, 'acme/dep-pack', [
+            'dependent' => "metadata:\n  boost-requires: ghost\n",
+        ]);
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/dep-pack"]);',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/dep-pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/dependent/SKILL.md'))->toBeTrue();
+
+        $warnings = dependencyDiagnosticMessages($result, 'does not exist in any source');
+        expect($warnings)->toHaveCount(1)
+            ->and($warnings[0])->toContain('`ghost`')
+            ->toContain('`dependent`');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('dependency rescue never overrides withExcludedSkills — warns instead', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeDepVendor($root, 'acme/dep-pack', [
+            'dependent' => "metadata:\n  boost-requires: helper\n",
+            'helper' => '',
+        ]);
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/dep-pack"])' . "\n"
+            . '    ->withExcludedSkills(["acme/dep-pack:helper"]);',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/dep-pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/helper/SKILL.md'))->toBeFalse()
+            ->and(dependencyDiagnosticMessages($result, 'excluded by withExcludedSkills'))->toHaveCount(1);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('dependency rescue runs identically under --check — previewed, nothing written', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeDepVendor($root, 'acme/dep-pack', [
+            'dependent' => "metadata:\n  boost-requires: helper\n",
+            'helper' => "metadata:\n  boost-tags: jira\n",
+        ]);
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/dep-pack"]);',
+        );
+        $engine = SyncEngine::default(new InstalledPackages(['acme/dep-pack' => $pkg]));
+
+        $check = $engine->sync($root, checkOnly: true);
+
+        $helperPreviewed = array_filter(
+            array_map(fn (WrittenFile $w): string => $w->relativePath, $check->writes),
+            fn (string $rel): bool => str_contains($rel, 'helper'),
+        );
+        expect($helperPreviewed)->not->toBeEmpty('check must preview the rescued skill write')
+            ->and(file_exists($root . '/.claude/skills/helper/SKILL.md'))->toBeFalse()
+            ->and(dependencyDiagnosticMessages($check, 'Dependency rescue'))->toHaveCount(1);
+
+        $real = $engine->sync($root);
+        expect(file_exists($root . '/.claude/skills/helper/SKILL.md'))->toBeTrue()
+            ->and($real->hasErrors())->toBeFalse();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('a rescued skill survives the next sync — the pruner leaves it alone', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeDepVendor($root, 'acme/dep-pack', [
+            'dependent' => "metadata:\n  boost-requires: helper\n",
+            'helper' => "metadata:\n  boost-tags: jira\n",
+        ]);
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/dep-pack"]);',
+        );
+        $engine = SyncEngine::default(new InstalledPackages(['acme/dep-pack' => $pkg]));
+
+        $engine->sync($root);
+        $second = $engine->sync($root);
+
+        expect($second->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/helper/SKILL.md'))->toBeTrue();
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('injected vendor skills participate in dependency rescue on both sides', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+
+        $dependent = new Skill(
+            name: 'wrapper-dependent',
+            description: null,
+            frontmatter: [],
+            body: 'Body.',
+            sourcePath: '/virtual/wrapper-dependent',
+            sourceVendor: 'acme/wrapper',
+            requires: ['wrapper-helper'],
+        );
+        $helper = new Skill(
+            name: 'wrapper-helper',
+            description: null,
+            frontmatter: [],
+            body: 'Body.',
+            sourcePath: '/virtual/wrapper-helper',
+            sourceVendor: 'acme/wrapper',
+            tags: ['jira'],
+        );
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync(
+            $root,
+            injectedVendorSkills: ['acme/wrapper' => [$dependent, $helper]],
+        );
+
+        expect($result->hasErrors())->toBeFalse('errors=' . json_encode($result->errors))
+            ->and(file_exists($root . '/.claude/skills/wrapper-dependent/SKILL.md'))->toBeTrue()
+            ->and(file_exists($root . '/.claude/skills/wrapper-helper/SKILL.md'))->toBeTrue()
+            ->and(dependencyDiagnosticMessages($result, 'Dependency rescue'))->toHaveCount(1);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('remote skills carry boost-requires through ingest — a missing dep warns', function (): void {
+    $root = makeEndToEndProject();
+    $cacheRoot = sys_get_temp_dir() . '/boost-remote-dep-' . bin2hex(random_bytes(6));
+
+    try {
+        writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
+
+        $fetcher = (new FakeRemoteFetcher())
+            ->withAsset(
+                'peterfox/agent-skills',
+                'v1.2.0',
+                'composer-upgrade.skill',
+                e2eMakeBundleBytes('composer-upgrade', extraFrontmatter: "metadata:\n  boost-requires: ghost\n"),
+            );
+
+        $engine = new SyncEngine(
+            agentTargets: [new ClaudeCodeTarget()],
+            installedPackages: emptyInstalledPackages(),
+            remoteSkillIngester: new RemoteSkillIngester(
+                cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot),
+            ),
+        );
+
+        $result = $engine->sync($root);
+
+        expect($result->hasErrors())->toBeFalse('errors=' . json_encode($result->errors))
+            ->and(dependencyDiagnosticMessages($result, 'does not exist in any source'))->toHaveCount(1);
+    } finally {
+        rmTreeE2E($root);
+        BundleExtractor::recursivelyRemove($cacheRoot);
+    }
+});
+
+it('a shipped skill with malformed boost-requires warns but still ships', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        $pkg = makeDepVendor($root, 'acme/dep-pack', [
+            'broken' => "metadata:\n  boost-requires:\n    - not-a-string\n",
+        ]);
+        writeBoostPhp(
+            $root,
+            "return BoostConfig::configure()\n"
+            . '    ->withAgents([Agent::CLAUDE_CODE])' . "\n"
+            . '    ->withAllowedVendors(["acme/dep-pack"]);',
+        );
+
+        $result = SyncEngine::default(new InstalledPackages(['acme/dep-pack' => $pkg]))->sync($root);
+
+        expect($result->hasErrors())->toBeFalse()
+            ->and(file_exists($root . '/.claude/skills/broken/SKILL.md'))->toBeTrue()
+            ->and(dependencyDiagnosticMessages($result, 'malformed `metadata.boost-requires`'))->toHaveCount(1);
     } finally {
         rmTreeE2E($root);
     }

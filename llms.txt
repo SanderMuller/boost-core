@@ -17,7 +17,9 @@ Key facts for agents:
   `withAllowedVendors()`, `withRemoteSkills()`, `withConventions()`.
 - Skills come from three places: host `.ai/skills/`, allowlisted Composer vendor
   packages, and `withRemoteSkills()` GitHub sources. Tag filtering scopes vendor
-  and remote skills per project.
+  and remote skills per project. `metadata.boost-requires` declares hard skill
+  dependencies: whenever a skill ships, its requires co-ship (tag-dropped deps
+  are rescued; `withExcludedSkills()` still wins).
 - Guidance files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot) are markerless,
   boost-owned, regenerated on every sync, but kept tracked. Skill and command
   directories are gitignored. A hand-edited file is never blanked.

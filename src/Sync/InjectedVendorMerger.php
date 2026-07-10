@@ -90,8 +90,9 @@ final readonly class InjectedVendorMerger
      * @param  array<string, list<Skill>>  $injected
      * @param  array<string, list<Skill>>  $vendorSkills  in-place
      * @param  list<string>  $droppedNames  in-place
+     * @param  array<string, array{tagMismatch: list<Skill>, excluded: list<Skill>}>  $retainedDrops  in-place: per-provider dropped skills retained as dependency-rescue candidates, appended in merge order so map insertion order stays precedence order.
      */
-    public function mergeSkills(array $injected, array &$vendorSkills, array &$droppedNames, int &$tagFilteredCount, BoostConfig $config): void
+    public function mergeSkills(array $injected, array &$vendorSkills, array &$droppedNames, int &$tagFilteredCount, BoostConfig $config, array &$retainedDrops = []): void
     {
         foreach ($injected as $vendorName => $skills) {
             // Collision detection runs POST-tag-filter — only skills that
@@ -115,6 +116,13 @@ final readonly class InjectedVendorMerger
             }
 
             $tagFilteredCount += $filtered['droppedByTag'];
+
+            if ($filtered['tagMismatchDrops'] !== [] || $filtered['excludedDrops'] !== []) {
+                $retainedDrops[$vendorName] = [
+                    'tagMismatch' => array_merge($retainedDrops[$vendorName]['tagMismatch'] ?? [], $filtered['tagMismatchDrops']),
+                    'excluded' => array_merge($retainedDrops[$vendorName]['excluded'] ?? [], $filtered['excludedDrops']),
+                ];
+            }
         }
     }
 

@@ -1157,3 +1157,43 @@ it('0.23.0 doctor reports dead + live agent-dir symlinks across all agents (proj
         doctorCleanup($dir);
     }
 });
+
+// ============================================================================
+// Skill-dependency section (`metadata.boost-requires`).
+// ============================================================================
+
+it('doctor surfaces an unsatisfied skill dependency', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    try {
+        $path = $dir . '/vendor/acme/pack';
+        mkdir($path . '/resources/boost/skills', 0o755, recursive: true);
+        file_put_contents($path . '/composer.json', '{"name":"acme/pack","type":"library"}');
+        file_put_contents(
+            $path . '/resources/boost/skills/dependent.md',
+            "---\nname: dependent\nmetadata:\n  boost-requires: ghost\n---\nBody.\n",
+        );
+
+        $command = new DoctorCommand(injectedPackages: new InstalledPackages(['acme/pack' => new PackageInfo('acme/pack', '1.0.0', $path)]));
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('Skill dependencies')
+            ->and($display)->toContain('does not exist in any source');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor stays silent on skill dependencies when no skill declares any', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $result = runDoctor($dir);
+
+        expect($result['display'])->not->toContain('Skill dependencies');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

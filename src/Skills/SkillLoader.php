@@ -132,6 +132,7 @@ final readonly class SkillLoader
                 : null;
 
             [$tags, $tagsValid] = BoostTags::parse($parsed->frontmatter);
+            [$requires, $requiresValid] = BoostRequires::parse($parsed->frontmatter);
 
             yield new Skill(
                 name: $name,
@@ -143,6 +144,8 @@ final readonly class SkillLoader
                 tags: $tags,
                 tagsValid: $tagsValid,
                 assets: SkillAssetCollector::collect($this->resolvedPath($file)),
+                requires: $requires,
+                requiresValid: $requiresValid,
             );
         }
     }

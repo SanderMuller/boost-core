@@ -44,6 +44,8 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSyncCoordinator;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\SkillDependencyDiagnostics;
+use SanderMuller\BoostCore\Skills\SkillDependencyResolver;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
@@ -126,6 +128,7 @@ final readonly class SyncEngine
         private SyncManifestWriter $manifestWriter = new SyncManifestWriter(),
         private StaleFileCleaner $staleFileCleaner = new StaleFileCleaner(),
         private UserScopeManifestWriter $userScopeManifestWriter = new UserScopeManifestWriter(),
+        private SkillDependencyResolver $skillDependencyResolver = new SkillDependencyResolver(),
     ) {
         $this->injectedVendorMerger = new InjectedVendorMerger($this->skillTagFilter, $this->guidelineTagFilter);
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -499,7 +502,7 @@ final readonly class SyncEngine
      * included — those are runtime-only inputs to `sync()` and the
      * wrapper owns its own inspection surface.
      *
-     * @return array{skills: list<Skill>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedSkillVendorKeys: list<string>, scannedGuidelineVendorKeys: list<string>}
+     * @return array{skills: list<Skill>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedSkillVendorKeys: list<string>, scannedGuidelineVendorKeys: list<string>, skillDependencyWarnings: list<array{name: string, dependents: list<string>, reason: 'excluded'|'missing'}>, skillMalformedRequires: list<string>}  The two skill-dependency keys mirror `resolveSkills()` so `boost validate` / `boost doctor` report the exact demand outcome a sync would produce.
      */
     public function resolveForInspection(string $projectRoot): array
     {
@@ -525,14 +528,17 @@ final readonly class SyncEngine
         }
 
         $renderErrors = [];
+        $skillResolution = $this->resolveSkills($projectRoot, $config, $allowedVendors, false, [], true);
 
         return [
-            'skills' => $this->resolveSkills($projectRoot, $config, $allowedVendors, false, [], true)['skills'],
+            'skills' => $skillResolution['skills'],
             'guidelines' => $this->resolveGuidelines($projectRoot, $config, $allowedVendors, false, [], $renderErrors),
             'commands' => $this->resolveCommands($config),
             'remoteSourceKeys' => array_values($remoteSourceKeys),
             'scannedSkillVendorKeys' => $scannedSkillVendorKeys,
             'scannedGuidelineVendorKeys' => $scannedGuidelineVendorKeys,
+            'skillDependencyWarnings' => $skillResolution['dependencyWarnings'],
+            'skillMalformedRequires' => $skillResolution['malformedRequires'],
         ];
     }
 
@@ -936,6 +942,16 @@ final readonly class SyncEngine
             $skipWarnings,
         );
 
+        // Dependency rescue observability: every pull is surfaced (INFO) so a
+        // rescued skill never looks like tag filtering being broken; every
+        // unsatisfiable demand and malformed `boost-requires` warns, naming
+        // the dependents so the consumer knows what ships degraded.
+        $dependencyDiagnostics = SkillDependencyDiagnostics::syncDiagnostics(
+            $skillResolution['dependencyPulls'],
+            $skillResolution['dependencyWarnings'],
+            $skillResolution['malformedRequires'],
+        );
+
         // Conventions keep-reason observability (#87): when the `## Project
         // Conventions` block is KEPT, surface WHY — the artifact (skill / guidance
         // file) and the legacy ref / token / pointer pinning it open. INFO-level so
@@ -963,6 +979,7 @@ final readonly class SyncEngine
                 ...$wrapperEmits['diagnostics'],
                 ...$renderFailDiagnostics,
                 ...$unrenderableDiagnostics,
+                ...$dependencyDiagnostics,
                 ...$emitterDiagnostics,
                 ...$reapDiagnostics,
                 ...$keepReasonDiagnostics,
@@ -1411,7 +1428,7 @@ final readonly class SyncEngine
      * @param  list<DiscoveredVendor>  $allowedVendors
      * @param  array<string, list<Skill>>  $injectedVendorSkills  Caller-supplied pre-built skills keyed by source vendor. Tag-filtered before merging into the vendor map. Mirrors the remote-ingest path; see `sync()` docblock.
      * @param  list<string>  $skipWarnings  Out-param: SKILL.* files skipped for lack of a registered renderer (surfaced as advisory warnings).
-     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int, remoteErrors: list<string>, hostShadows: list<array{skill: string, shadowedVendor: string}>}  `remoteErrors` carries both per-source remote ingest failures (lenient mode) and per-file render failures. `hostShadows` records host `.ai/skills/<name>` shadowing an allowlisted-vendor skill of the same name.
+     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int, remoteErrors: list<string>, hostShadows: list<array{skill: string, shadowedVendor: string}>, dependencyPulls: list<array{name: string, requiredBy: string, vendor: string}>, dependencyWarnings: list<array{name: string, dependents: list<string>, reason: 'excluded'|'missing'}>, malformedRequires: list<string>}  `remoteErrors` carries both per-source remote ingest failures (lenient mode) and per-file render failures. `hostShadows` records host `.ai/skills/<name>` shadowing an allowlisted-vendor skill of the same name. The three dependency keys mirror {@see SkillDependencyResolver::resolve()} post-fixup.
      */
     private function resolveSkills(string $projectRoot, BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorSkills = [], bool $checkOnly = false, array &$skipWarnings = []): array
     {
@@ -1435,6 +1452,8 @@ final readonly class SyncEngine
         /** @var list<string> $droppedNames */
         $droppedNames = [];
         $tagFilteredCount = 0;
+        /** @var array<string, array{tagMismatch: list<Skill>, excluded: list<Skill>}> $retainedDrops */
+        $retainedDrops = [];
         foreach ($allowedVendors as $vendor) {
             if ($vendor->skillsPath === null) {
                 continue;
@@ -1463,9 +1482,16 @@ final readonly class SyncEngine
             // tag-filtered skill named `code-review` are two real hidden
             // skills, not one.
             $tagFilteredCount += $filtered['droppedByTag'];
+
+            if ($filtered['tagMismatchDrops'] !== [] || $filtered['excludedDrops'] !== []) {
+                $retainedDrops[$vendor->name] = [
+                    'tagMismatch' => $filtered['tagMismatchDrops'],
+                    'excluded' => $filtered['excludedDrops'],
+                ];
+            }
         }
 
-        $this->injectedVendorMerger->mergeSkills($injectedVendorSkills, $vendorSkills, $droppedNames, $tagFilteredCount, $config);
+        $this->injectedVendorMerger->mergeSkills($injectedVendorSkills, $vendorSkills, $droppedNames, $tagFilteredCount, $config, $retainedDrops);
 
         $remote = $this->remoteCoordinator->ingestIntoVendorMap(
             $config,
@@ -1474,11 +1500,27 @@ final readonly class SyncEngine
             $tagFilteredCount,
             $dispatcher,
             $checkOnly,
+            $retainedDrops,
         );
 
         /** @var list<array{skill: string, shadowedVendor: string}> $hostShadows */
         $hostShadows = [];
         $resolvedSkillList = $this->skillResolver->resolve($hostSkills, $vendorSkills, $force, $hostShadows);
+
+        // Ship-closure: every shipped skill's `boost-requires` must ship too,
+        // rescuing tag-dropped candidates where needed. Runs identically under
+        // --check — the candidate pool is whatever this run could see (uncached
+        // remote sources are already would-fetch advisories in check mode).
+        $dependencies = $this->skillDependencyResolver->resolve($resolvedSkillList, $retainedDrops, $force);
+        $resolvedSkillList = $dependencies['skills'];
+
+        $rescuedNames = array_column($dependencies['pulls'], 'name');
+        if ($rescuedNames !== []) {
+            // A rescued name shipped after all: the pruner must leave its emit
+            // dirs alone, and the silent-filter nudge must not count it.
+            $droppedNames = array_values(array_diff($droppedNames, $rescuedNames));
+            $tagFilteredCount = max(0, $tagFilteredCount - count($rescuedNames));
+        }
 
         return [
             'skills' => $resolvedSkillList,
@@ -1492,6 +1534,9 @@ final readonly class SyncEngine
             // surfaced for SyncCommand to log so consumers can audit which
             // version actually shipped.
             'hostShadows' => $hostShadows,
+            'dependencyPulls' => $dependencies['pulls'],
+            'dependencyWarnings' => $dependencies['warnings'],
+            'malformedRequires' => $dependencies['malformedRequires'],
         ];
     }
 

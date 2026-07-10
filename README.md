@@ -14,7 +14,7 @@
 ## Contents
 
 - [How sync works](#how-sync-works) · [Install](#install) · [Quickstart](#quickstart) · [What you get](#what-you-get)
-- [Skill sources](#skill-sources) · [Tag filtering](#tag-filtering) · [Commands](#commands) · [Skill rendering](#skill-rendering)
+- [Skill sources](#skill-sources) · [Tag filtering](#tag-filtering) · [Skill dependencies](#skill-dependencies) · [Commands](#commands) · [Skill rendering](#skill-rendering)
 - [Automating the sync](#automating-the-sync) · [Project Conventions](#project-conventions) · [File ownership](#file-ownership)
 - [CLI reference](#cli-reference) · [Environment variables](#environment-variables) · [Versioning & stability](#versioning--stability)
 
@@ -247,6 +247,48 @@ Use `boost where` to trace where every resolved skill, guideline, and command
 comes from (host / vendor / remote), with host-override shadowing annotated
 inline. `boost where --diff=<name>` prints a unified diff between a host override
 and the vendor copy it shadows.
+
+## Skill dependencies
+
+A skill that hands off to another skill ("then run the `code-review` skill")
+breaks silently when that other skill doesn't ship. Declare the dependency and
+boost guarantees co-shipping:
+
+```yaml
+---
+name: interview
+description: Requirements-gathering flow that hands off to write-spec.
+metadata:
+  boost-requires: "write-spec"
+---
+```
+
+**The rule:** whenever a skill ships, every name in its `boost-requires` ships
+too. A dependency that tag filtering would have dropped is *rescued* — pulled
+back in despite the tag mismatch (the author's "this skill is broken without
+it" outranks topic scoping), reported as an INFO diagnostic so the pull-in is
+visible, transitively (a rescued skill's own requires ship as well).
+
+Details that keep the semantics predictable:
+
+- **Bare names, not `vendor/package:` keys.** Dependencies bind to the name:
+  a host `.ai/skills/` override of the dep satisfies it, and any provider can.
+- **`withExcludedSkills()` wins.** An exclude removes that provider's copy
+  from consideration; if no other provider holds the name, sync warns and the
+  dependent ships degraded — rescue never overrides an explicit deny.
+- **Missing deps warn, never fail.** A require naming a skill that exists
+  nowhere is a sync warning + `boost doctor` finding, not an error.
+- **Cycles are legal.** `a ⇄ b` simply co-ships.
+- **Malformed `boost-requires`** (not a string) warns at sync and is an
+  **error** in `boost validate --strict` — unlike `boost-tags`, it does not
+  fail closed, because requires gate completeness, not scoping.
+
+Authoring guidance: declare only hard hand-offs — flows that *invoke* the
+other skill. Conditional references ("where the project has quality-check
+skills synced, delegate to them") and routing notes ("NOT for X — use Y")
+must stay undeclared, or rescue drags unrelated tooling into projects that
+scoped it out via tags. `boost validate -v` flags requires that cross a tag
+boundary so that choice stays deliberate.
 
 ## Commands
 

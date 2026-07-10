@@ -10,11 +10,14 @@ use SanderMuller\BoostCore\Conventions\ConventionTokenLeakScanner;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\EmittedAgentFiles;
 use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
+use SanderMuller\BoostCore\Skills\SkillDependencyDiagnostics;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
+use SanderMuller\BoostCore\Sync\SyncEngine;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Throwable;
 
 /**
  * @internal
@@ -45,7 +48,8 @@ final class ValidateCommand extends BoostBaseCommand
         $io = new SymfonyStyle($input, $output);
         $projectRoot = $this->resolveProjectRoot($input);
 
-        $config = $this->loadConfig($io, $projectRoot, $this->configFileOption($input));
+        $configFile = $this->configFileOption($input);
+        $config = $this->loadConfig($io, $projectRoot, $configFile);
         if (! $config instanceof BoostConfig) {
             return self::FAILURE;
         }
@@ -68,8 +72,14 @@ final class ValidateCommand extends BoostBaseCommand
         // hard-fails on a leaked token.
         $leakDiagnostics = $this->leakDiagnostics($projectRoot, $config, $packages);
 
+        // Skill-dependency checks (`metadata.boost-requires`) over the same
+        // resolved universe a sync would ship: malformed = ERROR (authoring-side
+        // CI gate — sync itself only warns), unsatisfied = WARNING,
+        // cross-tag-boundary = INFO.
+        $dependencyDiagnostics = $this->skillDependencyDiagnostics($projectRoot, $packages, $configFile);
+
         if ($sources === []) {
-            if ($leakDiagnostics === []) {
+            if ($leakDiagnostics === [] && $dependencyDiagnostics === []) {
                 if ($json) {
                     $output->writeln(json_encode([
                         'diagnostics' => array_map(static fn (Diagnostic $d): array => $d->toArray(), $discoveryDiagnostics),
@@ -86,8 +96,9 @@ final class ValidateCommand extends BoostBaseCommand
             }
 
             // No schema to validate against, but emitted output carries leaked
-            // tokens — surface them through the normal render + exit path.
-            return $this->render($io, $output, [...$discoveryDiagnostics, ...$leakDiagnostics], $json, $strict, $verboseInfo);
+            // tokens or dependency findings — surface them through the normal
+            // render + exit path.
+            return $this->render($io, $output, [...$discoveryDiagnostics, ...$leakDiagnostics, ...$dependencyDiagnostics], $json, $strict, $verboseInfo);
         }
 
         // Schema-version handshake enforcement (spec §3.9), identical to the sync
@@ -109,10 +120,34 @@ final class ValidateCommand extends BoostBaseCommand
         $diagnostics = [
             ...$diagnostics,
             ...$leakDiagnostics,
+            ...$dependencyDiagnostics,
             ...$this->legacyRefDiagnostics($projectRoot, $config, $packages),
         ];
 
         return $this->render($io, $output, $diagnostics, $json, $strict, $verboseInfo);
+    }
+
+    /**
+     * Skill-dependency diagnostics over the inspection-resolved skill set —
+     * the exact set (incl. rescues) a sync would ship. Inspection failures
+     * (e.g. a skill-name collision) degrade to a single warning rather than
+     * aborting the conventions validation this command primarily owns.
+     *
+     * @return list<Diagnostic>
+     */
+    private function skillDependencyDiagnostics(string $projectRoot, InstalledPackages $packages, ?string $configFile): array
+    {
+        try {
+            $inspection = SyncEngine::default($packages, $configFile)->resolveForInspection($projectRoot);
+        } catch (Throwable $throwable) {
+            return [Diagnostic::warning(null, 'skill-dependency check skipped — skill resolution failed: ' . $throwable->getMessage())];
+        }
+
+        return SkillDependencyDiagnostics::diagnostics(
+            $inspection['skills'],
+            $inspection['skillDependencyWarnings'],
+            $inspection['skillMalformedRequires'],
+        );
     }
 
     /**

@@ -12,6 +12,7 @@ use SanderMuller\BoostCore\Config\BoostConfigWriter;
 use SanderMuller\BoostCore\Config\InvalidBoostConfigException;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Env;
+use SanderMuller\BoostCore\Skills\BoostRequires;
 use SanderMuller\BoostCore\Skills\BoostTags;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
@@ -97,6 +98,10 @@ const ENGINE_PUBLIC_API = [
     // a wrapper computes the same [tags, valid] (incl. fail-closed) via the
     // canonical path instead of reinventing metadata.boost-tags tokenize+validate.
     BoostTags::class,
+    // Dependency-parse seam (1.4) — mirrors BoostTags for metadata.boost-requires:
+    // a wrapper computes the same [requires, valid] (NO case folding; malformed
+    // does NOT fail closed) and passes it as Skill::$requires/$requiresValid.
+    BoostRequires::class,
     PassthroughRenderer::class,
     InvalidSkillRendererException::class,
     SkillRenderException::class,
@@ -277,7 +282,7 @@ it('freezes @api value-object + method PARAMETER NAMES — the 1.0 named-arg con
     // so a rename or reorder trips CI directly.
     $frozenConstructorParams = [
         // `assets` appended-with-default in 1.3 per the Skill @api append rule.
-        Skill::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid', 'assets'],
+        Skill::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid', 'assets', 'requires', 'requiresValid'],
         Guideline::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid'],
         SkillAsset::class => ['relativePath', 'contents'],
         RenderContext::class => ['sourcePath', 'sourceVendor', 'frontmatter', 'projectRoot'],

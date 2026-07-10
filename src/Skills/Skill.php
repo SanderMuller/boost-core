@@ -18,6 +18,8 @@ final readonly class Skill
      * @param  list<string>  $tags  Normalized tags from the `metadata.boost-tags` frontmatter field. Empty = untagged = ships everywhere.
      * @param  bool  $tagsValid  False when `metadata.boost-tags` is present but malformed — the skill then fails closed (ships nowhere).
      * @param  list<SkillAsset>  $assets  Companion files from a nested skill dir (`scripts/`, `references/`, …), emitted beside SKILL.md in every agent target. Empty for flat-layout skills.
+     * @param  list<string>  $requires  Bare skill names from the `metadata.boost-requires` frontmatter field — hard deps that must ship whenever this skill ships. Empty = no dependencies.
+     * @param  bool  $requiresValid  False when `metadata.boost-requires` is present but malformed — unlike `tagsValid` this does NOT stop the skill from shipping (requires gate completeness, not scoping); it surfaces as a sync warning / validate error.
      */
     public function __construct(
         public string $name,
@@ -29,6 +31,8 @@ final readonly class Skill
         public array $tags = [],
         public bool $tagsValid = true,
         public array $assets = [],
+        public array $requires = [],
+        public bool $requiresValid = true,
     ) {}
 
     public function isHostAuthored(): bool
@@ -52,6 +56,8 @@ final readonly class Skill
             $this->tags,
             $this->tagsValid,
             $this->assets,
+            $this->requires,
+            $this->requiresValid,
         );
     }
 

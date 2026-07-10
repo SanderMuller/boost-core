@@ -107,6 +107,60 @@ it('with no consumer tags, drops every tagged skill but keeps untagged ones', fu
         ->and($result['droppedNames'])->toBe(['tagged']);
 });
 
+it('retains a tag-mismatch drop as a rescue-eligible candidate', function (): void {
+    $result = (new SkillTagFilter())->filter(
+        [tagSkill('alpha', ['jira'])],
+        tagConfig([Tag::Php]),
+    );
+
+    expect($result['tagMismatchDrops'])->toHaveCount(1)
+        ->and($result['tagMismatchDrops'][0]->name)->toBe('alpha')
+        ->and($result['excludedDrops'])
+        ->toBeEmpty();
+});
+
+it('retains an excluded drop separately — never as a rescue candidate', function (): void {
+    $result = (new SkillTagFilter())->filter(
+        [tagSkill('deploy', vendor: 'acme/pack')],
+        tagConfig(excluded: ['acme/pack:deploy']),
+    );
+
+    expect($result['excludedDrops'])->toHaveCount(1)
+        ->and($result['excludedDrops'][0]->name)->toBe('deploy')
+        ->and($result['tagMismatchDrops'])
+        ->toBeEmpty();
+});
+
+it('retains a malformed-tags drop in neither group — fail closed stands', function (): void {
+    $result = (new SkillTagFilter())->filter(
+        [tagSkill('alpha', [], tagsValid: false)],
+        tagConfig([Tag::Php]),
+    );
+
+    expect($result['droppedNames'])->toBe(['alpha'])
+        ->and($result['tagMismatchDrops'])->toBeEmpty()
+        ->and($result['excludedDrops'])
+        ->toBeEmpty();
+});
+
+it('classifies mixed drops into their own groups in input order', function (): void {
+    $result = (new SkillTagFilter())->filter(
+        [
+            tagSkill('kept'),
+            tagSkill('mismatch-a', ['jira']),
+            tagSkill('excluded', vendor: 'acme/pack'),
+            tagSkill('broken', [], tagsValid: false),
+            tagSkill('mismatch-b', ['github']),
+        ],
+        tagConfig([Tag::Php], excluded: ['acme/pack:excluded']),
+    );
+
+    expect(array_map(static fn (Skill $s): string => $s->name, $result['tagMismatchDrops']))->toBe(['mismatch-a', 'mismatch-b'])
+        ->and(array_map(static fn (Skill $s): string => $s->name, $result['excludedDrops']))->toBe(['excluded'])
+        ->and($result['kept'][0]->name)->toBe('kept')
+        ->and($result['droppedByTag'])->toBe(2);
+});
+
 it('candidates() excludes a dropped name still claimed by a resolved skill', function (): void {
     $pruner = new FilteredSkillPruner();
 

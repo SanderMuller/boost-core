@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Skills\Remote;
 
 use SanderMuller\BoostCore\Env;
+use SanderMuller\BoostCore\Skills\BoostRequires;
 use SanderMuller\BoostCore\Skills\BoostTags;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Rendering\MatchedRenderer;
@@ -222,6 +223,7 @@ final readonly class RemoteSkillIngester
             : null;
 
         [$tags, $tagsValid] = BoostTags::parse($parsed->frontmatter);
+        [$requires, $requiresValid] = BoostRequires::parse($parsed->frontmatter);
 
         return new Skill(
             name: $ref->name,
@@ -236,6 +238,8 @@ final readonly class RemoteSkillIngester
             // skills. A slot with a flat (non-`SKILL.*`) entry collects none —
             // its dir isn't skill-owned.
             assets: SkillAssetCollector::collect($skillPath),
+            requires: $requires,
+            requiresValid: $requiresValid,
         );
     }
 

@@ -126,6 +126,7 @@ final class DoctorCommand extends BoostBaseCommand
         (new RemoteSkillsReporter())->report($io, $config);
         $this->reportTags($io, $config);
         $this->reportExcludeKeys($io, $config);
+        (new SkillDependencyReporter())->report($io, $projectRoot, $this->injectedPackages, $configOverride);
         $driftResult = $this->reportDrift($io, $projectRoot, $configOverride);
         $this->reportShadows($io, $driftResult);
         $this->reportConventionsBlock($io, $driftResult);

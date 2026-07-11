@@ -110,6 +110,7 @@ boost-core is a plain library and runs no install-time code of its own. Run
 | Framework scope          | Laravel only             | **Any PHP** (Laravel, Symfony, plain-PHP, packages)                                                                  |
 | Skill sources            | bundled + `.ai/skills/`  | `.ai/skills/` + Composer packages (`resources/boost/skills/`) + `withRemoteSkills()` + `withAllowedVendors()` filter |
 | Tag filtering            | none                     | `withTags()` subset rule                                                                                             |
+| Skill dependencies       | none                     | `metadata.boost-requires` — required skills co-ship, tag-dropped deps rescued                                        |
 | Remote skill sources     | none                     | `withRemoteSkills()` — GitHub bundles + path imports                                                                 |
 | User-scope sync          | none                     | `boost sync --scope=user` for globally-installed CLI tools                                                           |
 | Origin tracing           | none                     | `boost where` + `boost where --diff=<name>` (host / vendor / remote / shadow)                                        |
@@ -227,7 +228,9 @@ return BoostConfig::configure()
 
 **The rule:** a vendor skill ships only when *every* tag in its `boost-tags` is
 among the project's `withTags()` (`skillTags ⊆ projectTags`). An untagged skill
-always ships, so the feature is inert until skills and projects opt in.
+always ships, so the feature is inert until skills and projects opt in. One
+exception: a tag-dropped skill that a shipping skill declares in its
+`boost-requires` is pulled back in — see [Skill dependencies](#skill-dependencies).
 `withExcludedSkills()` drops a specific `vendor/package:skill-name` regardless of
 tags. Vendor **guidelines** filter the same way, tagged either by `metadata.boost-tags`
 or a sidecar `resources/boost/guidelines/.boost-tags.yaml` manifest (for guidelines
@@ -252,7 +255,7 @@ and the vendor copy it shadows.
 
 A skill that hands off to another skill ("then run the `code-review` skill")
 breaks silently when that other skill doesn't ship. Declare the dependency and
-boost guarantees co-shipping:
+boost ships the two together:
 
 ```yaml
 ---
@@ -264,12 +267,12 @@ metadata:
 ```
 
 **The rule:** whenever a skill ships, every name in its `boost-requires` ships
-too. A dependency that tag filtering would have dropped is *rescued* — pulled
-back in despite the tag mismatch (the author's "this skill is broken without
-it" outranks topic scoping), reported as an INFO diagnostic so the pull-in is
-visible, transitively (a rescued skill's own requires ship as well).
+too. A dependency that tag filtering would have dropped is *rescued*: the
+author's "this skill is broken without it" outranks topic scoping, so it ships
+anyway. Sync reports every rescue as an INFO diagnostic, and rescue is
+transitive — a rescued skill's own requires ship as well.
 
-Details that keep the semantics predictable:
+The details:
 
 - **Bare names, not `vendor/package:` keys.** Dependencies bind to the name:
   a host `.ai/skills/` override of the dep satisfies it, and any provider can.
@@ -288,7 +291,7 @@ other skill. Conditional references ("where the project has quality-check
 skills synced, delegate to them") and routing notes ("NOT for X — use Y")
 must stay undeclared, or rescue drags unrelated tooling into projects that
 scoped it out via tags. `boost validate -v` flags requires that cross a tag
-boundary so that choice stays deliberate.
+boundary, so the choice stays deliberate.
 
 ## Commands
 
@@ -472,12 +475,12 @@ lifecycle reap, the empty-assembly guard, `.config/` layout + relocation, manage
 | `boost where`                        | Origin-traced listing of every skill / guideline / command that would ship                                                           |
 | `boost where --diff=<name>`          | Unified diff (skill OR guideline) between a host override and the vendor copy                                                        |
 | `boost where --conventions [--json]` | Effective resolved conventions slots + provenance + block keep/drop status                                                           |
-| `boost doctor`                       | Offline health check — config, remote sources, cache, emitters, token leaks. **Advisory only** — exits 0 unless config fails to load |
+| `boost doctor`                       | Offline health check — config, remote sources, cache, emitters, skill dependencies, token leaks. **Advisory only** — exits 0 unless config fails to load |
 | `boost doctor --check-versions`      | Opt-in Packagist comparison for path-repo shadows (one HTTP call per package)                                                        |
 | `boost doctor --check-conventions`   | Report conventions slot status (missing, unknown, file-existence)                                                                    |
 | `boost doctor --check-stale-paths`   | Read-only audit of the retired-paths registry — what the next sync would clean up                                                    |
 | `boost tags`                         | List available tags + their unlock counts across allowlisted vendors                                                                 |
-| `boost validate [--strict]`          | Validate `withConventions([...])` + scan for leaked tokens (`--strict` fails CI)                                                     |
+| `boost validate [--strict]`          | Validate `withConventions([...])`, scan for leaked tokens, check skill dependencies (`--strict` fails CI)                            |
 | `boost slots [--missing\|--filled]`  | List conventions slots, optionally filtered by fill state                                                                            |
 | `boost paths`                        | List path globs boost-core manages                                                                                                   |
 | `boost convert-conventions`          | Legacy one-shot: extract 0.8.x marker YAML into `boost.php` (hidden, not a contract)                                                 |

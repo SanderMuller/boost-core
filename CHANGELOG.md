@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.4.0...HEAD)
 
+### Fixed
+
+- **Command-transpile advisory warnings no longer fail the sync.** Cursor/Amp's "no placeholder syntax" warning and Kiro/Junie's named-argument warnings were pushed into `SyncResult::errors` — the fatal channel — so a fully successful sync reported errors. Any project with a Cursor-, Amp-, Kiro- or Junie-targeted command using `$ARGUMENTS`/`$N`/`$name` hit two consequences. First, `boost sync`, `boost where` and `project-boost:sync` exited non-zero, which broke `composer install`/`composer update` wherever `project-boost-laravel` wires the sync into `post-install-cmd`. Second, the engine reads that same channel as a partial-sync signal, so the clean-slate stale pass, the manifest-orphan reap and the `.boost/manifest.json` write were skipped on every sync — those projects never built an ownership record. The warnings now route through `SyncResult::diagnostics`, matching `Diagnostic`'s documented contract and every other lenient warning in the pipeline. They still render under the operator-visible "Diagnostics" section; the exit code and the error-state gate are what change.
+
 ## [1.4.0](https://github.com/sandermuller/boost-core/compare/1.3.1...1.4.0) - 2026-07-10
 
 <!-- verified-sha: 2198f215e09619ddc9b4df088c0586d6bc525970 -->

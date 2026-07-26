@@ -706,7 +706,7 @@ final readonly class SyncEngine
             'hasLiveOutput' => $hasLiveEmitterOutput,
         ] = OrphanReaper::emitterReapSets($emitterResults);
 
-        [$fanOutWrites, $fanOutErrors] = $this->fanOut(
+        [$fanOutWrites, $fanOutErrors, $fanOutCommandWarnings] = $this->fanOut(
             $projectRoot,
             $config,
             $resolvedSkills,
@@ -962,6 +962,12 @@ final readonly class SyncEngine
             $guidanceResult['conventionsKeepReasons'],
         );
 
+        // Advisory by design — see fanOut() for why these never join errors[].
+        $commandWarningDiagnostics = array_map(
+            static fn (string $warning): Diagnostic => Diagnostic::warning(null, $warning),
+            $fanOutCommandWarnings,
+        );
+
         return new SyncResult(
             writes: $writes,
             emitters: $emitterResults,
@@ -984,6 +990,7 @@ final readonly class SyncEngine
                 ...$reapDiagnostics,
                 ...$keepReasonDiagnostics,
                 ...$staleManifestDiagnostics,
+                ...$commandWarningDiagnostics,
             ],
             conventionsBlockKept: $guidanceResult['conventionsBlockKept'],
             conventionsKeepReasons: $guidanceResult['conventionsKeepReasons'],
@@ -1897,13 +1904,6 @@ final readonly class SyncEngine
      * @param  list<Guideline>  $guidelines
      * @param  list<Command>  $commands
      * @param  list<string>  $droppedSkillNames  Names dropped by SkillTagFilter — candidates for pruning.
-     * @return array{0: list<WrittenFile>, 1: list<string>}
-     */
-    /**
-     * @param  list<Skill>  $skills
-     * @param  list<Guideline>  $guidelines
-     * @param  list<Command>  $commands
-     * @param  list<string>  $droppedSkillNames
      * @param  list<string>  $guidelineRenderErrors  Render failures captured
      *         by `resolveGuidelines()`. When non-empty, the per-target
      *         guideline-file PendingWrite is skipped — preserves the prior
@@ -1912,7 +1912,9 @@ final readonly class SyncEngine
      *         concatenation that overwrites operator-visible content
      *         (CLAUDE.md guideline body). Matches the safety contract the
      *         clean-slate pass already gets via `$hasAnyError`.
-     * @return array{0: list<WrittenFile>, 1: list<string>}
+     * @return array{0: list<WrittenFile>, 1: list<string>, 2: list<string>} Element 2 is
+     *         command-transpile advisory warnings, deliberately kept out of element 1
+     *         (fatal errors) — see the routing note at the loop that collects them.
      */
     private function fanOut(
         string $projectRoot,
@@ -1928,6 +1930,8 @@ final readonly class SyncEngine
         $writes = [];
         /** @var list<string> $errors */
         $errors = [];
+        /** @var list<string> $commandWarnings */
+        $commandWarnings = [];
 
         $toPrune = $this->filteredSkillPruner->candidates($skills, $droppedSkillNames);
         $skipGuidelineWrites = $guidelineRenderErrors !== [];
@@ -1970,12 +1974,17 @@ final readonly class SyncEngine
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
 
+            // Advisory, not fatal: a lossy transpile still writes the command
+            // body verbatim. Parking these in $errors made a normal sync report
+            // errors — a non-zero exit that broke `composer install` through
+            // `project-boost:sync`'s post-install-cmd wiring, and a $hasAnyError
+            // that skipped the clean-slate pass, the reap and the manifest write.
             foreach ($planned['warnings'] as $warning) {
-                $errors[] = $warning;
+                $commandWarnings[] = $warning;
             }
         }
 
-        return [$writes, $errors];
+        return [$writes, $errors, $commandWarnings];
     }
 
     /**

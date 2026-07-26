@@ -1040,6 +1040,51 @@ it('end-to-end: host command fans out to per-agent command files, gitignored', f
     }
 });
 
+it('a lossy command transpile (Cursor has no placeholder syntax) is advisory — writes verbatim, warns via diagnostics, and does NOT fail sync (composer post-install-cmd regression)', function (): void {
+    $root = makeEndToEndProject();
+    try {
+        mkdir($root . '/.ai/commands', 0o755, recursive: true);
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CURSOR]);");
+        file_put_contents(
+            $root . '/.ai/commands/deploy.md',
+            "---\ndescription: Ship it.\n---\nDeploy \$ARGUMENTS now.\n",
+        );
+
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($result->hasErrors())->toBeFalse('errors=' . json_encode($result->errors))
+            ->and(file_get_contents($root . '/.cursor/commands/deploy.md'))->toContain('Deploy $ARGUMENTS now.');
+
+        $diagnosticMessages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics));
+        expect($diagnosticMessages)->toContain('[cursor] deploy: cursor has no placeholder syntax; canonical placeholders emitted verbatim.');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('a lossy command transpile no longer trips the engine error-state gate — the ownership manifest is still written', function (): void {
+    // Second-order half of the same regression: `$hasAnyError` reads
+    // `$fanOutErrors`, so an advisory warning parked there also skipped the
+    // clean-slate pass, the orphan reap and the manifest write — on every sync,
+    // leaving those projects with no ownership record to reap against later.
+    $root = makeEndToEndProject();
+    try {
+        mkdir($root . '/.ai/commands', 0o755, recursive: true);
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CURSOR]);");
+        file_put_contents(
+            $root . '/.ai/commands/deploy.md',
+            "---\ndescription: Ship it.\n---\nDeploy \$ARGUMENTS now.\n",
+        );
+
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect($root . '/.boost/manifest.json')->toBeFile()
+            ->and(file_get_contents($root . '/.boost/manifest.json'))->toContain('.cursor/commands/deploy.md');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
 it('0.13.0: records a host guideline shadow ONLY when the vendor copy is tag-ELIGIBLE (no false positive on tag-filtered vendor guidelines)', function (): void {
     // k5m15b0p's mandatory nuance: a host guideline only "shadows" a vendor
     // guideline that WOULD otherwise emit (tag-eligible under declared

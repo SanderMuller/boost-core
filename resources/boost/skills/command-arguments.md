@@ -53,7 +53,7 @@ boost-core's transpiler converts each canonical placeholder to the agent's nativ
 | Kiro        | `$ARGUMENTS`             | `${N}` (brace form)  | `$name` + warn                                   | Partial — named not native      |
 | Codex       | doctor-only              | doctor-only          | doctor-only                                      | n/a — no emit (deprecated)      |
 
-**Warning surface:** lossy transpilations report through `SyncResult::errors` (lenient — sync continues, operator sees the lines). Example:
+**Warning surface:** lossy transpilations report through `SyncResult::diagnostics`, rendered under `boost sync`'s **Diagnostics** section (lenient — sync continues, the operator sees the lines, exit code stays clean). Example:
 
 ```
 [cursor] deploy: cursor has no placeholder syntax; canonical placeholders emitted verbatim.
@@ -75,7 +75,7 @@ boost-core's transpiler converts each canonical placeholder to the agent's nativ
 **Does:**
 
 - Parses canonical placeholders + escapes from `.ai/commands/<name>.md` source.
-- Transpiles per-agent on every sync; warnings surface to `SyncResult::errors`.
+- Transpiles per-agent on every sync; warnings surface to `SyncResult::diagnostics`.
 - Emits Kiro commands as `.kiro/skills/<name>/SKILL.md` (Kiro's slash-command surface IS its skills directory) — same transpile rules apply.
 - Doctor-only manual-path messaging for Gemini (TOML) and Codex (deprecated, personal-only).
 

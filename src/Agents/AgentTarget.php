@@ -145,8 +145,9 @@ abstract class AgentTarget
      *
      * Returns `{writes, warnings}` so per-command transpile warnings
      * (e.g. "Cursor has no placeholder support; body emitted verbatim")
-     * thread back up to `SyncResult::errors`. Warnings are lenient — they
-     * surface to the operator but never abort the sync.
+     * thread back up to `SyncResult::diagnostics`. Warnings are lenient —
+     * they surface to the operator but never abort the sync (and never
+     * fail the CLI's exit code, unlike `SyncResult::errors`).
      *
      * @param  list<Command>  $commands
      * @return array{writes: list<PendingWrite>, warnings: list<string>}

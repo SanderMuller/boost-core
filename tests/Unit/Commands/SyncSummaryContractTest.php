@@ -86,6 +86,47 @@ it('lists the skipped symlink paths inline and references no nonexistent command
     }
 });
 
+it('exits 0 (and --check exits 0) when a command transpiles lossily — the composer post-install-cmd regression', function (): void {
+    // The exit code is the whole bug: `project-boost-laravel` wires
+    // `project-boost:sync` into composer's `post-install-cmd`, so a non-zero
+    // exit from an otherwise-clean sync fails `composer install` outright.
+    $dir = sys_get_temp_dir() . '/boost-command-warning-exit-' . bin2hex(random_bytes(8));
+    mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+    file_put_contents(
+        $dir . '/boost.php',
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn BoostConfig::configure()->withAgents([Agent::CURSOR]);\n",
+    );
+    file_put_contents($dir . '/.ai/commands/deploy.md', "---\ndescription: Ship it.\n---\nDeploy \$ARGUMENTS now.\n");
+
+    try {
+        $tester = new CommandTester(new SyncCommand());
+        $exit = $tester->execute(['--working-dir' => $dir]);
+        $display = $tester->getDisplay();
+
+        expect($exit)->toBe(0, $display)
+            // Advisory, but never silent — it still renders under Diagnostics.
+            ->and($display)->toContain('cursor has no placeholder syntax')
+            ->and($display)->toContain('Sync done.');
+
+        // The CI surface must agree: a warning is not drift and not an error.
+        $checkTester = new CommandTester(new SyncCommand());
+        $checkExit = $checkTester->execute(['--working-dir' => $dir, '--check' => true]);
+
+        expect($checkExit)->toBe(0, $checkTester->getDisplay());
+    } finally {
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        /** @var SplFileInfo $f */
+        foreach ($it as $f) {
+            $f->isLink() || $f->isFile() ? @unlink($f->getPathname()) : @rmdir($f->getPathname());
+        }
+
+        @rmdir($dir);
+    }
+});
+
 it('0.23.x sync --check FAILS on a conv-token leaked through a symlinked skill output (#146, hihaho)', function (): void {
     // A skill whose OUTPUT path is a symlink is SKIPPED_SYMLINK by the writer, so
     // the symlink's target (here a source carrying a raw boost:conv token) is what

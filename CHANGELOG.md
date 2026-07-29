@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
+- `CurlHttpTransport::get()` now rejects an empty URL up front with a `network-unreachable` `RemoteFetchException` instead of handing `''` to cURL. Covered by a new test; surfaced by PHPStan once CI resolved current dependency versions.
+- Style-only rewrites in `SkillAssetCollector` and `GuidanceWriter` for the Rector rule set that came with those same versions.
 - **CI now resolves dependencies on branches other than `main`.** Composer guesses the root package version from the checked-out ref, so on a feature branch it resolved as `dev-<sha>` and the `extra.branch-alias` entry never applied. The self-referential `sandermuller/boost-skills` dev dependency requires `sandermuller/boost-core`, so nothing satisfied it and every workflow died at `composer install`. The four PHP workflows now set `COMPOSER_ROOT_VERSION: dev-main`, and the alias itself — still pointing at `1.2.x-dev` — was bumped to `1.4.x-dev`.
 - `boost where --diff=<name>` now builds its unified diff with `StrictUnifiedDiffOutputBuilder` instead of `UnifiedDiffOutputBuilder`, which `sebastian/diff` 9.0 removed. The `--- vendor:` / `+++ host:` header lines are now emitted by the builder itself via its `fromFile` / `toFile` options rather than written by hand, so the rendered output is byte-for-byte unchanged. Only options present in both diff 7 and diff 9 are passed, so behaviour is identical on every supported major.
 

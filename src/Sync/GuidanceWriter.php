@@ -138,7 +138,7 @@ final readonly class GuidanceWriter
             // clear is gated on the PRIOR manifest only; the new manifest is
             // written after a successful sync, so a sync can never promote a
             // pre-existing file to owned mid-run and wipe it.
-            if ($assembled === '' && ! ($existing !== null && $composer->hasManagedMarkers($existing))) {
+            if ($assembled === '' && ($existing === null || ! $composer->hasManagedMarkers($existing))) {
                 $ownedByManifest = $existing !== null
                     && trim($existing) !== ''
                     && $priorManifest->ownsGuidance($file, hash('sha256', $existing));

@@ -26,6 +26,8 @@ interface HttpTransport
      * return the body inline.
      *
      * @param  list<string>  $headers
+     *
+     * @throws RemoteFetchException on transport failure
      */
     public function get(string $url, array $headers, ?string $destinationPath = null): HttpResponse;
 }

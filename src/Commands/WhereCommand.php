@@ -16,7 +16,7 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use SebastianBergmann\Diff\Differ;
-use SebastianBergmann\Diff\Output\UnifiedDiffOutputBuilder;
+use SebastianBergmann\Diff\Output\StrictUnifiedDiffOutputBuilder;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -560,11 +560,12 @@ final class WhereCommand extends BoostBaseCommand
         }
 
         $io->writeln(sprintf('<fg=blue;options=bold>Shadow diff — `%s` (host) vs `%s` (vendor)</>', $name, $paths['vendor']));
-        $io->writeln('<fg=gray>--- vendor: ' . $paths['vendorPath'] . '</>');
-        $io->writeln('<fg=gray>+++ host:   ' . $paths['hostPath'] . '</>');
         $io->newLine();
 
-        $differ = new Differ(new UnifiedDiffOutputBuilder('', false));
+        $differ = new Differ(new StrictUnifiedDiffOutputBuilder([
+            'fromFile' => 'vendor: ' . $paths['vendorPath'],
+            'toFile' => 'host:   ' . $paths['hostPath'],
+        ]));
         $io->write($differ->diff($vendorContent, $hostContent));
 
         return self::SUCCESS;

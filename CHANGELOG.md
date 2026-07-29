@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.4.1...HEAD)
 
+### Changed
+
+- **`sebastian/diff` constraint widened to `^7.0 || ^8.0 || ^9.0`.** The old `^7.0` pin made boost-core a hard blocker for any consumer on PHPUnit 13 (and therefore Pest 5), which requires `sebastian/diff ^9.0`. Composer could not resolve the two together, in the root project or transitively through `boost-skills` / `project-boost-laravel`.
+
+### Internal
+
+- `boost where --diff=<name>` now builds its unified diff with `StrictUnifiedDiffOutputBuilder` instead of `UnifiedDiffOutputBuilder`, which `sebastian/diff` 9.0 removed. The `--- vendor:` / `+++ host:` header lines are now emitted by the builder itself via its `fromFile` / `toFile` options rather than written by hand, so the rendered output is byte-for-byte unchanged. Only options present in both diff 7 and diff 9 are passed, so behaviour is identical on every supported major.
+
 ## [1.4.1](https://github.com/sandermuller/boost-core/compare/1.4.0...1.4.1) - 2026-07-26
 
 <!-- verified-sha: b3b1f5c826f417247ec34674b0931a92eaa46e44 -->

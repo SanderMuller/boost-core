@@ -81,7 +81,10 @@ final class SkillAssetCollector
         // A top-level `SKILL.*` file is an entry candidate, not an asset.
         // Deeper `SKILL.*` files (e.g. `examples/SKILL.md`) ARE assets — they
         // sit below the depth SkillSourceScope classifies as sources.
-        return ! ($file->getRelativePath() === ''
-            && SkillSourceScope::isNestedEntryFilename($file->getFilename()));
+        if ($file->getRelativePath() !== '') {
+            return true;
+        }
+
+        return ! SkillSourceScope::isNestedEntryFilename($file->getFilename());
     }
 }

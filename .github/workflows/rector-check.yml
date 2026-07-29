@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# Composer resolves the root package as dev-<branch> off main, which skips the
+# extra.branch-alias entry and makes the self-referential boost-skills dev
+# dependency unresolvable. Pin the root version so every ref resolves like main.
+env:
+  COMPOSER_ROOT_VERSION: dev-main
+
 concurrency:
   group: rector-check-${{ github.ref }}
   cancel-in-progress: true

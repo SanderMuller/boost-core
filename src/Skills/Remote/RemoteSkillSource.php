@@ -29,6 +29,18 @@ final readonly class RemoteSkillSource
     private const SOURCE_PATTERN = '/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/';
 
     /**
+     * Whether `$source` matches the `<owner>/<repo>` shape this class accepts.
+     *
+     * @internal Engine helper so `boost remote` can reject a typo BEFORE any
+     * network call, without duplicating the pattern. Not part of the frozen
+     * `@api` surface — the constructor remains the authority.
+     */
+    public static function isValidSource(string $source): bool
+    {
+        return preg_match(self::SOURCE_PATTERN, $source) === 1;
+    }
+
+    /**
      * @param  list<RemoteSkillRef>  $skills
      */
     public function __construct(
@@ -36,7 +48,7 @@ final readonly class RemoteSkillSource
         public string $version,
         public array $skills,
     ) {
-        if (preg_match(self::SOURCE_PATTERN, $source) !== 1) {
+        if (! self::isValidSource($source)) {
             throw new InvalidArgumentException(sprintf(
                 'RemoteSkillSource source `%s` must match `<owner>/<repo>` (alphanumeric, `.`, `-`, `_`).',
                 $source,

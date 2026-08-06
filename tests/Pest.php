@@ -59,3 +59,39 @@ function cleanupTestDir(string $path): void
 
     @rmdir($path);
 }
+
+/**
+ * A GitHub-shaped tarball: one wrapper directory containing the given
+ * `repo-relative path => SKILL.md frontmatter` entries.
+ *
+ * Shared because both the discoverer's unit tests and `boost remote`'s
+ * command tests need to hand a canned repo to FakeRemoteFetcher.
+ *
+ * @param  array<string, string>  $skills  path (`.` for the repo root) => frontmatter body
+ * @param  list<string>  $extraFiles  repo-relative paths written as filler content
+ */
+function discoveryTarballBytes(string $wrapper, array $skills, array $extraFiles = []): string
+{
+    $base = sys_get_temp_dir() . '/boost-discovery-tar-' . bin2hex(random_bytes(6));
+    @unlink($base . '.tar');
+    @unlink($base . '.tar.gz');
+
+    $phar = new PharData($base . '.tar');
+    foreach ($skills as $path => $frontmatter) {
+        $prefix = $path === '.' ? '' : rtrim($path, '/') . '/';
+        $phar->addFromString($wrapper . '/' . $prefix . 'SKILL.md', "---\n{$frontmatter}\n---\nBody.");
+    }
+
+    foreach ($extraFiles as $file) {
+        $phar->addFromString($wrapper . '/' . $file, 'filler');
+    }
+
+    $phar->compress(Phar::GZ);
+    unset($phar);
+    @unlink($base . '.tar');
+
+    $bytes = (string) file_get_contents($base . '.tar.gz');
+    @unlink($base . '.tar.gz');
+
+    return $bytes;
+}

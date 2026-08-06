@@ -24,6 +24,7 @@ final class CommandRegistry
             new InstallCommand(),
             new ScanCommand(),
             new SyncCommand(),
+            new RemoteCommand(),
             new DoctorCommand(),
             new TagsCommand(),
             new WhereCommand(),

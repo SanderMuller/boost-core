@@ -268,3 +268,47 @@ it('attaches `Authorization: Bearer <token>` on api.github.com requests when tok
 
     expect($sawAuth)->toBeTrue();
 });
+
+// ---------- listReleaseAssets ----------
+
+it('listReleaseAssets returns every .skill asset from the release payload in one request', function (): void {
+    $url = 'https://api.github.com/repos/peterfox/agent-skills/releases/tags/v1.2.0';
+    $transport = (new FakeHttpTransport())
+        ->expect($url, fakeResponse(200, json_encode([
+            'tag_name' => 'v1.2.0',
+            'assets' => [
+                ['name' => 'composer-upgrade.skill', 'browser_download_url' => 'https://objects.githubusercontent.com/a'],
+                ['name' => 'release-notes.md', 'browser_download_url' => 'https://objects.githubusercontent.com/b'],
+                ['name' => 'phpstan-developer.skill', 'browser_download_url' => 'https://objects.githubusercontent.com/c'],
+            ],
+        ], JSON_THROW_ON_ERROR), $url));
+
+    $assets = (new GitHubFetcher($transport))->listReleaseAssets(
+        'peterfox/agent-skills',
+        new ResolvedRef(requested: 'v1.2.0', resolved: 'v1.2.0'),
+    );
+
+    expect($assets)->toBe([
+        ['name' => 'composer-upgrade', 'asset' => 'composer-upgrade.skill'],
+        ['name' => 'phpstan-developer', 'asset' => 'phpstan-developer.skill'],
+    ])
+        // The listing rides the release payload fetchAsset already reads — no per-asset call.
+        ->and($transport->requestedUrls)->toBe([$url]);
+});
+
+it('listReleaseAssets returns an empty list for a release with no assets key', function (): void {
+    $url = 'https://api.github.com/repos/a/b/releases/tags/v1.0.0';
+    $transport = (new FakeHttpTransport())
+        ->expect($url, fakeResponse(200, json_encode(['tag_name' => 'v1.0.0'], JSON_THROW_ON_ERROR), $url));
+
+    expect((new GitHubFetcher($transport))->listReleaseAssets('a/b', new ResolvedRef('v1.0.0', 'v1.0.0')))->toBe([]);
+});
+
+it('listReleaseAssets surfaces a rate limit as a typed exception', function (): void {
+    $url = 'https://api.github.com/repos/a/b/releases/tags/v1.0.0';
+    $transport = (new FakeHttpTransport())
+        ->expect($url, fakeResponse(403, '{}', $url, ['x-ratelimit-remaining' => '0']));
+
+    expect(fn () => (new GitHubFetcher($transport))->listReleaseAssets('a/b', new ResolvedRef('v1.0.0', 'v1.0.0')))
+        ->toThrow(RemoteFetchException::class, 'Rate-limited');
+});

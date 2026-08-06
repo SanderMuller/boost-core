@@ -143,7 +143,8 @@ lifecycle and fanned out side by side:
    [`sandermuller/boost-skills`](https://github.com/sandermuller/boost-skills) is
    one example of the pattern.
 3. **Remote sources** — GitHub repos shipping `.skill` release bundles or skill
-   subdirs, declared with `withRemoteSkills()` (below).
+   subdirs, declared with `withRemoteSkills()` or picked interactively with
+   `boost remote <owner>/<repo>` (below).
 
 ### Remote skill sources
 
@@ -170,6 +171,30 @@ return BoostConfig::configure()
 Each fetched skill fans out exactly like host and vendor skills: same layout,
 same `withTags()` filtering, same `withExcludedSkills(['<owner>/<repo>:<name>'])`
 deny-list. Removing an entry prunes its output on the next sync.
+
+**You don't have to write those entries by hand.** `boost remote` reads a repo and
+lets you pick:
+
+```console
+$ vendor/bin/boost remote mattpocock/skills
+```
+
+It resolves the ref, works out whether the repo publishes `.skill` release assets
+(bundle mode) or skill directories (path mode), reads each skill's frontmatter, and
+shows a checklist with descriptions, tags and any conflict with a skill you already
+receive. What you check is written to `withRemoteSkills()`; what you uncheck is
+removed. Along the way it pulls in `boost-requires` dependencies from the same repo,
+offers to add missing `withTags()` entries so a picked skill isn't silently filtered
+out, primes the cache with what it downloaded, and offers to run `boost sync`.
+
+| Flag | Effect |
+|------|--------|
+| `--ref=<tag\|branch\|sha>` | Pin the source. Without it a new entry gets `latest`, and an existing entry keeps whatever version it already has. |
+| `--mode=bundle\|path` | Override auto-detection. Bundle wins when a repo publishes both. |
+
+The repo argument takes `<owner>/<repo>` or any GitHub URL, and is prompted for when
+omitted. The command needs a terminal — under `--no-interaction` it explains how to
+write the entry by hand instead.
 
 - **Cache.** Bundles and tarballs land under
   `${BOOST_CACHE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}}/boost/remote-skills/`.
@@ -469,6 +494,7 @@ lifecycle reap, the empty-assembly guard, `.config/` layout + relocation, manage
 | `boost install`                      | Scaffold `boost.php` (if missing) + interactive agent / vendor / tag picker                                                          |
 | `boost new <skill\|guideline> <name>`| Scaffold a new skill or guideline markdown file with a frontmatter template (`--description`, `--force`)                             |
 | `boost scan`                         | Re-run the vendor allowlist picker — use after installing packages that publish skills/guidelines                                    |
+| `boost remote [<owner>/<repo>]`      | Read a GitHub repo of skills and pick which ones to declare in `withRemoteSkills()` (`--ref`, `--mode`)                              |
 | `boost sync`                         | Fan out skills / guidelines / commands to selected agents                                                                            |
 | `boost sync --check`                 | Dry run — report drift, no writes (offline; gate CI on this)                                                                         |
 | `boost sync --scope=user [--all]`    | User-scope sync for globally-installed CLI tools                                                                                     |

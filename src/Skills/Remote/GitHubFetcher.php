@@ -35,6 +35,9 @@ final readonly class GitHubFetcher implements RemoteFetcher
 
     private const GH_API_VERSION = '2022-11-28';
 
+    /** The Anthropic Claude Code Skills bundle extension. */
+    private const SKILL_ASSET_SUFFIX = '.skill';
+
     private ?string $token;
 
     public function __construct(
@@ -65,6 +68,36 @@ final readonly class GitHubFetcher implements RemoteFetcher
         }
 
         $this->download($assetUrl, $destinationPath);
+    }
+
+    public function listReleaseAssets(string $source, ResolvedRef $ref): array
+    {
+        $releaseUrl = sprintf('https://api.github.com/repos/%s/releases/tags/%s', $source, $ref->resolved);
+        $release = $this->fetchJson($releaseUrl);
+
+        $assets = $release['assets'] ?? null;
+        if (! is_array($assets)) {
+            return [];
+        }
+
+        $found = [];
+        foreach ($assets as $asset) {
+            if (! is_array($asset)) {
+                continue;
+            }
+
+            $name = $asset['name'] ?? null;
+            if (! is_string($name) || ! str_ends_with($name, self::SKILL_ASSET_SUFFIX)) {
+                continue;
+            }
+
+            $found[] = [
+                'name' => substr($name, 0, -strlen(self::SKILL_ASSET_SUFFIX)),
+                'asset' => $name,
+            ];
+        }
+
+        return $found;
     }
 
     public function fetchTarball(string $source, ResolvedRef $ref, string $destinationPath): void

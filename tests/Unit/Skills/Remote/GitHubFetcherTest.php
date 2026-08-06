@@ -301,7 +301,8 @@ it('listReleaseAssets returns an empty list for a release with no assets key', f
     $transport = (new FakeHttpTransport())
         ->expect($url, fakeResponse(200, json_encode(['tag_name' => 'v1.0.0'], JSON_THROW_ON_ERROR), $url));
 
-    expect((new GitHubFetcher($transport))->listReleaseAssets('a/b', new ResolvedRef('v1.0.0', 'v1.0.0')))->toBe([]);
+    expect((new GitHubFetcher($transport))->listReleaseAssets('a/b', new ResolvedRef('v1.0.0', 'v1.0.0')))
+        ->toBeEmpty();
 });
 
 it('listReleaseAssets surfaces a rate limit as a typed exception', function (): void {

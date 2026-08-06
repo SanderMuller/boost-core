@@ -211,7 +211,15 @@ final readonly class RemoteSkillCache
         }
 
         foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..' || isset($keep[$entry])) {
+            if ($entry === '.') {
+                continue;
+            }
+
+            if ($entry === '..') {
+                continue;
+            }
+
+            if (isset($keep[$entry])) {
                 continue;
             }
 

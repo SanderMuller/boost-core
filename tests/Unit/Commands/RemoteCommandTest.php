@@ -18,7 +18,10 @@ use Symfony\Component\Console\Tester\CommandTester;
  *
  * @return array{0: string, 1: callable(): void}
  */
-function remoteProject(string $configBody = "<?php declare(strict_types=1);\n\nreturn \\SanderMuller\\BoostCore\\Config\\BoostConfig::configure()->withAgents([]);\n"): array
+function remoteProject(string $configBody = '<?php declare(strict_types=1);
+
+return ' . BoostConfig::class . '::configure()->withAgents([]);
+'): array
 {
     $dir = sys_get_temp_dir() . '/boost-remote-' . bin2hex(random_bytes(8));
     mkdir($dir, 0o755, recursive: true);
@@ -399,7 +402,8 @@ it('drops the entry when the declared skill no longer exists in the repo', funct
 
         expect($tester->getStatusCode())->toBe(Command::SUCCESS)
             ->and($display)->toContain('Removed acme/skills from')
-            ->and(BoostConfig::load($dir)->remoteSkills)->toBe([]);
+            ->and(BoostConfig::load($dir)->remoteSkills)
+            ->toBeEmpty();
     } finally {
         $cleanup();
     }
@@ -476,7 +480,8 @@ it('closeDependencies: pulls transitive requires and records who demanded them',
 
     expect($closure['names'])->toBe(['alpha', 'beta', 'gamma'])
         ->and($closure['pulled'])->toBe(['beta' => 'alpha', 'gamma' => 'beta'])
-        ->and($closure['missing'])->toBe([]);
+        ->and($closure['missing'])
+        ->toBeEmpty();
 });
 
 it('closeDependencies: a dependency cycle co-ships instead of looping', function (): void {
@@ -516,9 +521,11 @@ it('missingTags: only tags the project has not declared, and nothing when filter
     $tagged = [new DiscoveredSkill(name: 'alpha', description: null, tags: ['php', 'jira'], requires: [])];
 
     expect(RemoteSelection::missingTags($tagged, ['php']))->toBe(['jira'])
-        ->and(RemoteSelection::missingTags($tagged, ['php', 'jira']))->toBe([])
+        ->and(RemoteSelection::missingTags($tagged, ['php', 'jira']))
+        ->toBeEmpty()
         // No withTags() at all means no filtering, so nothing can be missing.
-        ->and(RemoteSelection::missingTags($tagged, []))->toBe([]);
+        ->and(RemoteSelection::missingTags($tagged, []))
+        ->toBeEmpty();
 });
 
 it('pickerLabel: truncates the description and appends the notes that matter', function (): void {

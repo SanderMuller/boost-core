@@ -259,7 +259,8 @@ it('returns an empty list for a repo with no SKILL.md anywhere', function (): vo
     try {
         $discoverer = new RemoteSkillDiscoverer($fetcher);
 
-        expect($discoverer->discover('acme/empty', $discoverer->plan('acme/empty', 'main'), $work))->toBe([]);
+        expect($discoverer->discover('acme/empty', $discoverer->plan('acme/empty', 'main'), $work))
+            ->toBeEmpty();
     } finally {
         BundleExtractor::recursivelyRemove($work);
     }
@@ -345,6 +346,7 @@ it('keeps every file a bundle ships, not just the ones a repo scan would keep', 
     $zip->addFromString('alpha/README.md', 'Bundled reference.');
     $zip->addFromString('alpha/examples/sample.txt', 'Sample.');
     $zip->close();
+
     $bytes = (string) file_get_contents($tmpZip);
     @unlink($tmpZip);
 

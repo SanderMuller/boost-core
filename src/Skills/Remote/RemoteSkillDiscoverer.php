@@ -74,9 +74,9 @@ final readonly class RemoteSkillDiscoverer
             if ($assets !== []) {
                 return new DiscoveryPlan(mode: RemoteSkillSource::MODE_BUNDLE, ref: $ref, assets: $assets);
             }
-        } catch (RemoteFetchException $exception) {
-            if ($exception->reason !== RemoteFetchException::NOT_FOUND) {
-                throw $exception;
+        } catch (RemoteFetchException $remoteFetchException) {
+            if ($remoteFetchException->reason !== RemoteFetchException::NOT_FOUND) {
+                throw $remoteFetchException;
             }
         }
 
@@ -201,7 +201,11 @@ final readonly class RemoteSkillDiscoverer
         }
 
         foreach ($entries as $entry) {
-            if ($entry === '.' || $entry === '..') {
+            if ($entry === '.') {
+                continue;
+            }
+
+            if ($entry === '..') {
                 continue;
             }
 

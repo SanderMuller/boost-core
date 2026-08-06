@@ -35,7 +35,7 @@ it('writes the first entry into a freshly scaffolded config, using the short cla
         expect($written)->toContain("RemoteSkillSource::githubPath('mattpocock/skills', 'latest', [")
             ->and($written)->toContain("'grill-with-docs' => 'skills/engineering/grill-with-docs',")
             // The starter imports the class, so no fully-qualified name leaks in.
-            ->and($written)->not->toContain('\\SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource::')
+            ->and($written)->not->toContain(RemoteSkillSource::class . '::')
             // Untouched parts of the file survive byte-for-byte.
             ->and($written)->toContain('Docs: https://github.com/sandermuller/boost-core')
             ->and($written)->toContain('// ->withTags([Tag::Php, Tag::Laravel])');
@@ -183,7 +183,8 @@ it('splices out withRemoteSkills entirely when the last entry goes', function ()
         $written = (new RemoteSkillsWriter())->remove($dir . '/boost.php', 'acme/skills', 'path');
 
         expect($written)->not->toContain('withRemoteSkills')
-            ->and(BoostConfig::load($dir)->remoteSkills)->toBe([]);
+            ->and(BoostConfig::load($dir)->remoteSkills)
+            ->toBeEmpty();
     } finally {
         cleanupTestDir($dir);
     }
@@ -220,7 +221,7 @@ it('falls back to a fully-qualified name when the config does not import the cla
             RemoteSkillSource::githubPath('acme/skills', 'main', ['alpha' => 'skills/alpha']),
         );
 
-        expect($written)->toContain('\\SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource::githubPath')
+        expect($written)->toContain(RemoteSkillSource::class . '::githubPath')
             ->and(BoostConfig::load($dir)->remoteSkills)->toHaveCount(1);
     } finally {
         cleanupTestDir($dir);

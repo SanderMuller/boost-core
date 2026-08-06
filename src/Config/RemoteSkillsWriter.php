@@ -105,7 +105,7 @@ final readonly class RemoteSkillsWriter
         }
 
         $oldTokens = $parser->getTokens();
-        $alias = self::importedName($oldStmts);
+        $alias = $this->importedName($oldStmts);
 
         // Clone so $oldStmts stays pristine — printFormatPreserving diffs the
         // two trees to reproduce untouched nodes from the original tokens.
@@ -119,7 +119,7 @@ final readonly class RemoteSkillsWriter
 
         $matchIndex = $this->indexOf($items, $source, $mode, $alias);
 
-        if ($replacement === null && $matchIndex === null) {
+        if (! $replacement instanceof RemoteSkillSource && $matchIndex === null) {
             return (string) file_get_contents($configPath);
         }
 
@@ -141,13 +141,13 @@ final readonly class RemoteSkillsWriter
      */
     private function apply(array $items, ?int $matchIndex, ?RemoteSkillSource $replacement, ?string $alias): array
     {
-        if ($replacement === null) {
+        if (! $replacement instanceof RemoteSkillSource) {
             unset($items[(int) $matchIndex]);
 
             return array_values($items);
         }
 
-        $entry = new ArrayItem(self::toAst($replacement, $alias));
+        $entry = new ArrayItem($this->toAst($replacement, $alias));
         if ($matchIndex === null) {
             return [...$items, $entry];
         }
@@ -306,19 +306,19 @@ final readonly class RemoteSkillsWriter
             throw new BoostConfigWriteException($configPath, sprintf(
                 'withRemoteSkills() on line %d does not take a literal array. Hand-edit boost.php to add:%s',
                 $call->getStartLine(),
-                self::pasteHint($replacement, $alias),
+                $this->pasteHint($replacement, $alias),
             ));
         }
 
         $items = [];
         foreach ($arg->value->items as $item) {
-            if (! $item instanceof ArrayItem || self::readCall($item->value, $alias) === null) {
+            if (! $item instanceof ArrayItem || $this->readCall($item->value, $alias) === null) {
                 throw new BoostConfigWriteException($configPath, sprintf(
                     'withRemoteSkills() contains an entry on line %d that is not a literal '
                     . 'RemoteSkillSource::githubBundle(...) or ::githubPath(...) call, so rewriting the array '
                     . 'could destroy it. Nothing was written. Hand-edit boost.php to add:%s',
                     $item?->getStartLine() ?? $call->getStartLine(),
-                    self::pasteHint($replacement, $alias),
+                    $this->pasteHint($replacement, $alias),
                 ));
             }
 
@@ -338,7 +338,7 @@ final readonly class RemoteSkillsWriter
     private function indexOf(array $items, string $source, string $mode, ?string $alias): ?int
     {
         foreach ($items as $index => $item) {
-            $read = self::readCall($item->value, $alias);
+            $read = $this->readCall($item->value, $alias);
             if ($read !== null && $read['source'] === $source && $read['mode'] === $mode) {
                 return $index;
             }
@@ -352,7 +352,7 @@ final readonly class RemoteSkillsWriter
      * a plain name list (the asset name is derived from the name), path skills
      * as a `name => path` map.
      */
-    private static function toAst(RemoteSkillSource $source, ?string $alias): StaticCall
+    private function toAst(RemoteSkillSource $source, ?string $alias): StaticCall
     {
         $isBundle = $source->mode() === RemoteSkillSource::MODE_BUNDLE;
 
@@ -381,7 +381,7 @@ final readonly class RemoteSkillsWriter
      *
      * @return array{source: string, mode: string}|null
      */
-    private static function readCall(Expr $expr, ?string $alias): ?array
+    private function readCall(Expr $expr, ?string $alias): ?array
     {
         if (! $expr instanceof StaticCall || ! $expr->class instanceof Name || ! $expr->name instanceof Identifier) {
             return null;
@@ -421,10 +421,14 @@ final readonly class RemoteSkillsWriter
      *
      * @param  Stmt[]  $stmts
      */
-    private static function importedName(array $stmts): ?string
+    private function importedName(array $stmts): ?string
     {
         foreach ($stmts as $stmt) {
-            if (! $stmt instanceof Use_ || $stmt->type !== Use_::TYPE_NORMAL) {
+            if (! $stmt instanceof Use_) {
+                continue;
+            }
+
+            if ($stmt->type !== Use_::TYPE_NORMAL) {
                 continue;
             }
 
@@ -442,9 +446,9 @@ final readonly class RemoteSkillsWriter
      * The line an operator can paste when this writer refuses. A removal has
      * nothing to add, so it says so instead.
      */
-    private static function pasteHint(?RemoteSkillSource $source, ?string $alias): string
+    private function pasteHint(?RemoteSkillSource $source, ?string $alias): string
     {
-        if ($source === null) {
+        if (! $source instanceof RemoteSkillSource) {
             return ' (the entry you wanted removed).';
         }
 

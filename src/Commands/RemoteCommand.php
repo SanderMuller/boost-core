@@ -84,7 +84,7 @@ final class RemoteCommand extends BoostBaseCommand
             ->setName('boost:remote')
             ->setDescription('Load a GitHub repo of skills and interactively pick which ones to add to withRemoteSkills().')
             ->addArgument('source', InputArgument::OPTIONAL, 'The repo to load, as `<owner>/<repo>` or a GitHub URL. Prompted for when omitted.')
-            ->addOption('ref', null, InputOption::VALUE_REQUIRED, 'Pin the source to a tag, branch or SHA. Defaults to the existing entry\'s version, else `latest`.')
+            ->addOption('ref', null, InputOption::VALUE_REQUIRED, "Pin the source to a tag, branch or SHA. Defaults to the existing entry's version, else `latest`.")
             ->addOption('mode', null, InputOption::VALUE_REQUIRED, 'Force `bundle` (release assets) or `path` (repo directories) instead of auto-detecting.');
         $this->addWorkingDirOption();
         $this->addConfigOption();
@@ -132,7 +132,7 @@ final class RemoteCommand extends BoostBaseCommand
         $version = self::resolveVersion($match, is_string($input->getOption('ref')) ? $input->getOption('ref') : null);
         $mode = self::resolveMode($match, $mode);
 
-        if ($match !== null) {
+        if ($match instanceof RemoteSkillSource) {
             $io->note(sprintf(
                 '`%s` is already declared at version `%s` (%s mode) with %d skill(s). The picker starts from that selection.',
                 $source,
@@ -148,8 +148,8 @@ final class RemoteCommand extends BoostBaseCommand
 
         try {
             $plan = $discoverer->plan($source, $version, $mode);
-        } catch (RemoteFetchException $exception) {
-            $io->error($this->explainFetchFailure($exception, $source, $version));
+        } catch (RemoteFetchException $remoteFetchException) {
+            $io->error($this->explainFetchFailure($remoteFetchException, $source, $version));
 
             return self::FAILURE;
         }
@@ -382,7 +382,7 @@ final class RemoteCommand extends BoostBaseCommand
         $existingSkills = $this->existingSkillNames($config);
 
         $declared = [];
-        foreach ($match === null ? [] : $match->skills as $ref) {
+        foreach ($match instanceof RemoteSkillSource ? $match->skills : [] as $ref) {
             $declared[$ref->name] = true;
         }
 
@@ -430,7 +430,11 @@ final class RemoteCommand extends BoostBaseCommand
             }
 
             foreach ((new VendorScanner(InstalledPackages::fromComposer()))->discover() as $vendor) {
-                if ($vendor->skillsPath === null || ! $config->isVendorAllowed($vendor->name)) {
+                if ($vendor->skillsPath === null) {
+                    continue;
+                }
+
+                if (! $config->isVendorAllowed($vendor->name)) {
                     continue;
                 }
 
@@ -457,7 +461,7 @@ final class RemoteCommand extends BoostBaseCommand
                     static fn (DiscoveredSkill $skill): string => $skill->name,
                     $selected,
                 ))
-                : RemoteSkillSource::githubPath($source, $version, self::pathMap($selected));
+                : RemoteSkillSource::githubPath($source, $version, $this->pathMap($selected));
 
             (new RemoteSkillsWriter())->write($configPath, $declaration);
         } catch (Throwable $throwable) {
@@ -485,7 +489,7 @@ final class RemoteCommand extends BoostBaseCommand
      * @param  list<DiscoveredSkill>  $selected
      * @return array<string, string>
      */
-    private static function pathMap(array $selected): array
+    private function pathMap(array $selected): array
     {
         $map = [];
         foreach ($selected as $skill) {
@@ -501,7 +505,7 @@ final class RemoteCommand extends BoostBaseCommand
      */
     private function writeRemoval(SymfonyStyle $io, string $configPath, string $source, string $mode, ?RemoteSkillSource $match): int
     {
-        if ($match === null) {
+        if (! $match instanceof RemoteSkillSource) {
             $io->writeln('Nothing selected, so boost.php is unchanged.');
 
             return self::SUCCESS;
@@ -651,7 +655,7 @@ final class RemoteCommand extends BoostBaseCommand
     {
         return $plan->isBundle()
             ? sprintf(
-                'The release `%s` of %s publishes no `.skill` assets. Try another --ref, or --mode=path to scan the repo\'s directories instead.',
+                "The release `%s` of %s publishes no `.skill` assets. Try another --ref, or --mode=path to scan the repo's directories instead.",
                 $plan->ref->resolved,
                 $source,
             )
@@ -769,7 +773,7 @@ final class RemoteCommand extends BoostBaseCommand
             return trim($refOption);
         }
 
-        return $match === null ? self::DEFAULT_VERSION : $match->version;
+        return $match instanceof RemoteSkillSource ? $match->version : self::DEFAULT_VERSION;
     }
 
     /**

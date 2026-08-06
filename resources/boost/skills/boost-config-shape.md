@@ -75,7 +75,9 @@ way, so the location is interchangeable.
   offline-fast. Set `BOOST_GITHUB_TOKEN` to lift anonymous 60/h to
   5000/h. `BOOST_REMOTE_STRICT=1` aborts on any remote failure (default
   is warn-and-skip). `boost doctor` reports per-source cache state and
-  flags moving refs.
+  flags moving refs. Don't hand-write these entries blind: `vendor/bin/boost
+  remote <owner>/<repo>` reads the repo first and writes the entry from what
+  the operator picks.
 - `withSkillRenderers([new BladeRenderer, ...])` — register renderer
   plugins for template-flavored skill bodies (`SKILL.blade.php`,
   `SKILL.twig`, …). Longest-extension-first match; the implicit
@@ -102,15 +104,17 @@ Present every suggestion with its reasoning — the maintainer decides. Declarin
 
 **Shortcut for interactive setups:** `vendor/bin/boost install` runs the agent + vendor + tag pickers in sequence and persists the choices into `boost.php` via AST. The tag picker shows each discovered tag with an "unlocks N skill/guideline" hint and pre-checks already-declared tags. Use it when the operator's at a terminal and willing to step through the choices; use the "discover, then suggest" flow above when you're proposing changes for review.
 
+**A GitHub repo of skills** follows the same discover-then-decide shape, but the discovery lives in one command: `vendor/bin/boost remote <owner>/<repo>` resolves the ref, works out whether the repo publishes `.skill` release assets or skill directories, and shows each skill with its description, tags, and any clash with a skill the project already receives. What the operator picks becomes the `withRemoteSkills()` entry; unchecking removes it. It needs a terminal — with `--no-interaction` it explains the hand-written form instead.
+
 ## What NOT to put here
 
 - **Environment branching.** `if (env('CI')) { ... }` works, but
-  `boost:install` and `boost:scan` AST-edit this file and refuse on
-  unexpected shape. Keep the file a single straight return.
+  `boost:install`, `boost:scan` and `boost:remote` AST-edit this file and
+  refuse on unexpected shape. Keep the file a single straight return.
 - **External `require` calls.** Same reason — AST writer can't preserve
   side effects.
 - **Header docblocks above `return`.** PHP-Parser's pretty-printer
-  strips them on `boost:install` / `boost:scan`. Inline them in the
+  strips them on any AST-editing command. Inline them in the
   starter template `boost:install` generates on first run instead.
 
 ## Anti-patterns

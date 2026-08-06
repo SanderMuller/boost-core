@@ -87,7 +87,11 @@ final readonly class GitHubFetcher implements RemoteFetcher
             }
 
             $name = $asset['name'] ?? null;
-            if (! is_string($name) || ! str_ends_with($name, self::SKILL_ASSET_SUFFIX)) {
+            if (! is_string($name)) {
+                continue;
+            }
+
+            if (! str_ends_with($name, self::SKILL_ASSET_SUFFIX)) {
                 continue;
             }
 

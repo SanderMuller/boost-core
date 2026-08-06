@@ -1,0 +1,3 @@
+[mcp_servers.laravel-boost]
+command = "vendor/bin/testbench"
+args = ["boost:mcp"]

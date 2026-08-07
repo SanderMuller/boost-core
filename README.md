@@ -148,6 +148,35 @@ lifecycle and fanned out side by side:
 
 ### Remote skill sources
 
+Skills can also come straight from a GitHub repo. Point `boost remote` at one and
+pick what you want:
+
+```console
+$ vendor/bin/boost remote mattpocock/skills
+```
+
+It resolves the ref and works out how the repo ships its skills: as `.skill` release
+assets (bundle mode), or as directories in the repo (path mode). Then it reads each
+skill's frontmatter and shows a checklist with descriptions, tags, and any clash with
+a skill you already receive. Checked skills land in `withRemoteSkills()`; unchecked
+ones are removed.
+
+The command adds a picked skill's `boost-requires` dependencies when the same repo
+publishes them. A skill whose tags aren't in your `withTags()` would never ship, so
+it offers to declare those too. What it downloaded stays in the cache, and the
+`boost sync` it offers to run afterwards needs no network.
+
+| Flag | Effect |
+|------|--------|
+| `--ref=<tag\|branch\|sha>` | Pin the source. Without it a new entry gets `latest`; an existing entry keeps the version it has. |
+| `--mode=bundle\|path` | Override auto-detection. Bundle wins when a repo publishes both. |
+
+The repo argument takes `<owner>/<repo>` or any GitHub URL; omit it and the command
+asks. The picker needs a terminal, so under `--no-interaction` it explains how to
+write the entry by hand instead.
+
+Those entries are plain config, so you can write them yourself:
+
 ```php
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 
@@ -171,30 +200,6 @@ return BoostConfig::configure()
 Each fetched skill fans out exactly like host and vendor skills: same layout,
 same `withTags()` filtering, same `withExcludedSkills(['<owner>/<repo>:<name>'])`
 deny-list. Removing an entry prunes its output on the next sync.
-
-**You don't have to write those entries by hand.** `boost remote` reads a repo and
-lets you pick:
-
-```console
-$ vendor/bin/boost remote mattpocock/skills
-```
-
-It resolves the ref, works out whether the repo publishes `.skill` release assets
-(bundle mode) or skill directories (path mode), reads each skill's frontmatter, and
-shows a checklist with descriptions, tags and any conflict with a skill you already
-receive. What you check is written to `withRemoteSkills()`; what you uncheck is
-removed. Along the way it pulls in `boost-requires` dependencies from the same repo,
-offers to add missing `withTags()` entries so a picked skill isn't silently filtered
-out, primes the cache with what it downloaded, and offers to run `boost sync`.
-
-| Flag | Effect |
-|------|--------|
-| `--ref=<tag\|branch\|sha>` | Pin the source. Without it a new entry gets `latest`, and an existing entry keeps whatever version it already has. |
-| `--mode=bundle\|path` | Override auto-detection. Bundle wins when a repo publishes both. |
-
-The repo argument takes `<owner>/<repo>` or any GitHub URL, and is prompted for when
-omitted. The command needs a terminal — under `--no-interaction` it explains how to
-write the entry by hand instead.
 
 - **Cache.** Bundles and tarballs land under
   `${BOOST_CACHE_HOME:-${XDG_CACHE_HOME:-$HOME/.cache}}/boost/remote-skills/`.

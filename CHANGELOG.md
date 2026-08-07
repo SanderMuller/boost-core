@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The starter `boost.php` now ships `->withRemoteSkills([])` and imports `RemoteSkillSource`.** Existing configs are untouched. Without the empty array the first entry has to be spliced into the fluent chain, and php-parser's insertion heuristic produces cramped output; with it, the common path is a clean in-place array rewrite, and the import keeps the written call short instead of fully-qualified.
 - The starter template moved out of `InstallCommand` into `SanderMuller\BoostCore\Config\ConfigScaffolder`, so `boost install` and `boost remote` scaffold identically. `InstallCommand::scaffoldTarget()` still exists and delegates.
 
+### Internal
+
+- **Dropped the abandoned `rector/type-perfect` dev dependency; `tomasvotruba/type-coverage` raised to `^2.3`.** Its 2.3.0 absorbed type-perfect and ships that config itself, so requiring both registered `MethodNodeAnalyser` twice and PHPStan refused to boot — `Multiple services of type ... found`. CI resolves dependencies fresh (no committed lock), so it hit this the moment 2.3.0 was released while local installs kept working. The rules are unchanged; they now load through one package instead of two.
+
 ### Docs
 
 - README: a `boost remote` walkthrough under "Remote skill sources", a CLI-table row, and a pointer from the skill-sources list.

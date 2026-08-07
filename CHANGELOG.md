@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Internal
 
-- **Dropped the abandoned `rector/type-perfect` dev dependency; `tomasvotruba/type-coverage` raised to `^2.3`.** Its 2.3.0 absorbed type-perfect and ships that config itself, so requiring both registered `MethodNodeAnalyser` twice and PHPStan refused to boot — `Multiple services of type ... found`. CI resolves dependencies fresh (no committed lock), so it hit this the moment 2.3.0 was released while local installs kept working. The rules are unchanged; they now load through one package instead of two.
+- **Dropped the abandoned `rector/type-perfect` dev dependency.** `tomasvotruba/type-coverage` 2.3.0 — the package type-perfect's abandonment notice points at — absorbed it and ships its config, so requiring both registered `MethodNodeAnalyser` twice and PHPStan refused to boot: `Multiple services of type ... found`. Only CI saw it, because `composer.lock` is gitignored and CI resolves fresh, picking up 2.3.0 the day it shipped. The type-perfect rules are unchanged; on the PHP 8.4 analysis job they now load through type-coverage instead of a second package. The `^2.1` constraint is deliberately not raised — 2.3.0 requires PHP 8.4, and the test matrix still covers 8.3.
 
 ### Docs
 

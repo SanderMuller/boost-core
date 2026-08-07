@@ -57,7 +57,7 @@
         "stolt/lean-package-validator": "^5.7",
         "symplify/phpstan-extensions": "^12.0",
         "tomasvotruba/cognitive-complexity": "^1.1",
-        "tomasvotruba/type-coverage": "^2.3"
+        "tomasvotruba/type-coverage": "^2.1"
     },
     "autoload": {
         "psr-4": {

@@ -40,12 +40,24 @@ the install guide is linked as raw Markdown for direct agent fetching.
 ## Docs
 
 - [README.md](https://github.com/sandermuller/boost-core/blob/main/README.md):
-  Full documentation — how sync works, skill sources, tag filtering, commands,
-  skill rendering, autosync, file ownership, the complete CLI reference, and
-  environment variables.
+  The overview — what boost-core does, how sync works, install, skill sources,
+  the complete CLI reference, and environment variables. Each subsystem is
+  summarised there and documented in full under `docs/`.
 - [PUBLIC_API.md](https://github.com/sandermuller/boost-core/blob/main/PUBLIC_API.md):
   The frozen SemVer surface — config authoring API, CLI commands/options/
   exit-codes, Composer hooks, and plugin contracts.
+- [docs/remote-skills.md](https://github.com/sandermuller/boost-core/blob/main/docs/remote-skills.md):
+  Remote GitHub skill sources — the `boost remote` picker, `withRemoteSkills()`
+  entries by hand, the cache, rate limits, the trust model, publishing a source.
+- [docs/tags-and-dependencies.md](https://github.com/sandermuller/boost-core/blob/main/docs/tags-and-dependencies.md):
+  Tag filtering and `metadata.boost-requires` in full, including how rescue and
+  `withExcludedSkills()` interact.
+- [docs/commands.md](https://github.com/sandermuller/boost-core/blob/main/docs/commands.md):
+  Per-agent command fan-out targets and argument-placeholder transpilation.
+- [docs/skill-rendering.md](https://github.com/sandermuller/boost-core/blob/main/docs/skill-rendering.md):
+  The `SkillRenderer` contract — dispatch order, failure handling, authoring.
+- [docs/automating-sync.md](https://github.com/sandermuller/boost-core/blob/main/docs/automating-sync.md):
+  Composer hooks, self-syncing CLI tools, and user-scope sync.
 - [docs/file-ownership.md](https://github.com/sandermuller/boost-core/blob/main/docs/file-ownership.md):
   The sync manifest, lifecycle reaping, the empty-assembly guard, `.config/`
   layout, and managed `.gitignore`.

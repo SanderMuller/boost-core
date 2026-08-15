@@ -340,14 +340,18 @@ owns in a manifest, so a sync never silently overwrites hand-written content:
   boost-owned, markerless, and regenerated from `.ai/guidelines/` on every sync,
   but kept **tracked** so output is reviewable in diffs. Author guidance in
   `.ai/guidelines/`, never by hand-editing the target.
-- **Skill + command directories** are gitignored (100% generated from `.ai/`).
+- **Skill + command directories** are gitignored (100% generated from `.ai/`). boost
+  deletes only what its manifest records there, so a file another tool installed
+  alongside its own — `laravel/boost` puts its bundled skills in the same
+  directories — is preserved, not swept.
 - A file you've hand-edited (sha diverged from the manifest) is **never** blanked
   or reaped. Adopting boost-core in a repo with an existing `CLAUDE.md` won't wipe it.
 - Removing a vendor dep or de-selecting an agent reaps the now-orphaned files it owned.
 
 **See [`docs/file-ownership.md`](docs/file-ownership.md)** for the manifest,
-lifecycle reap, the empty-assembly guard, `.config/` layout + relocation, managed
-`.gitignore`, and user-scope cleanup-on-remove.
+lifecycle reap, files another tool wrote into a managed directory, the
+empty-assembly guard, `.config/` layout + relocation, managed `.gitignore`, and
+user-scope cleanup-on-remove.
 
 ## CLI reference
 

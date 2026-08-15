@@ -118,6 +118,7 @@ final class DoctorCommand extends BoostBaseCommand
             $projectRoot,
             $this->injectedPackages ?? InstalledPackages::fromComposer(),
             $configFile->inConfigDir,
+            $config->skillsPath,
         );
         $this->reportAgents($io, $config);
         $this->reportSourcePaths($io, $config, $configFile->inConfigDir);

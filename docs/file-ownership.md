@@ -86,6 +86,35 @@ path (a guidance file, `.gitignore`, `.boost/`, `.config/boost/`, an agent
 skill/command root, `.ai/`, `resources/boost/`, or a wrapper-claimed path) is
 rejected with a diagnostic.
 
+## Files another tool wrote into a boost-managed directory
+
+The agent skill and command directories (`.claude/skills/`, `.claude/commands/`,
+their per-agent equivalents) are boost-managed wholesale, and the post-sync sweep
+deletes anything inside them the current sync didn't rewrite. It is gated on the
+manifest: **boost deletes only what it owns.** A file under a managed directory
+that boost never recorded is another writer's — it is preserved, and one
+aggregated INFO lists what was kept.
+
+The case this exists for: `laravel/boost` installs its bundled skills as real
+directories inside those same agent directories, and `herd link` re-runs
+`php artisan boost:update` by itself whenever `vendor/laravel/boost` is present.
+Without the gate, every boost-core sync deleted those directories and the next
+`herd link` put them back. Run `boost doctor` for the full picture — it names
+which directories came from where and which command to run.
+
+Two carve-outs keep the sweep honest: without a manifest FILE (a first sync, or a
+project with the managed `.gitignore` turned off) the pass stays clean-slate,
+since nothing can prove the file isn't boost's own leftover; and a managed
+`.gitignore` pattern naming a *file* exactly (`AGENTS.md`, not `dir/`) is boost's
+own proof of authorship, so a since-dropped agent's guidance is still reaped. An
+existing but entry-less manifest still gates — it says boost owns nothing right
+now, which is not the same as never having recorded ownership.
+
+The manifest write is filtered the same way. It records only paths this sync
+wrote, paths boost already owned, and wrapper-claimed paths — never everything
+found under the managed directories. Recording a foreign file would adopt it, and
+the next sync, finding it in the prior manifest, would delete it.
+
 ## Empty-assembly guard
 
 Sync never blanks a non-empty guidance file it can't prove it owns: if boost

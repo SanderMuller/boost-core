@@ -826,6 +826,8 @@ final readonly class SyncEngine
         // declarations across all installed wrappers, and the cleanup pass
         // excludes those paths from stale-file classification.
         // ($wrapperEmits already computed above to feed the gitignore pass.)
+        /** @var list<Diagnostic> $preservedForeignDiagnostics */
+        $preservedForeignDiagnostics = [];
         if (! $hasAnyError) {
             // Guidance files boost EMITTED this sync (configured agents +
             // conventions-CLAUDE.md) are managed wholesale by GuidanceWriter, NEVER
@@ -835,14 +837,23 @@ final readonly class SyncEngine
             // from $writes) on the first post-migration sync. The exemption is
             // scoped to the EMITTED set (not all known agents) so a DROPPED agent's
             // stale guidance is still reaped rather than lingering forever.
-            $writes = $this->staleFileCleaner->cleanupStaleManagedFiles(
+            //
+            // The prior manifest gates the pass: a path under a boost-managed
+            // directory that boost never recorded as its own output belongs to
+            // another writer and is PRESERVED (reported below), not reaped.
+            $stale = $this->staleFileCleaner->cleanupStaleManagedFiles(
                 $projectRoot,
                 $priorManagedFiles,
                 $writes,
                 $checkOnly,
                 $wrapperEmits['paths'],
                 $guidanceResult['emittedGuidancePaths'],
+                $priorManifest,
+                $priorManagedPatterns,
+                $inConfigDir,
             );
+            $writes = $stale['writes'];
+            $preservedForeignDiagnostics = $stale['diagnostics'];
         }
 
         // Write the NEW ownership manifest LAST — only on a successful,
@@ -914,7 +925,16 @@ final readonly class SyncEngine
                     // current on-disk managed files (the just-written block — this is the
                     // success path, so updateGitignore already ran) so it records skill/
                     // command emission targets without calling back into the engine.
-                    $this->staleFileCleaner->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)),
+                    // Claimable only: the enumeration is a raw directory walk, so it
+                    // also sees files another tool wrote into the managed dirs.
+                    // Recording one would adopt it — and the next sync, finding it in
+                    // the prior manifest, would delete it.
+                    ManagedFileOps::claimableManagedFiles(
+                        $this->staleFileCleaner->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)),
+                        $writes,
+                        $priorManifest,
+                        $wrapperEmits['paths'],
+                    ),
                 );
             }
         }
@@ -990,6 +1010,7 @@ final readonly class SyncEngine
                 ...$reapDiagnostics,
                 ...$keepReasonDiagnostics,
                 ...$staleManifestDiagnostics,
+                ...$preservedForeignDiagnostics,
                 ...$commandWarningDiagnostics,
             ],
             conventionsBlockKept: $guidanceResult['conventionsBlockKept'],

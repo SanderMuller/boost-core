@@ -98,7 +98,7 @@ final class InstallCommand extends BoostBaseCommand
         $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
         $availableVendors = $this->discoverPublishers($packages);
 
-        $agents = $this->pickAgents($config);
+        $agents = $this->pickAgents($io, $config, $projectRoot, $packages, scaffolded: ! $resolved->exists || $this->isPristineStarter($configPath));
         $vendors = $this->pickVendors($io, $config, $availableVendors);
         $tags = $this->pickTags($io, $config, $vendors, $packages);
 
@@ -127,13 +127,15 @@ final class InstallCommand extends BoostBaseCommand
     /**
      * @return list<Agent>
      */
-    private function pickAgents(BoostConfig $config): array
+    private function pickAgents(SymfonyStyle $io, BoostConfig $config, string $projectRoot, InstalledPackages $packages, bool $scaffolded): array
     {
+        $adopted = $scaffolded ? $this->adoptableAgents($io, $projectRoot, $packages) : [];
+
         $options = [];
         $defaults = [];
         foreach (Agent::cases() as $agent) {
             $options[$agent->value] = $agent->value;
-            if ($config->hasAgent($agent)) {
+            if ($config->hasAgent($agent) || isset($adopted[$agent->value])) {
                 $defaults[] = $agent->value;
             }
         }
@@ -147,6 +149,68 @@ final class InstallCommand extends BoostBaseCommand
         );
 
         return array_map(Agent::from(...), $picked);
+    }
+
+    /**
+     * Is this config still the untouched starter this command writes?
+     *
+     * Scaffolding happens before the TTY check, so a first `boost install` in a
+     * non-interactive shell (or one that is cancelled) leaves a starter `boost.php`
+     * behind. Without this, the interactive retry would read that leftover as an
+     * existing config the operator had chosen to leave agent-less, and skip adoption
+     * for good. Byte equality with the template is the safe test: any edit at all
+     * makes it the operator's file again.
+     */
+    private function isPristineStarter(string $configPath): bool
+    {
+        return @file_get_contents($configPath) === $this->starterContents();
+    }
+
+    /**
+     * Pre-selects the agents laravel/boost is already set up for, so adopting
+     * boost-core on a project that ran `boost:install` first doesn't mean picking
+     * the same list a second time from memory.
+     *
+     * Deliberately narrow: the caller only asks when `boost.php` was SCAFFOLDED by
+     * this run. An existing config is the operator's decision — including
+     * `withAgents([])`, which reads identically to "not adopted yet" but means they
+     * turned every agent off, and must not be repopulated from laravel/boost's state.
+     * Nothing is written without confirmation either way; these are picker defaults,
+     * and the operator can untick every one.
+     *
+     * @return array<string, true>  keyed by agent value, for defaults lookup
+     */
+    private function adoptableAgents(SymfonyStyle $io, string $projectRoot, InstalledPackages $packages): array
+    {
+        if (! $packages->has('laravel/boost')) {
+            return [];
+        }
+
+        $state = (new LaravelBoostState())->agents($projectRoot);
+        $values = array_map(static fn (Agent $agent): string => $agent->value, $state['agents']);
+
+        $message = $values === []
+            ? ''
+            : sprintf(
+                'laravel/boost is already set up for: %s. Those are pre-selected below — confirm or change them.',
+                implode(', ', $values),
+            );
+
+        // Agents laravel/boost supports and boost-core does not can never be carried
+        // over. Say so — including when they are ALL of them, which is exactly when a
+        // silent no-op would look like boost-core ignoring an existing setup.
+        if ($state['unmappable'] !== []) {
+            $message = trim($message . sprintf(
+                ' Not pre-selected (boost-core has no agent for these): %s.',
+                implode(', ', $state['unmappable']),
+            ));
+        }
+
+        if ($message !== '') {
+            $io->note($message);
+        }
+
+        return array_fill_keys($values, true);
     }
 
     /**

@@ -163,7 +163,7 @@ final class InstallCommand extends BoostBaseCommand
      */
     private function isPristineStarter(string $configPath): bool
     {
-        return @file_get_contents($configPath) === $this->starterContents();
+        return @file_get_contents($configPath) === ConfigScaffolder::starterContents();
     }
 
     /**

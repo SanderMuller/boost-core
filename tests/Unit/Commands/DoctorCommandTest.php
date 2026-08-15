@@ -1372,7 +1372,30 @@ it('doctor: on a wrapper project, offers deleting boost.json as the way to stop 
     }
 });
 
-it('doctor: on wrapper >= 1.2 says the sync removes boost.json instead of telling the operator to', function (): void {
+it('doctor: on wrapper >= 1.3 says the sync retires boost.json instead of telling the operator to', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+            'sandermuller/project-boost-laravel' => new PackageInfo(name: 'sandermuller/project-boost-laravel', version: '1.3.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('--keep-boost-json')
+            ->and($display)->not->toContain('DELETE `boost.json`');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: on wrapper 1.2 still tells the operator to remove boost.json themselves', function (): void {
+    // The retire step ships in project-boost-laravel 1.3.0 — `src/Coexistence/` and
+    // `--keep-boost-json` do not exist at 1.2.0. Promising automatic archiving there
+    // would send the operator looking for a command that cannot run.
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
     try {
         mkdir($dir . '/.ai/skills', 0o755, recursive: true);
@@ -1385,8 +1408,8 @@ it('doctor: on wrapper >= 1.2 says the sync removes boost.json instead of tellin
         $tester->execute(['--working-dir' => $dir]);
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
 
-        expect($display)->toContain('--keep-boost-json')
-            ->and($display)->not->toContain('DELETE `boost.json`');
+        expect($display)->toContain('DELETE `boost.json`')
+            ->and($display)->not->toContain('--keep-boost-json');
     } finally {
         doctorCleanup($dir);
     }

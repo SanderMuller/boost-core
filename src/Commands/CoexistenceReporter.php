@@ -40,12 +40,13 @@ final class CoexistenceReporter
     private const RECONCILE_MIN_WRAPPER_VERSION = '1.1.0';
 
     /**
-     * The wrapper release whose `project-boost:sync` removes laravel/boost's
+     * The wrapper release whose `project-boost:sync` retires laravel/boost's
      * `boost.json` after a successful sync (with `--keep-boost-json` to opt out).
-     * Below it, the operator has to delete the file themselves — so the advice
-     * has to differ.
+     * Below it, the operator has to remove the file themselves — so the advice has
+     * to differ. Verified against the published tags: `src/Coexistence/` and the
+     * `--keep-boost-json` flag are absent at 1.2.0 and present at 1.3.0.
      */
-    private const BOOST_JSON_REMOVAL_MIN_WRAPPER_VERSION = '1.2.0';
+    private const BOOST_JSON_REMOVAL_MIN_WRAPPER_VERSION = '1.3.0';
 
     public function report(SymfonyStyle $io, string $projectRoot, InstalledPackages $packages, bool $inConfigDir, ?string $skillsPath = null): void
     {

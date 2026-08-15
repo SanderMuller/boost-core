@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.6.0...HEAD)
 
+### Fixed
+
+- **`boost doctor` named the wrong wrapper version for the `boost.json` hand-off.** The advice branches on whether the installed `sandermuller/project-boost-laravel` retires `boost.json` on a successful sync, and the gate was set to `1.2.0` — one release too low. That step ships in **1.3.0**: `src/Coexistence/` and the `--keep-boost-json` flag are absent from the 1.2.0 tag. A project pinned to 1.2.x was told to expect automatic archiving it cannot do; it now gets the manual instruction, as it did before 1.6.0.
+
 ## [1.6.0](https://github.com/sandermuller/boost-core/compare/1.5.0...1.6.0) - 2026-08-15
 
 <!-- verified-sha: e6b0f4eac39d9140642b756b0045267f7216d27f -->

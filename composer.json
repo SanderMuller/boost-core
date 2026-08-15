@@ -52,7 +52,7 @@
         "phpstan/phpstan-phpunit": "^2.0",
         "phpstan/phpstan-strict-rules": "^2.0",
         "rector/rector": "^2.4",
-        "sandermuller/boost-skills": "^2.16",
+        "sandermuller/boost-skills": "^2.27",
         "spaze/phpstan-disallowed-calls": "^4.10",
         "stolt/lean-package-validator": "^5.7",
         "symplify/phpstan-extensions": "^12.0",

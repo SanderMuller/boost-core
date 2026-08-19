@@ -601,7 +601,7 @@ it('a SUBSET-constructed engine still prunes dead symlinks across ALL agent dirs
         expect(is_link($deadLink))->toBeTrue()->and(file_exists($deadLink))->toBeFalse();
 
         // Engine built with ONLY the Claude target — .cursor/ is outside its fan-out.
-        new SyncEngine(agentTargets: [new ClaudeCodeTarget()], installedPackages: emptyInstalledPackages())->sync($root);
+        (new SyncEngine(agentTargets: [new ClaudeCodeTarget()], installedPackages: emptyInstalledPackages()))->sync($root);
 
         expect(is_link($deadLink))->toBeFalse('a dead link under a non-fanned-out agent dir must still be pruned by a subset engine');
     } finally {
@@ -1300,7 +1300,7 @@ it('remote-skill source: a declared bundle skill lands in the agent fan-out', fu
     try {
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
 
         $ingester = new RemoteSkillIngester(
@@ -1336,7 +1336,7 @@ it('remote-skill source: name-mismatch surfaces as an error and the skill is not
         // Wrapper dir matches the declared name (so the cache layout works),
         // but the inner SKILL.md frontmatter says `name: WRONG-NAME` —
         // RemoteSkillIngester must catch the mismatch.
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset(
                 'peterfox/agent-skills',
                 'v1.2.0',
@@ -1406,7 +1406,7 @@ it('remote-skill source: removing a skill from boost.php prunes its fan-out dire
         // Sync 1: declare TWO skills under one source; both fan out.
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade', 'phpstan-developer']),\n    ]);");
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'))
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'phpstan-developer.skill', e2eMakeBundleBytes('phpstan-developer'));
 
@@ -1461,7 +1461,7 @@ it('remote-skill source: removing an entire source prunes every skill under its 
     try {
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
 
         $build = fn () => new SyncEngine(
@@ -1499,16 +1499,16 @@ it('remote-skill source: a still-declared skill whose fetch fails this sync is N
         $boostBody = "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);";
         writeBoostPhp($root, $boostBody);
 
-        $okFetcher = new FakeRemoteFetcher()
+        $okFetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
 
-        new SyncEngine(
+        (new SyncEngine(
             agentTargets: [new ClaudeCodeTarget()],
             installedPackages: emptyInstalledPackages(),
             remoteSkillIngester: new RemoteSkillIngester(
                 cache: new RemoteSkillCache(fetcher: $okFetcher, cacheRoot: $cacheRoot),
             ),
-        )->sync($root);
+        ))->sync($root);
 
         expect($root . '/.claude/skills/composer-upgrade/SKILL.md')
             ->toBeFile();
@@ -1520,13 +1520,13 @@ it('remote-skill source: a still-declared skill whose fetch fails this sync is N
         // Previously cached agent dir must NOT be pruned — user still wants the skill.
         $brokenFetcher = new FakeRemoteFetcher();
 
-        $result = new SyncEngine(
+        $result = (new SyncEngine(
             agentTargets: [new ClaudeCodeTarget()],
             installedPackages: emptyInstalledPackages(),
             remoteSkillIngester: new RemoteSkillIngester(
                 cache: new RemoteSkillCache(fetcher: $brokenFetcher, cacheRoot: $cacheRoot),
             ),
-        )->sync($root);
+        ))->sync($root);
 
         expect($result->hasErrors())->toBeTrue('expected the failing fetch to be recorded')
             ->and(is_file($root . '/.claude/skills/composer-upgrade/SKILL.md'))
@@ -1545,7 +1545,7 @@ it('remote-skill source: --check mode reports a WOULD_DELETE for orphans without
         // Sync 1: declare a remote skill, sync, manifest written, dir written.
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
 
         $engine = fn () => new SyncEngine(
@@ -1594,7 +1594,7 @@ it('remote-skill source: pruning runs even when the still-declared source fails 
         // Sync 1: two sources, both succeed.
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n        RemoteSkillSource::githubBundle('other/skills', 'v0.1.0', ['my-skill']),\n    ]);");
 
-        $okFetcher = new FakeRemoteFetcher()
+        $okFetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'))
             ->withAsset('other/skills', 'v0.1.0', 'my-skill.skill', e2eMakeBundleBytes('my-skill'));
 
@@ -2036,7 +2036,7 @@ it('detects same-name remote skill across two source versions and records a sync
     try {
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.0.0', ['composer-upgrade']),\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v2.0.0', ['composer-upgrade']),\n    ]);");
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.0.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade', body: 'V1 body'))
             ->withAsset('peterfox/agent-skills', 'v2.0.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade', body: 'V2 body'));
 
@@ -4018,7 +4018,7 @@ it('0.18.3 BUG: the remote-orphan ledger survives sync (not reaped as a stale ma
     try {
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
         $makeEngine = fn (): SyncEngine => new SyncEngine(
             agentTargets: [new ClaudeCodeTarget()],
@@ -4053,7 +4053,7 @@ it('0.18.3: removing withRemoteSkills entirely still prunes the skill dir AND cl
     $cacheRoot = sys_get_temp_dir() . '/boost-remote-removeall-' . bin2hex(random_bytes(6));
 
     try {
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
         $engineWith = new SyncEngine(
             agentTargets: [new ClaudeCodeTarget()],
@@ -4071,7 +4071,7 @@ it('0.18.3: removing withRemoteSkills entirely still prunes the skill dir AND cl
         // pruned (reported as drift), and RemoteOrphanPruner unlinks the now-empty
         // manifest — so nothing lingers despite enumerateManagedFiles skipping it.
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
-        $result = new SyncEngine(agentTargets: [new ClaudeCodeTarget()], installedPackages: emptyInstalledPackages())->sync($root);
+        $result = (new SyncEngine(agentTargets: [new ClaudeCodeTarget()], installedPackages: emptyInstalledPackages()))->sync($root);
 
         expect($root . '/.claude/skills/composer-upgrade')->not->toBeDirectory()
             ->and($root . '/.boost/remote-manifest.json')->not->toBeFile();
@@ -4099,14 +4099,14 @@ it('0.19.0: a pre-0.19 root-level .boost-remote-manifest.json is migrated into .
 
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
 
-        new SyncEngine(
+        (new SyncEngine(
             agentTargets: [new ClaudeCodeTarget()],
             installedPackages: emptyInstalledPackages(),
             remoteSkillIngester: new RemoteSkillIngester(cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot)),
-        )->sync($root);
+        ))->sync($root);
 
         // The ledger moved into the manifest dir; the root copy is gone.
         expect($root . '/.boost/remote-manifest.json')->toBeFile('ledger migrated into .boost/')
@@ -4132,14 +4132,14 @@ it('0.19.0 .config/boost.php layout: the remote ledger lands under .config/boost
             "<?php\n\ndeclare(strict_types=1);\n\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nuse SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);\n",
         );
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
 
-        new SyncEngine(
+        (new SyncEngine(
             agentTargets: [new ClaudeCodeTarget()],
             installedPackages: emptyInstalledPackages(),
             remoteSkillIngester: new RemoteSkillIngester(cache: new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $cacheRoot)),
-        )->sync($root);
+        ))->sync($root);
 
         expect($root . '/.config/boost/remote-manifest.json')->toBeFile('ledger follows the .config/ layout')
             ->and($root . '/.boost/remote-manifest.json')->not->toBeFile('not at the root .boost/ layout')
@@ -4155,7 +4155,7 @@ it('0.19.0: moving boost.php root↔.config carries the remote ledger across lay
     $cacheRoot = sys_get_temp_dir() . '/boost-remote-layoutmove-' . bin2hex(random_bytes(6));
 
     try {
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('peterfox/agent-skills', 'v1.2.0', 'composer-upgrade.skill', e2eMakeBundleBytes('composer-upgrade'));
         $build = fn () => new SyncEngine(
             agentTargets: [new ClaudeCodeTarget()],
@@ -4258,7 +4258,7 @@ it('remote-skill source: bundle scripts/ siblings emit as assets beside the fann
         $bundleBytes = (string) file_get_contents($tmpZip);
         @unlink($tmpZip);
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset('acme/skills', 'v1.0.0', 'codex-review.skill', $bundleBytes);
 
         $engine = new SyncEngine(
@@ -4581,7 +4581,7 @@ it('remote skills carry boost-requires through ingest — a missing dep warns', 
     try {
         writeBoostPhp($root, "use SanderMuller\\BoostCore\\Skills\\Remote\\RemoteSkillSource;\n\nreturn BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE])\n    ->withRemoteSkills([\n        RemoteSkillSource::githubBundle('peterfox/agent-skills', 'v1.2.0', ['composer-upgrade']),\n    ]);");
 
-        $fetcher = new FakeRemoteFetcher()
+        $fetcher = (new FakeRemoteFetcher())
             ->withAsset(
                 'peterfox/agent-skills',
                 'v1.2.0',

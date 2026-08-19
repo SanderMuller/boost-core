@@ -12,7 +12,7 @@ Project Conventions is a JSONSchema-based slot fill-in that closes that gap:
 
 `boost.php` is the single source of truth. The relevant frozen formats (the
 `boost:conv` token, the schema-version handshake, the `render` annotation) are
-pinned in [`PUBLIC_API.md`](../PUBLIC_API.md#textual--wire-formats).
+pinned in [`PUBLIC_API.md`](https://github.com/SanderMuller/boost-core/blob/main/PUBLIC_API.md#textual--wire-formats).
 
 ## Declaring values
 

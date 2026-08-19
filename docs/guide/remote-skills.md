@@ -2,7 +2,7 @@
 
 Skills can come straight from a GitHub repo, alongside your host `.ai/skills/`
 and your allowlisted Composer packages. The
-[README](../README.md#remote-skill-sources) summarises the flow; this page has
+[Skill sources](/guide/skill-sources#remote-sources) summarises the flow; this page has
 the details.
 
 ## The `boost remote` picker

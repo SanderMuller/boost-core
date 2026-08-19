@@ -32,5 +32,5 @@ A source whose extension has **no** registered renderer, such as a
 
 The `SkillRenderer` contract is `@api` and locked at 1.0. Plugin authors writing
 renderers, `FileEmitter`s, or a `BoostWrapperContract` should work from
-[`PUBLIC_API.md`](../PUBLIC_API.md), which pins the frozen contract surface.
+[`PUBLIC_API.md`](https://github.com/SanderMuller/boost-core/blob/main/PUBLIC_API.md), which pins the frozen contract surface.
 Implementations need a parameterless constructor.

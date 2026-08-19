@@ -42,26 +42,26 @@ the install guide is linked as raw Markdown for direct agent fetching.
 - [README.md](https://github.com/sandermuller/boost-core/blob/main/README.md):
   The overview — what boost-core does, how sync works, install, skill sources,
   the complete CLI reference, and environment variables. Each subsystem is
-  summarised there and documented in full under `docs/`.
+  summarised there and documented in full on the docs site, https://sandermuller.github.io/boost-core/.
 - [PUBLIC_API.md](https://github.com/sandermuller/boost-core/blob/main/PUBLIC_API.md):
   The frozen SemVer surface — config authoring API, CLI commands/options/
   exit-codes, Composer hooks, and plugin contracts.
-- [docs/remote-skills.md](https://github.com/sandermuller/boost-core/blob/main/docs/remote-skills.md):
+- [remote-skills](https://sandermuller.github.io/boost-core/guide/remote-skills):
   Remote GitHub skill sources — the `boost remote` picker, `withRemoteSkills()`
   entries by hand, the cache, rate limits, the trust model, publishing a source.
-- [docs/tags-and-dependencies.md](https://github.com/sandermuller/boost-core/blob/main/docs/tags-and-dependencies.md):
+- [tags-and-dependencies](https://sandermuller.github.io/boost-core/guide/tags-and-dependencies):
   Tag filtering and `metadata.boost-requires` in full, including how rescue and
   `withExcludedSkills()` interact.
-- [docs/commands.md](https://github.com/sandermuller/boost-core/blob/main/docs/commands.md):
+- [commands](https://sandermuller.github.io/boost-core/guide/commands):
   Per-agent command fan-out targets and argument-placeholder transpilation.
-- [docs/skill-rendering.md](https://github.com/sandermuller/boost-core/blob/main/docs/skill-rendering.md):
+- [skill-rendering](https://sandermuller.github.io/boost-core/guide/skill-rendering):
   The `SkillRenderer` contract — dispatch order, failure handling, authoring.
-- [docs/automating-sync.md](https://github.com/sandermuller/boost-core/blob/main/docs/automating-sync.md):
+- [automating-sync](https://sandermuller.github.io/boost-core/guide/automating-sync):
   Composer hooks, self-syncing CLI tools, and user-scope sync.
-- [docs/file-ownership.md](https://github.com/sandermuller/boost-core/blob/main/docs/file-ownership.md):
+- [file-ownership](https://sandermuller.github.io/boost-core/guide/file-ownership):
   The sync manifest, lifecycle reaping, the empty-assembly guard, `.config/`
   layout, and managed `.gitignore`.
-- [docs/conventions.md](https://github.com/sandermuller/boost-core/blob/main/docs/conventions.md):
+- [conventions](https://sandermuller.github.io/boost-core/guide/conventions):
   Project Conventions — JSONSchema slot fill-in that injects project-specific
   context into vendor skills.
 - [UPGRADING.md](https://github.com/sandermuller/boost-core/blob/main/UPGRADING.md):

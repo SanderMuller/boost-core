@@ -274,9 +274,9 @@ Links are absolute so they resolve when this file is fetched outside the repo.
 - Frozen public/semver surface (config API, CLI, hooks, contracts):
   [PUBLIC_API.md](https://github.com/sandermuller/boost-core/blob/main/PUBLIC_API.md)
 - File ownership (what is tracked vs gitignored, the manifest, reaping):
-  [docs/file-ownership.md](https://github.com/sandermuller/boost-core/blob/main/docs/file-ownership.md)
+  [file-ownership](https://sandermuller.github.io/boost-core/guide/file-ownership)
 - Project Conventions (JSONSchema slot fill-in for vendor skills):
-  [docs/conventions.md](https://github.com/sandermuller/boost-core/blob/main/docs/conventions.md)
+  [conventions](https://sandermuller.github.io/boost-core/guide/conventions)
 - Family repos:
   [project-boost-php](https://github.com/sandermuller/project-boost-php) ·
   [project-boost-laravel](https://github.com/sandermuller/project-boost-laravel) ·

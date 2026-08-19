@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="boost-core">
+    <defs>
+        <linearGradient id="boostCore" x1="16" y1="112" x2="112" y2="16" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#7c5cff"/>
+            <stop offset="1" stop-color="#22d3ee"/>
+        </linearGradient>
+    </defs>
+    <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#boostCore)"/>
+    <path d="M64 26 96 58H80v10H48V58H32z" fill="#fff"/>
+    <rect x="48" y="78" width="32" height="10" rx="5" fill="#fff"/>
+    <rect x="48" y="94" width="32" height="10" rx="5" fill="#fff" opacity=".65"/>
+</svg>

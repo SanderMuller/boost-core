@@ -18,3 +18,7 @@ plans/
 .github/prompts/
 # <<< boost (managed) <<<
 /.claude/scheduled_tasks.lock
+
+docs/node_modules
+docs/.vitepress/dist
+docs/.vitepress/cache

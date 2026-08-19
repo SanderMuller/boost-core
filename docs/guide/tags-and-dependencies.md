@@ -1,7 +1,7 @@
 # Tag filtering and skill dependencies
 
 Two features decide *which* skills a project receives, and they interact, so this
-page covers both. The [README](../README.md#tag-filtering) states the basic rule
+page covers both. The [How sync works](/guide/how-sync-works) states the basic rule
 of each; here is the full reference.
 
 ## Tag filtering

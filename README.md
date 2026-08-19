@@ -9,6 +9,9 @@
 
 > AI agent configuration sync for any PHP project. Write skills, guidelines, and commands once in `.ai/`; boost-core publishes them to nine agents: Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp. No framework dependency.
 
+**Documentation: <https://sandermuller.github.io/boost-core/>** — the guide, one
+section per family package, and the full CLI and config reference.
+
 ![overview image](overview.png)
 
 ## What it does
@@ -168,7 +171,7 @@ receive. Checked skills land in `withRemoteSkills()`; unchecked ones are removed
 The command also adds any dependencies the same repo publishes, and offers to
 declare the tags a picked skill needs to survive your `withTags()` filter.
 
-**See [`docs/remote-skills.md`](docs/remote-skills.md)** for writing
+**See [the remote skills docs](https://sandermuller.github.io/boost-core/guide/remote-skills)** for writing
 `withRemoteSkills()` entries by hand, the `--ref` and `--mode` flags, the cache,
 offline behavior, rate limits, the trust model, and publishing a source.
 
@@ -239,7 +242,7 @@ conditional reference ("where the project has quality-check skills synced,
 delegate to them") must stay undeclared, or rescue drags unrelated tooling into
 projects that scoped it out.
 
-**See [`docs/tags-and-dependencies.md`](docs/tags-and-dependencies.md)** for both
+**See [the tags and dependencies docs](https://sandermuller.github.io/boost-core/guide/tags-and-dependencies)** for both
 features in full: the guideline sidecar manifest, `withExcludedSkills()`
 precedence, missing and malformed requires, cycles, and tracing with
 `boost where`.
@@ -256,7 +259,7 @@ You author argument placeholders once in the canonical syntax (`$ARGUMENTS`,
 `$1`/`$2`, `$name`, and `\$` for a literal `$`), and sync converts each to the
 agent's native shape.
 
-**See [`docs/commands.md`](docs/commands.md)** for the per-agent target paths and
+**See [the commands docs](https://sandermuller.github.io/boost-core/guide/commands)** for the per-agent target paths and
 the full placeholder table.
 
 ## Skill rendering
@@ -278,7 +281,7 @@ The dispatcher matches longest-extension-first, so a `BladeRenderer` claiming
 handles `.md`. A source whose extension has no registered renderer is flagged by
 `boost sync` and `boost doctor` instead of silently vanishing.
 
-**See [`docs/skill-rendering.md`](docs/skill-rendering.md)** for failure handling,
+**See [the skill rendering docs](https://sandermuller.github.io/boost-core/guide/skill-rendering)** for failure handling,
 `BOOST_RENDER_STRICT=1`, and writing your own renderer against the `@api`
 contract.
 
@@ -303,7 +306,7 @@ errored. `BOOST_SKIP_AUTOSYNC=1` turns it off.
 > Laravel container, which bootstraps `BladeRenderer` and delivers laravel/boost's
 > bundled skills to every agent. The bare-CLI path bypasses both.
 
-**See [`docs/automating-sync.md`](docs/automating-sync.md)** for the other entry
+**See [the automating sync docs](https://sandermuller.github.io/boost-core/guide/automating-sync)** for the other entry
 points: `runWithSummary` for user-invoked scripts, `syncUserScopeOnce` for a
 globally-installed CLI tool that self-syncs, and the `--scope=user` sync.
 
@@ -327,7 +330,7 @@ Skills consume a slot either with an inline `<!--boost:conv path="…" mode="…
 token, resolved into the emitted file, or via the rendered `## Project Conventions`
 block in `CLAUDE.md`. `boost validate --strict` hard-fails CI on a leaked token.
 
-**See [`docs/conventions.md`](docs/conventions.md)** for the full reference:
+**See [the conventions docs](https://sandermuller.github.io/boost-core/guide/conventions)** for the full reference:
 inline tokens, the paired visible-default form, observability, legacy-ref
 migration, and migrating vendor skills.
 
@@ -348,7 +351,7 @@ owns in a manifest, so a sync never silently overwrites hand-written content:
   or reaped. Adopting boost-core in a repo with an existing `CLAUDE.md` won't wipe it.
 - Removing a vendor dep or de-selecting an agent reaps the now-orphaned files it owned.
 
-**See [`docs/file-ownership.md`](docs/file-ownership.md)** for the manifest,
+**See [the file ownership docs](https://sandermuller.github.io/boost-core/guide/file-ownership)** for the manifest,
 lifecycle reap, files another tool wrote into a managed directory, the
 empty-assembly guard, `.config/` layout + relocation, managed `.gitignore`, and
 user-scope cleanup-on-remove.
@@ -407,13 +410,19 @@ on-disk regenerable state may change in any release.
 
 ## More
 
-- [`docs/remote-skills.md`](docs/remote-skills.md) — remote GitHub skill sources in full
-- [`docs/tags-and-dependencies.md`](docs/tags-and-dependencies.md) — tag filtering + `boost-requires` in full
-- [`docs/commands.md`](docs/commands.md) — command fan-out targets + argument placeholders
-- [`docs/skill-rendering.md`](docs/skill-rendering.md) — `SkillRenderer` dispatch, failure modes, authoring
-- [`docs/automating-sync.md`](docs/automating-sync.md) — Composer hooks, self-syncing CLI tools, user scope
-- [`docs/conventions.md`](docs/conventions.md) — Project Conventions reference
-- [`docs/file-ownership.md`](docs/file-ownership.md) — the manifest, reaping, `.config/` layout
+Full documentation for boost-core and every family package is at
+**<https://sandermuller.github.io/boost-core/>**.
+
+- [Guide](https://sandermuller.github.io/boost-core/guide/what-is-boost) — how sync works, skill sources, tags, conventions, file ownership
+- [CLI reference](https://sandermuller.github.io/boost-core/reference/cli) — every command, option, and exit code
+- [Configuration reference](https://sandermuller.github.io/boost-core/reference/configuration) — every `BoostConfig` method
+- [Remote skills](https://sandermuller.github.io/boost-core/guide/remote-skills) — remote GitHub skill sources in full
+- [Tags and dependencies](https://sandermuller.github.io/boost-core/guide/tags-and-dependencies) — tag filtering and `boost-requires` in full
+- [Commands](https://sandermuller.github.io/boost-core/guide/commands) — command fan-out targets and argument placeholders
+- [Skill rendering](https://sandermuller.github.io/boost-core/guide/skill-rendering) — `SkillRenderer` dispatch, failure modes, authoring
+- [Automating the sync](https://sandermuller.github.io/boost-core/guide/automating-sync) — Composer hooks, self-syncing CLI tools, user scope
+- [Project Conventions](https://sandermuller.github.io/boost-core/guide/conventions) — the slot reference
+- [File ownership](https://sandermuller.github.io/boost-core/guide/file-ownership) — the manifest, reaping, `.config/` layout
 - [`llms.txt`](llms.txt) — structured overview for AI agents (what this package is, key docs)
 - [`llms-install.md`](llms-install.md) — step-by-step install guide an agent can execute
 - [`UPGRADING.md`](UPGRADING.md) — breaking-change migrations between versions

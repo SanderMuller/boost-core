@@ -20,7 +20,7 @@ through any of them.
   package's opinions on top.
 - You are building **tooling on the engine**: a custom `FileEmitter`, a custom
   `SkillRenderer`, or a CLI that self-syncs.
-- Your project is **none of the four roles** the wrappers cover — a non-PHP
+- Your project is **none of the four roles** the wrappers cover, such as a non-PHP
   package with a PHP toolchain, for instance.
 
 Everything else is better served by [picking a
@@ -30,7 +30,7 @@ wrapper](/guide/which-package).
 
 - Nine agent emitters: Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro,
   OpenCode, and Amp.
-- Three skill sources — host, Composer vendor, and remote GitHub — resolved side
+- Three skill sources (host, Composer vendor, and remote GitHub) resolved side
   by side. See [Skill sources](/guide/skill-sources).
 - Tag filtering and skill dependencies. See
   [Tags and dependencies](/guide/tags-and-dependencies).
@@ -46,6 +46,6 @@ wrapper](/guide/which-package).
 ## The public surface
 
 The semver promise covers the config authoring API, the CLI, the `BoostAutoSync`
-Composer hooks, and the plugin contracts. Everything marked `@internal` — the
-whole engine — and all regenerable on-disk state may change in any release. See
+Composer hooks, and the plugin contracts. Everything marked `@internal`, which is the whole
+engine, and all regenerable on-disk state may change in any release. See
 [Versioning and stability](/reference/versioning).

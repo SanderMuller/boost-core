@@ -3,8 +3,8 @@
 `sandermuller/project-boost-laravel` is the family member for **Laravel
 applications**. It is the companion to `laravel/boost`, not a replacement:
 `laravel/boost` stays the MCP server and the Laravel docs API, and this package
-owns the agent-file fan-out — skills, guidelines, remote skills, and tag
-filtering — across all nine agents.
+owns the agent-file fan-out (skills, guidelines, remote skills, and tag
+filtering) across all nine agents.
 
 ::: info Where this package lives
 [GitHub](https://github.com/SanderMuller/project-boost-laravel) &middot; [Packagist](https://packagist.org/packages/sandermuller/project-boost-laravel) &middot; [Releases](https://github.com/SanderMuller/project-boost-laravel/releases) &middot; [Changelog](https://github.com/SanderMuller/project-boost-laravel/blob/main/CHANGELOG.md)
@@ -69,8 +69,8 @@ Four sources stack:
 
 `LaravelBoostAssetReader` and `LaravelBoostGuidelineReader` walk
 `vendor/laravel/boost/.ai/`, render any `.blade.php` file through the package's
-`BladeRenderer` — which uses `laravel/boost`'s own `RendersBladeGuidelines` trait,
-so `$assist` binds correctly — and hand the resulting skills and guidelines to the
+`BladeRenderer`, which uses `laravel/boost`'s own `RendersBladeGuidelines` trait
+so `$assist` binds correctly, and hand the resulting skills and guidelines to the
 engine. From there it is the normal pipeline: tag filter, collision resolution,
 per-agent fan-out.
 

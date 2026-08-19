@@ -5,7 +5,7 @@ Skills come from three places. All three resolve on the same
 
 ## 1. Host
 
-Your project's own `.ai/skills/`. Nothing to configure — a directory with a
+Your project's own `.ai/skills/`. Nothing to configure. A directory with a
 `SKILL.md` in it ships.
 
 ```bash

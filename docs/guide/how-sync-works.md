@@ -41,7 +41,7 @@ metadata:
 ---
 ```
 
-Files next to `SKILL.md` — `scripts/`, `references/`, anything else — are copied
+Files next to `SKILL.md` (`scripts/`, `references/`, anything else) are copied
 verbatim beside every emitted copy, so a skill that shells out to its own script
 keeps working after the fan-out.
 
@@ -53,7 +53,7 @@ conventional path: `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, and the Copilot
 instructions file.
 
 These targets are **wholesale boost-owned and markerless**. Author guidance in
-`.ai/guidelines/`, never by hand-editing the target — a hand edit survives, but
+`.ai/guidelines/`, never by hand-editing the target. A hand edit survives, but
 it also stops boost from regenerating that file.
 
 ## Commands

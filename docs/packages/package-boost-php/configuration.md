@@ -74,7 +74,7 @@ The callback lives under this package's own namespace, so you reference only
 guard: it is silent on a no-op install, skips on `--no-dev`, and honours
 `BOOST_SKIP_AUTOSYNC=1`.
 
-For a script you invoke yourself — `composer sync-ai`, say — where silence reads
+For a script you invoke yourself, such as `composer sync-ai`, where silence reads
 as nothing happening, use
 `SanderMuller\PackageBoostPhp\Scripts\AutoSync::runWithSummary` instead. It
 always prints the one-line summary. See

@@ -28,7 +28,7 @@ This package is one source. Sources stack:
    a vendor skill of the same name.
 2. **Composer-installed catalogs** that ship `resources/boost/skills/`. This
    package is one. [`boost-skills`](/packages/boost-skills/) is another.
-3. **Remote sources** through `withRemoteSkills()` — GitHub `.skill` bundles or
+3. **Remote sources** through `withRemoteSkills()`: GitHub `.skill` bundles or
    single-skill repositories. No Composer needed.
 
 `withAllowedVendors()` gates source 2 only. `withTags()` filters sources 2 and 3.

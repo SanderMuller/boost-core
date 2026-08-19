@@ -86,7 +86,7 @@ narrower tag for projects that track issues in GitHub Issues. A repository hoste
 on GitHub but tracking issues in Jira declares `github` and not `github-issues`.
 
 The engine ships a broader `Tag` enum with cases no skill in this catalog targets
-yet — `Tag::Filament`, `Tag::Livewire`, `Tag::Volt`, `Tag::Inertia`, `Tag::Flux`,
+yet: `Tag::Filament`, `Tag::Livewire`, `Tag::Volt`, `Tag::Inertia`, `Tag::Flux`,
 `Tag::Pest`, `Tag::Tailwind`, and others. Declaring one is harmless, and it
 survives a re-run of the `boost install` picker.
 
@@ -102,7 +102,7 @@ Several skills call others, and declare it with `metadata.boost-requires`:
 - `pull-requests`, `pr-review-feedback`, and `jira-rework` each run their
   base-sync merge through `resolve-conflicts`.
 
-Whenever one of these skills ships, everything it requires ships too — including
+Whenever one of these skills ships, everything it requires ships too, including
 a skill your `withTags()` would otherwise have filtered out. See
 [Tags and dependencies](/guide/tags-and-dependencies).
 
@@ -125,7 +125,7 @@ them in `boost.php`:
 The twelve slot groups are `jira`, `github`, `branches`, `pr`, `testing`,
 `quality`, `codex`, `spec`, `mcp`, `translations`, `fixtures`, and `review`. All
 are optional; only `schema-version: 1` is required at the root. A group you do
-declare must carry its own required leaves — `jira.project_key`, for example.
+declare must carry its own required leaves, such as `jira.project_key`.
 
 The mechanism, the token syntax, and the tooling are covered in
 [Project Conventions](/guide/conventions).

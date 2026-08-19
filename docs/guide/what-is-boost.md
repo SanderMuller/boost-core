@@ -15,7 +15,7 @@ Amp. You never maintain a per-agent copy.
   `resources/boost/skills/` becomes a skill source once you allowlist its vendor.
   Author a team's skill set once, then `composer require` it everywhere.
 - **Per-project scoping.** [Tag filtering](/guide/tags-and-dependencies) keeps a
-  `jira-triage` skill out of repositories with no Jira work — including out of the
+  `jira-triage` skill out of repositories with no Jira work, including out of the
   agent's skill-selection index, where every unwanted `description` costs
   attention.
 - **Skills that depend on skills.** `metadata.boost-requires` makes a hand-off

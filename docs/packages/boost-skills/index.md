@@ -13,8 +13,8 @@ Each family package has its own repository and its own release cadence. This sit
 It is not a dependency of the family wrappers. You require it and allowlist its
 vendor, and then its skills ship alongside whatever else you already receive.
 
-The package carries no runtime code. It is pure Markdown. A sync engine — this
-family's engine, or `laravel/boost` — reads the skills and writes them into each
+The package carries no runtime code. It is pure Markdown. A sync engine, either this
+family's engine or `laravel/boost`, reads the skills and writes them into each
 agent directory you configured.
 
 ## Install

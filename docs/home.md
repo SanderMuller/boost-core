@@ -4,7 +4,7 @@ layout: home
 hero:
   name: boost for PHP
   text: One .ai/ source, nine agents
-  tagline: Write skills, guidelines, and slash commands once. boost publishes them to Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, and Amp — on any PHP project.
+  tagline: Write skills, guidelines, and slash commands once. boost publishes them to Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, and Amp. Any PHP project, Laravel or not.
   image:
     src: /logo.svg
     alt: boost
@@ -27,7 +27,7 @@ features:
     details: Any package shipping resources/boost/skills/ becomes a skill source once you allowlist its vendor. Author a team's skill set once, require it everywhere.
     link: /guide/skill-sources
   - title: Scoped per project
-    details: Tag filtering keeps a jira-triage skill out of repositories with no Jira work — including out of the agent's skill-selection index, where every unwanted description costs attention.
+    details: Tag filtering keeps a jira-triage skill out of repositories with no Jira work, including out of the agent's skill-selection index, where every unwanted description costs attention.
     link: /guide/tags-and-dependencies
   - title: Skills that depend on skills
     details: boost-requires makes a hand-off ship as a unit. A dependency your tags would have dropped is rescued, so a flow never delegates to a skill that is not there.
@@ -35,8 +35,8 @@ features:
   - title: Nothing hand-written gets clobbered
     details: boost tracks what it owns in a manifest. Adopting it in a repository that already has a CLAUDE.md does not wipe that file.
     link: /guide/file-ownership
-  - title: Next to laravel/boost, not instead of it
-    details: laravel/boost keeps the MCP server and the docs API. project-boost-laravel owns the cross-agent fan-out, and the two coexist by an explicit rule.
+  - title: Works alongside laravel/boost
+    details: laravel/boost keeps the MCP server and the docs API. project-boost-laravel owns the cross-agent fan-out. One command sequence keeps both from overwriting the other.
     link: /guide/laravel-coexistence
 ---
 

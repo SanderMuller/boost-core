@@ -4,11 +4,11 @@ boost-core follows [Semantic Versioning](https://semver.org). The promise covers
 the public surface only:
 
 - the config authoring API (`BoostConfig::configure()` and its `with*()` chain);
-- the CLI — command names, documented options, and exit codes;
+- the CLI: command names, documented options, and exit codes;
 - the `BoostAutoSync` Composer hooks;
 - the plugin contracts, such as `SkillRenderer`.
 
-Everything marked `@internal` — which is the whole engine — and all on-disk
+Everything marked `@internal`, which is the whole engine, and all on-disk
 regenerable state may change in any release.
 
 [`PUBLIC_API.md`](https://github.com/SanderMuller/boost-core/blob/main/PUBLIC_API.md)

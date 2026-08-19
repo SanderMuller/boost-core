@@ -63,14 +63,14 @@ filtering rule is in [Tags and dependencies](/guide/tags-and-dependencies).
 The engine's `BoostAutoSync::run` helper invokes the bare `vendor/bin/boost sync`.
 In a Laravel application using this package that is the wrong hook: the bare CLI
 bypasses the injection pipeline, so the `laravel/boost` bundled skill set never
-reaches your agent directories. The sync still reports success — just against a
-smaller skill set — which is why the mistake usually goes unnoticed.
+reaches your agent directories. The sync still reports success, just against a
+smaller skill set, which is why the mistake usually goes unnoticed.
 
 Use `@php artisan project-boost:sync`. It routes through the wrapper, which walks
 `vendor/laravel/boost/.ai/`, pre-renders Blade with proper container context, and
 injects the bundled skills into the sync call.
 
-A stray bare-CLI sync no longer *deletes* the wrapper's emitted skill files — the
+A stray bare-CLI sync no longer *deletes* the wrapper's emitted skill files, because the
 `BoostWrapper` contract declares them, so the cleanup pass leaves them alone. It
 still will not *re-emit* the `laravel/boost` set.
 
@@ -102,7 +102,7 @@ multiselect still runs in TTY mode, and selecting one triggers its writer.
   re-engages `laravel/boost`'s writers, which then race this package.
 - **`php artisan boost:update`.** It rewrites the guidance files inside its own
   marker and reinstalls its skill directories, so the next sync reports a
-  takeover. Retiring `boost.json` — which a successful sync does for you — makes
+  takeover. Retiring `boost.json`, which a successful sync does for you, makes
   it a no-op.
 
 ## Remote skills

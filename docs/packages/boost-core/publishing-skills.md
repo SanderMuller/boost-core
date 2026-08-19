@@ -79,8 +79,8 @@ javascript.md: "frontend"
 
 ## Declaring conventions slots
 
-If your skills need project-specific values — an issue-tracker key, a branch
-pattern, a test runner — do not bake them into the skill body. A consumer would
+If your skills need project-specific values, such as an issue-tracker key, a
+branch pattern, or a test runner, do not bake them into the skill body. A consumer would
 have to shadow the whole skill to change one word. Declare slots instead, in
 `resources/boost/conventions-schema.json`, and let the consumer fill them in
 `boost.php`. See [Project Conventions](/guide/conventions).
@@ -103,5 +103,5 @@ package never pushes files into someone's repository on its own.
 
 Skills are `require-dev` content for your consumers, but `resources/boost/` must
 ship in the Composer archive. Check your `.gitattributes` export-ignore rules
-before tagging — [`package-boost-php`](/packages/package-boost-php/) provides the
+before tagging. [`package-boost-php`](/packages/package-boost-php/) provides the
 `lean` command for exactly this.

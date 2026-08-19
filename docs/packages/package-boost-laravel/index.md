@@ -13,7 +13,7 @@ Each family package has its own repository and its own release cadence. This sit
 :::
 
 Where `laravel/boost` targets Laravel **application** developers, this package
-targets the people building Laravel **packages** — the dev-time codebase where
+targets the people building Laravel **packages**, the dev-time codebase where
 `app/`, `bootstrap/`, and `.env` do not exist, and `php artisan` does not apply.
 
 ## `McpJsonEmitter`
@@ -35,7 +35,7 @@ The emitter fires only when all three conditions hold:
 
 Otherwise it returns null and skips silently.
 
-`laravel/boost` writes `.mcp.json` once at install time, against `php artisan` —
+`laravel/boost` writes `.mcp.json` once at install time, against `php artisan`,
 a command that does not exist here. That is the gap this emitter closes.
 
 ## Three Laravel skills
@@ -66,4 +66,4 @@ skills (`readme`, `release-notes`, `upgrading`) come from
 
 `skill-authoring` and `writing-file-emitter` ship too, behind the
 `boost-extension` tag. Declare it if your package extends the engine with a
-custom `FileEmitter` — this package does exactly that, for `McpJsonEmitter`.
+custom `FileEmitter`. This package does exactly that, for `McpJsonEmitter`.

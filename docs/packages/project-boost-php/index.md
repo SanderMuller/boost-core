@@ -1,7 +1,7 @@
 # project-boost-php
 
 `sandermuller/project-boost-php` is the family member for **PHP application
-developers** — any framework, or none. It ships two framework-agnostic skills and
+developers**, on any framework or none. It ships two framework-agnostic skills and
 a `foundation` guideline that frames the codebase as an application rather than a
 package. It rides the [sync engine](/packages/boost-core/) and ships no code of
 its own.
@@ -33,8 +33,8 @@ it. Always shipped, no tag required.
 
 Architecture-specific guidance (DDD layering, repositories, domain modeling)
 shipped through the 0.x line and was dropped at 1.0, to keep the default
-framework agnostic. Copy any of it into your own `.ai/skills/<name>/SKILL.md` — a
-host copy shadows a vendor skill — or drop a shipped skill with
+framework agnostic. Copy any of it into your own `.ai/skills/<name>/SKILL.md`, where a
+host copy shadows a vendor skill, or drop a shipped skill with
 `->withExcludedSkills(['sandermuller/project-boost-php:<name>'])`.
 
 ## How it compares to `laravel/boost`

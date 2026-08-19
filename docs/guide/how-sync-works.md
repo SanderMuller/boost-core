@@ -43,7 +43,8 @@ metadata:
 
 Files next to `SKILL.md` (`scripts/`, `references/`, anything else) are copied
 verbatim beside every emitted copy, so a skill that shells out to its own script
-keeps working after the fan-out.
+keeps working after the fan-out. See [Skill assets](/guide/skill-assets) for the
+rules and the one gotcha: a shipped script arrives without an executable bit.
 
 ## Guidelines
 

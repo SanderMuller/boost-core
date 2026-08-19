@@ -79,6 +79,11 @@ export const areas: DocArea[] = [
                         blurb: 'Host skills, vendor packages, and remote GitHub repos, resolved side by side.',
                     },
                     {
+                        file: 'guide/skill-assets',
+                        text: 'Skill assets',
+                        blurb: 'Ship a script or a reference file beside a skill, into every agent copy.',
+                    },
+                    {
                         file: 'guide/remote-skills',
                         text: 'Remote skills',
                         blurb: 'Read a GitHub repo of skills, pick what you want, and pin what you got.',

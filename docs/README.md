@@ -16,6 +16,7 @@ Shared behavior, written once for every family member.
 - [Installation](guide/installation.md) — require, scaffold, first sync
 - [How sync works](guide/how-sync-works.md) — what you author, and what each agent receives
 - [Skill sources](guide/skill-sources.md) — host, vendor packages, remote GitHub repos
+- [Skill assets](guide/skill-assets.md) — ship a script or reference file beside a skill
 - [Remote skills](guide/remote-skills.md) — `withRemoteSkills()`, the cache, the trust model
 - [Commands](guide/commands.md) — command fan-out targets and argument placeholders
 - [Skill rendering](guide/skill-rendering.md) — `SkillRenderer` dispatch, failure modes, authoring

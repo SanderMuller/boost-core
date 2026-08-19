@@ -29,7 +29,7 @@ Both skill layouts are supported, and they can sit side by side:
   file in that directory is an asset and is copied verbatim next to every
   emitted `SKILL.md`, so a skill that shells out to its own script keeps working
   after the fan-out. A `SKILL.*` file deeper than the top level is an asset, not
-  a second skill.
+  a second skill. [Skill assets](/guide/skill-assets) covers the rest.
 
 ## A skill
 

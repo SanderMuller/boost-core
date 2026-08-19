@@ -14,10 +14,11 @@ with a command surface:
 | Amp         | `.agents/commands/`                            |
 | Kiro        | `.kiro/skills/<name>/SKILL.md` (slash-command) |
 
-Codex and Gemini have no committable command target boost-core can write into:
-Codex's prompts are deprecated and personal-only, and Gemini uses TOML. When
-`.ai/commands/` is populated and one of those agents is selected, `boost doctor`
-prints the manual authoring path so the gap isn't silent. Override the source dir
+Codex, Gemini and Antigravity have no committable command target boost-core can
+write into: Codex's prompts are deprecated and personal-only, Gemini uses TOML,
+and Antigravity publishes no command directory at all. When `.ai/commands/` is
+populated and one of those agents is selected, `boost doctor` prints the manual
+authoring path so the gap isn't silent. Override the source dir
 with `->withCommandsPath(...)`.
 
 ## Argument placeholders

@@ -471,14 +471,15 @@ final class DoctorCommand extends BoostBaseCommand
     /**
      * Surface per-agent command-emit gaps when `.ai/commands/` is in play.
      *
-     * boost-core writes commands to seven of the nine agents — the six
+     * boost-core writes commands to seven of the ten agents — the six
      * dedicated-command-dir agents (Phase 1) and Kiro (which emits each
      * command as a skill-shaped `.kiro/skills/<name>/SKILL.md` via its
-     * native slash-command surface). Two agents have no committable
+     * native slash-command surface). Three agents have no committable
      * command target boost-core can write into:
      *
      *  - Codex: deprecated personal-only prompts at `~/.codex/prompts/`.
      *  - Gemini: TOML format; boost-core does not hand-roll a serializer.
+     *  - Antigravity: publishes no committable command directory at all.
      *
      * When the project has a `.ai/commands/` directory AND one of those
      * agents is in `withAgents()`, point the operator at the manual
@@ -511,17 +512,20 @@ final class DoctorCommand extends BoostBaseCommand
         // `withCommandsPath(...)` override, and accurately covers nested
         // `<commands>/sub/*.md` layouts because CommandLoader recurses.
         $sourcePath = $config->commandsPath;
-        $lines = [];
-        if ($config->hasAgent(Agent::CODEX)) {
-            $lines[] = sprintf(
+        $notes = [
+            Agent::CODEX->value => sprintf(
                 'Codex: prompts are deprecated and personal-only (`~/.codex/prompts/`). boost-core does not write there. To use these commands in Codex, copy your `%s/**/*.md` files into `~/.codex/prompts/` manually.',
                 $sourcePath,
-            );
-        }
+            ),
+            Agent::GEMINI->value => 'Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands directly in `.gemini/commands/<name>.toml` or use a skill instead.',
+            Agent::ANTIGRAVITY->value => 'Antigravity: publishes no committable command directory, so boost-core writes no command files for it. Author the workflow as a skill instead — Antigravity reads `.agents/skills/<name>/SKILL.md`, which `boost sync` does write.',
+        ];
 
-        if ($config->hasAgent(Agent::GEMINI)) {
-            $lines[] = 'Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands directly in `.gemini/commands/<name>.toml` or use a skill instead.';
-        }
+        $lines = array_values(array_filter(
+            $notes,
+            static fn (string $agentValue): bool => $config->hasAgent(Agent::from($agentValue)),
+            ARRAY_FILTER_USE_KEY,
+        ));
 
         if ($lines === []) {
             return;

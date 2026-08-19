@@ -188,6 +188,24 @@ it('doctor: prints the Gemini manual-path note when commands present and Gemini 
     }
 });
 
+it('doctor: prints the Antigravity manual-path note when commands present and Antigravity selected', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::ANTIGRAVITY])');
+    try {
+        mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/deploy.md', "---\ndescription: Ship.\n---\n\nBody.\n");
+
+        $result = runDoctor($dir);
+
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('Command-emit limitations')
+            ->and($result['display'])->toContain('Antigravity')
+            ->and($result['display'])->not->toContain('~/.codex/prompts/')
+            ->and($result['display'])->not->toContain('.gemini/commands/');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
 it('doctor: omits the command-emit limitations section when no .ai/commands/ exists', function (): void {
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CODEX, Agent::GEMINI])');
     try {

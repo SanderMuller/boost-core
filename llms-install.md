@@ -7,7 +7,7 @@ exactly one. Stop and ask the user only where this guide says to.
 
 `boost-core` is the sync engine: author skills, guidelines, and slash-commands
 once under `.ai/`, and `boost sync` fans them out to up to ten agents (Claude
-Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). You almost
+Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp, Antigravity). You almost
 never install `boost-core` directly — install the **family wrapper** that matches
 what the repo is, and it pulls `boost-core` in.
 
@@ -220,11 +220,12 @@ Verify: `vendor/bin/boost sync --check` exits 0.
 Set the agents the user actually uses. Detect existing ones by directory:
 `.claude/` → Claude Code, `.cursor/` → Cursor, `.github/` (Copilot prompts) →
 Copilot, `.codex/`/`AGENTS.md` → Codex, `.gemini/` → Gemini, `.junie/` → Junie,
-`.kiro/` → Kiro, `.opencode/` → OpenCode, `.agents/` → Amp. If none are obvious,
-ask the user which agents they use, or default to `Agent::CLAUDE_CODE`.
+`.kiro/` → Kiro, `.opencode/` → OpenCode, `.agents/` → Amp or Antigravity (both
+read it, so ask which one rather than guessing). If none are obvious, ask the
+user which agents they use, or default to `Agent::CLAUDE_CODE`.
 
 Valid cases: `CLAUDE_CODE`, `CURSOR`, `COPILOT`, `CODEX`, `GEMINI`, `JUNIE`,
-`KIRO`, `OPENCODE`, `AMP`.
+`KIRO`, `OPENCODE`, `AMP`, `ANTIGRAVITY`.
 
 ## Step 5 — Choose tags (`withTags`)
 

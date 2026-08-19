@@ -2,8 +2,8 @@
 
 You write skills, guidelines, and slash commands once, in a `.ai/` directory at
 the root of your repository. `boost sync` publishes them to every AI agent you
-selected: Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, and
-Amp. You never maintain a per-agent copy.
+selected: Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp,
+and Antigravity. You never maintain a per-agent copy.
 
 ![What boost-core does](/overview.jpg)
 

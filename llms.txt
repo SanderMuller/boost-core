@@ -3,7 +3,7 @@
 > Framework-agnostic AI agent configuration sync for any PHP project. Author
 > skills, guidelines, and slash-commands once under `.ai/`; `boost sync` fans
 > them out to up to ten agents (Claude Code, Cursor, Copilot, Codex, Gemini,
-> Junie, Kiro, OpenCode, Amp). No framework dependency. `boost-core` is the sync
+> Junie, Kiro, OpenCode, Amp, Antigravity). No framework dependency. `boost-core` is the sync
 > engine; users normally install a thin **family wrapper** that bundles it with a
 > curated skill set for what they are building.
 

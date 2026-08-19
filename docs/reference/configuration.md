@@ -51,7 +51,8 @@ a duplicate `(source, version, mode)` entry.
 `Agent` is an enum, so your IDE completes the list:
 
 `Agent::CLAUDE_CODE`, `Agent::CURSOR`, `Agent::COPILOT`, `Agent::CODEX`,
-`Agent::GEMINI`, `Agent::JUNIE`, `Agent::KIRO`, `Agent::OPENCODE`, `Agent::AMP`.
+`Agent::GEMINI`, `Agent::JUNIE`, `Agent::KIRO`, `Agent::OPENCODE`, `Agent::AMP`,
+`Agent::ANTIGRAVITY`.
 
 De-selecting an agent reaps the files it owned on the next sync. See
 [File ownership](/guide/file-ownership).

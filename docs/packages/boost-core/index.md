@@ -28,8 +28,8 @@ wrapper](/guide/which-package).
 
 ## What the engine gives you
 
-- Nine agent emitters: Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro,
-  OpenCode, and Amp.
+- Ten agent emitters: Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro,
+  OpenCode, Amp, and Antigravity.
 - Three skill sources (host, Composer vendor, and remote GitHub) resolved side
   by side. See [Skill sources](/guide/skill-sources).
 - Tag filtering and skill dependencies. See

@@ -7,7 +7,7 @@ context: Testbench conventions, cross-version Laravel support, CI matrix
 diagnostics, and the `McpJsonEmitter`.
 
 ::: info Where this package lives
-[GitHub](https://github.com/SanderMuller/package-boost-laravel) &middot; [Packagist](https://packagist.org/packages/sandermuller/package-boost-laravel) &middot; [Releases](https://github.com/SanderMuller/package-boost-laravel/releases) &middot; [Changelog](https://github.com/SanderMuller/package-boost-laravel/blob/main/CHANGELOG.md)
+[GitHub](https://github.com/SanderMuller/package-boost-laravel) &middot; [Packagist](https://packagist.org/packages/sandermuller/package-boost-laravel) &middot; [Releases](https://github.com/SanderMuller/package-boost-laravel/releases) &middot; [Changelog](https://github.com/SanderMuller/package-boost-laravel/blob/main/CHANGELOG.md) &middot; [Public API](https://github.com/SanderMuller/package-boost-laravel/blob/main/PUBLIC_API.md)
 
 Each family package has its own repository and its own release cadence. This site is built from the `boost-core` repository, so a documentation fix goes there, and a code issue goes to the repository above.
 :::

@@ -5,7 +5,7 @@ the sync, the CLI, the agent emitters, the manifest, and the plugin contracts. I
 ships no skills of its own.
 
 ::: info Where this package lives
-[GitHub](https://github.com/SanderMuller/boost-core) &middot; [Packagist](https://packagist.org/packages/sandermuller/boost-core) &middot; [Releases](https://github.com/SanderMuller/boost-core/releases) &middot; [Changelog](https://github.com/SanderMuller/boost-core/blob/main/CHANGELOG.md)
+[GitHub](https://github.com/SanderMuller/boost-core) &middot; [Packagist](https://packagist.org/packages/sandermuller/boost-core) &middot; [Releases](https://github.com/SanderMuller/boost-core/releases) &middot; [Changelog](https://github.com/SanderMuller/boost-core/blob/main/CHANGELOG.md) &middot; [Public API](https://github.com/SanderMuller/boost-core/blob/main/PUBLIC_API.md)
 
 This site is built from the `boost-core` repository, so a documentation fix and a code issue both belong here.
 :::

@@ -68,3 +68,20 @@ you can use it standalone and follow its own setup. Two family features go
 inert there: tag filtering, and the Project Conventions slots. The skills carry
 visible defaults, so a slot still reads as sensible wording even when nothing
 resolves it.
+
+## Editing a skill or a guideline
+
+Edit the source in the catalog repository, never the synced copy in a consuming
+project. The next sync overwrites that copy.
+
+A skill is a Markdown file at `resources/boost/skills/<name>/SKILL.md` with YAML
+frontmatter: `name` and `description`, plus optional `metadata` (where
+`boost-tags` and `boost-requires` live) and `argument-hint`.
+
+A guideline is plain Markdown at `resources/boost/guidelines/<name>.md` with
+**no** frontmatter. It must open directly on a heading, so it renders under both
+this family's engine and `laravel/boost`. Its tags live in the sidecar
+`.boost-tags.yaml` instead.
+
+The catalog's own `ai-guidelines` skill documents the frontmatter contract and
+the authoring conventions in full.

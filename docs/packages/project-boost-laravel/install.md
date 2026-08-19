@@ -75,3 +75,20 @@ render Blade.
 
 **Every file reports `unchanged` on a second sync** — expected. The writer is
 content-aware.
+
+## Testing the package itself
+
+```bash
+composer test
+```
+
+The Pest suite covers discovery, version resolution, and the suppress-upstream
+listener, with Testbench-backed feature tests for `project-boost:install`'s
+TTY-versus-non-TTY branching.
+
+`.github/workflows/ci-smoke.yml` runs the consumer install path end to end on
+every push and pull request. It creates a fresh `laravel/laravel` application,
+installs the package from the checkout, runs
+`project-boost:install --no-sync --no-interaction` and asserts `.mcp.json` lands
+with the `laravel-boost` server entry, then runs `project-boost:sync` and asserts
+no Blade directives leak into the rendered output.

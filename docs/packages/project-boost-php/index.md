@@ -7,7 +7,7 @@ package. It rides the [sync engine](/packages/boost-core/) and ships no code of
 its own.
 
 ::: info Where this package lives
-[GitHub](https://github.com/SanderMuller/project-boost-php) &middot; [Packagist](https://packagist.org/packages/sandermuller/project-boost-php) &middot; [Releases](https://github.com/SanderMuller/project-boost-php/releases) &middot; [Changelog](https://github.com/SanderMuller/project-boost-php/blob/main/CHANGELOG.md)
+[GitHub](https://github.com/SanderMuller/project-boost-php) &middot; [Packagist](https://packagist.org/packages/sandermuller/project-boost-php) &middot; [Releases](https://github.com/SanderMuller/project-boost-php/releases) &middot; [Changelog](https://github.com/SanderMuller/project-boost-php/blob/main/CHANGELOG.md) &middot; [Public API](https://github.com/SanderMuller/project-boost-php/blob/main/PUBLIC_API.md)
 
 Each family package has its own repository and its own release cadence. This site is built from the `boost-core` repository, so a documentation fix goes there, and a code issue goes to the repository above.
 :::

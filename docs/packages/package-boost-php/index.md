@@ -5,7 +5,7 @@ Composer package authors**. It bundles the [sync engine](/packages/boost-core/)
 with package-author skills, two guidelines, and two `.gitattributes` commands.
 
 ::: info Where this package lives
-[GitHub](https://github.com/SanderMuller/package-boost-php) &middot; [Packagist](https://packagist.org/packages/sandermuller/package-boost-php) &middot; [Releases](https://github.com/SanderMuller/package-boost-php/releases) &middot; [Changelog](https://github.com/SanderMuller/package-boost-php/blob/main/CHANGELOG.md)
+[GitHub](https://github.com/SanderMuller/package-boost-php) &middot; [Packagist](https://packagist.org/packages/sandermuller/package-boost-php) &middot; [Releases](https://github.com/SanderMuller/package-boost-php/releases) &middot; [Changelog](https://github.com/SanderMuller/package-boost-php/blob/main/CHANGELOG.md) &middot; [Public API](https://github.com/SanderMuller/package-boost-php/blob/main/PUBLIC_API.md)
 
 Each family package has its own repository and its own release cadence. This site is built from the `boost-core` repository, so a documentation fix goes there, and a code issue goes to the repository above.
 :::

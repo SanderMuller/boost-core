@@ -7,7 +7,7 @@ owns the agent-file fan-out (skills, guidelines, remote skills, and tag
 filtering) across all nine agents.
 
 ::: info Where this package lives
-[GitHub](https://github.com/SanderMuller/project-boost-laravel) &middot; [Packagist](https://packagist.org/packages/sandermuller/project-boost-laravel) &middot; [Releases](https://github.com/SanderMuller/project-boost-laravel/releases) &middot; [Changelog](https://github.com/SanderMuller/project-boost-laravel/blob/main/CHANGELOG.md)
+[GitHub](https://github.com/SanderMuller/project-boost-laravel) &middot; [Packagist](https://packagist.org/packages/sandermuller/project-boost-laravel) &middot; [Releases](https://github.com/SanderMuller/project-boost-laravel/releases) &middot; [Changelog](https://github.com/SanderMuller/project-boost-laravel/blob/main/CHANGELOG.md) &middot; [Public API](https://github.com/SanderMuller/project-boost-laravel/blob/main/PUBLIC_API.md)
 
 Each family package has its own repository and its own release cadence. This site is built from the `boost-core` repository, so a documentation fix goes there, and a code issue goes to the repository above.
 :::

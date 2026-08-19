@@ -13,8 +13,8 @@ hero:
       text: Get started
       link: /guide/installation
     - theme: alt
-      text: Which package fits?
-      link: /guide/which-package
+      text: Why boost?
+      link: /guide/why-boost
     - theme: alt
       text: GitHub
       link: https://github.com/SanderMuller/boost-core

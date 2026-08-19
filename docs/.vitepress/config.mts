@@ -105,7 +105,7 @@ export default defineConfig({
         logo: '/logo.svg',
 
         nav: [
-            { text: 'Guide', link: link('guide/what-is-boost'), activeMatch: '/guide/' },
+            { text: 'Guide', link: link('guide/why-boost'), activeMatch: '/guide/' },
             {
                 text: 'Packages',
                 activeMatch: '/packages/',

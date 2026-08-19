@@ -10,6 +10,7 @@ point at the Markdown so they work on GitHub too.
 
 Shared behavior, written once for every family member.
 
+- [Why boost?](guide/why-boost.md) — what it adds over `laravel/boost`, and when you need neither
 - [What boost does](guide/what-is-boost.md) — one `.ai/` source, nine agents, and the family
 - [Which package fits](guide/which-package.md) — pick one member from your role
 - [Installation](guide/installation.md) — require, scaffold, first sync

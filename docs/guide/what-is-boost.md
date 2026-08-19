@@ -46,24 +46,11 @@ You install **one** wrapper. It pulls in the engine for you.
 
 ## Coming from `laravel/boost`?
 
-`laravel/boost` is a Laravel-only tool that gives an agent an MCP server and the
-Laravel documentation API. boost-core is the framework-free sibling that fans
-configuration out across agents. They are complementary, and
-[they coexist](/guide/laravel-coexistence).
+`laravel/boost` is Laravel's own tool. It runs the MCP server and the Laravel
+documentation API, and it writes per-agent files too. boost is the framework-free
+sibling, and on Laravel the two run side by side rather than one replacing the
+other.
 
-|  | `laravel/boost` | boost-core |
-|---|---|---|
-| Framework scope | Laravel only | Any PHP (Laravel, Symfony, plain PHP, packages) |
-| Skill sources | Bundled + `.ai/skills/` | `.ai/skills/` + Composer packages + `withRemoteSkills()` + vendor allowlist |
-| Tag filtering | None | `withTags()` subset rule |
-| Skill dependencies | None | `metadata.boost-requires`, with rescue |
-| Remote skill sources | None | `withRemoteSkills()` — GitHub bundles and path imports |
-| User-scope sync | None | `boost sync --scope=user` for globally-installed CLI tools |
-| Origin tracing | None | `boost where`, `boost where --diff=<name>` |
-| Health check | None | `boost doctor`, `boost doctor --check-versions` |
-| `.ai/commands/` fan-out | None | Per-agent argument transpilation across 7 targets |
-| Project Conventions | None | JSONSchema slot fill-in via `boost validate` / `boost slots` |
-
-The MCP server and the Laravel documentation API stay `laravel/boost`'s domain,
-so boost-core defers to them in Laravel projects. See
-[`project-boost-laravel`](/packages/project-boost-laravel/) for that setup.
+[Why boost?](/guide/why-boost) has the full comparison and says which one to
+install first. [Coexistence with `laravel/boost`](/guide/laravel-coexistence) has
+the command sequence that keeps both safe.

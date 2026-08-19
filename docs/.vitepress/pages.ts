@@ -44,6 +44,11 @@ export const areas: DocArea[] = [
                 text: 'Getting started',
                 pages: [
                     {
+                        file: 'guide/why-boost',
+                        text: 'Why boost?',
+                        blurb: 'What it does that `laravel/boost` does not, and when you need neither.',
+                    },
+                    {
                         file: 'guide/what-is-boost',
                         text: 'What boost does',
                         blurb: 'One `.ai/` source, nine agents, and the family of packages built on the engine.',

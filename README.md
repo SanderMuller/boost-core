@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/packagist/l/sandermuller/boost-core.svg?style=flat-square)](LICENSE)
 [![Laravel Boost](https://badge.laravel.cloud/boost-badge.svg?style=flat-square)](https://github.com/laravel/boost)
 
-> AI agent configuration sync for any PHP project. Write skills, guidelines, and commands once in `.ai/`; boost-core publishes them to nine agents: Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp. No framework dependency.
+> AI agent configuration sync for any PHP project. Write skills, guidelines, and commands once in `.ai/`; boost-core publishes them to ten agents: Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp, Antigravity. No framework dependency.
 
 **Documentation: <https://sandermuller.github.io/boost-core/>** — the guide, one
 section per family package, and the full CLI and config reference.
@@ -16,7 +16,7 @@ section per family package, and the full CLI and config reference.
 
 ## What it does
 
-- **One `.ai/` source, nine agents.** Add an agent to `withAgents()` and its
+- **One `.ai/` source, ten agents.** Add an agent to `withAgents()` and its
   files appear on the next sync. You never maintain a per-agent copy.
 - **Skills distributed as Composer packages.** Any package shipping
   `resources/boost/skills/` becomes a skill source once you allowlist its vendor.

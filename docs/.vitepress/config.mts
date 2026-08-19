@@ -5,7 +5,7 @@ import { defineConfig } from 'vitepress'
 import { areas, link, packageAreas, pages } from './pages'
 
 const SITE_URL = 'https://sandermuller.github.io/boost-core'
-const DESCRIPTION = 'AI agent configuration sync for PHP projects. Author skills, guidelines, and commands once in .ai/, and publish them to nine agents.'
+const DESCRIPTION = 'AI agent configuration sync for PHP projects. Author skills, guidelines, and commands once in .ai/, and publish them to ten agents.'
 
 /**
  * One sidebar per area, keyed on the area's route prefix. A reader inside a

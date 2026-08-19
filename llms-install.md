@@ -6,7 +6,7 @@ Work through it top to bottom. Prefer the most specific family member; install
 exactly one. Stop and ask the user only where this guide says to.
 
 `boost-core` is the sync engine: author skills, guidelines, and slash-commands
-once under `.ai/`, and `boost sync` fans them out to up to nine agents (Claude
+once under `.ai/`, and `boost sync` fans them out to up to ten agents (Claude
 Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp). You almost
 never install `boost-core` directly — install the **family wrapper** that matches
 what the repo is, and it pulls `boost-core` in.

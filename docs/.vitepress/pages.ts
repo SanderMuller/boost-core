@@ -51,7 +51,7 @@ export const areas: DocArea[] = [
                     {
                         file: 'guide/what-is-boost',
                         text: 'What boost does',
-                        blurb: 'One `.ai/` source, nine agents, and the family of packages built on the engine.',
+                        blurb: 'One `.ai/` source, ten agents, and the family of packages built on the engine.',
                     },
                     {
                         file: 'guide/which-package',

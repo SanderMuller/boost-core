@@ -44,7 +44,7 @@ overwriting each other's files.
 | | `laravel/boost` | This family |
 |---|---|---|
 | Framework | Laravel only | Any PHP: Laravel, Symfony, plain PHP, Composer packages |
-| Agents written | 10 | 9 (the same, minus Antigravity) |
+| Agents written | 10 | 10 (the same set) |
 | Bundled Laravel skills, MCP server, docs API | Yes | No, and not planned. Use `laravel/boost` |
 | Host `.ai/skills/` | Yes | Yes |
 | Composer packages that publish skills | Scanned automatically | Scanned, but only from vendors you allowlist |
@@ -53,13 +53,14 @@ overwriting each other's files.
 | Skill dependencies | — | `boost-requires`, including rescue of a filtered-out dependency |
 | Project-specific values in vendor skills | — | Project Conventions slots |
 | Slash-command fan-out | — | `.ai/commands/`, transpiled per agent |
+| Skills outside a project | Project only, every write goes under the app root | `boost sync --scope=user`, for globally-installed CLI tools |
 | Where a skill came from | — | `boost where`, with host / vendor / remote / shadow origin |
 | Drift check for CI | — | `boost sync --check`, offline and deterministic |
 | Health check | — | `boost doctor` |
 
-The agent count is not the argument. `laravel/boost` reaches one agent more than
-this family does. The argument is the six rows with a dash in the first column,
-and the first row for anyone not on Laravel.
+The agent count is not the argument: both write the same ten. The argument is
+the rows with a dash in the first column, and the first row for anyone not on
+Laravel.
 
 ## What boost does not do
 

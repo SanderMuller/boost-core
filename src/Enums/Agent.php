@@ -4,6 +4,7 @@ namespace SanderMuller\BoostCore\Enums;
 
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;
+use SanderMuller\BoostCore\Agents\AntigravityTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
 use SanderMuller\BoostCore\Agents\CodexTarget;
 use SanderMuller\BoostCore\Agents\CopilotTarget;
@@ -14,7 +15,7 @@ use SanderMuller\BoostCore\Agents\KiroTarget;
 use SanderMuller\BoostCore\Agents\OpenCodeTarget;
 
 /**
- * The nine AI agents boost-core fans out to.
+ * The ten AI agents boost-core fans out to.
  *
  * Per-agent transformation details (directory layout, naming, frontmatter
  * quirks) live with each AgentTarget implementation.
@@ -32,6 +33,7 @@ enum Agent: string
     case KIRO = 'kiro';
     case OPENCODE = 'opencode';
     case AMP = 'amp';
+    case ANTIGRAVITY = 'antigravity';
 
     /**
      * The fan-out target for this agent — its directory layout + path/identity
@@ -55,6 +57,7 @@ enum Agent: string
             self::KIRO => new KiroTarget(),
             self::OPENCODE => new OpenCodeTarget(),
             self::AMP => new AmpTarget(),
+            self::ANTIGRAVITY => new AntigravityTarget(),
         };
     }
 }

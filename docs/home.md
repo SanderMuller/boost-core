@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: boost for PHP
-  text: One .ai/ source, nine agents
-  tagline: Write skills, guidelines, and slash commands once. boost publishes them to Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, and Amp. Any PHP project, Laravel or not.
+  text: One .ai/ source, ten agents
+  tagline: Write skills, guidelines, and slash commands once. boost publishes them to Claude Code, Cursor, Copilot, Codex, Gemini, Junie, Kiro, OpenCode, Amp, and Antigravity. Any PHP project, Laravel or not.
   image:
     src: /logo.svg
     alt: boost

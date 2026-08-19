@@ -41,7 +41,7 @@ filtering rule is in [Tags and dependencies](/guide/tags-and-dependencies).
 |---|---|
 | `project-boost:install` | Wraps `boost:install --mcp` and runs the sync. Auto-detects non-TTY for CI and Docker. The recommended entry point |
 | `project-boost:install --no-sync` | MCP only. Skip the sync |
-| `project-boost:sync` | Discover, render, tag-filter, and fan out to nine agents. Run after `composer install` or after editing `boost.php` |
+| `project-boost:sync` | Discover, render, tag-filter, and fan out to ten agents. Run after `composer install` or after editing `boost.php` |
 | `project-boost:sync --keep-boost-json` | Leave `laravel/boost`'s `boost.json` in place. By default a successful sync archives it |
 | `project-boost:sync --dry-run` | Preview the full pipeline in check mode |
 | `project-boost:where` | List the `laravel/boost`-bundled skills and guidelines this package injects, with per-skill ship, tag-filter, and shadow status |

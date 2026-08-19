@@ -2,6 +2,7 @@
 
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;
+use SanderMuller\BoostCore\Agents\AntigravityTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
 use SanderMuller\BoostCore\Agents\CodexTarget;
 use SanderMuller\BoostCore\Agents\CopilotTarget;
@@ -37,6 +38,9 @@ function allTargets(): array
         [new KiroTarget(), Agent::KIRO, '.kiro/skills', 'AGENTS.md'],
         [new OpenCodeTarget(), Agent::OPENCODE, '.opencode/skills', 'AGENTS.md'],
         [new AmpTarget(), Agent::AMP, '.amp/skills', 'AGENTS.md'],
+        // Antigravity reads the same paths as Codex/Copilot (laravel/boost's
+        // own Antigravity agent: AGENTS.md + .agents/skills).
+        [new AntigravityTarget(), Agent::ANTIGRAVITY, '.agents/skills', 'AGENTS.md'],
     ];
 }
 

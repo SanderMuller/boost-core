@@ -9,7 +9,7 @@ Amp. You never maintain a per-agent copy.
 
 ## What you get
 
-- **One `.ai/` source, nine agents.** Add an agent to `withAgents()` and its
+- **One `.ai/` source, ten agents.** Add an agent to `withAgents()` and its
   files appear on the next sync.
 - **Skills distributed as Composer packages.** Any package that ships
   `resources/boost/skills/` becomes a skill source once you allowlist its vendor.

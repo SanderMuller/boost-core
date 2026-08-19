@@ -29,7 +29,7 @@ This package is one source. Sources stack:
 2. **Composer-installed catalogs** that ship `resources/boost/skills/`. This
    package is one. [`boost-skills`](/packages/boost-skills/) is another.
 3. **Remote sources** through `withRemoteSkills()`: GitHub `.skill` bundles or
-   single-skill repositories. No Composer needed.
+   single-skill repositories, neither of which goes through Composer.
 
 `withAllowedVendors()` gates source 2 only. `withTags()` filters sources 2 and 3.
 Host skills bypass both: your project authored them, so the engine treats them as

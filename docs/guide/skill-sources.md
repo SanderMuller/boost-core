@@ -18,8 +18,9 @@ your copy and the vendor's.
 
 ## 2. Vendor packages
 
-Any Composer package that ships `resources/boost/skills/<name>/SKILL.md` is a
-skill source. Allowlist its vendor to pick it up:
+Any Composer package that ships `resources/boost/skills/` is a skill source,
+whether it uses the flat layout (`<name>.md`) or the nested one
+(`<name>/SKILL.md`). Allowlist its vendor to pick it up:
 
 ```php
 return BoostConfig::configure()

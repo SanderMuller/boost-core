@@ -4,7 +4,7 @@
 composer require --dev sandermuller/boost-core
 ```
 
-PHP 8.3 or later. No framework dependency.
+It needs PHP 8.3 or later and depends on no framework.
 
 The engine runs no install-time code of its own: it ships no Composer plugin. You
 run the sync yourself, in CI or through the

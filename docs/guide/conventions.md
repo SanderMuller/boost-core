@@ -50,8 +50,8 @@ and no fallback is a render-class error that fails `boost sync --check`.
 #### Paired visible-default form (1.2.1+)
 
 A bare `<!--boost:conv …-->` token resolves only under boost-core. An engine with
-no resolver — notably `laravel/boost`, which installs a package's `SKILL.md` and
-preserves HTML comments verbatim — leaves it inert, so an inline token reads as a
+no resolver, notably `laravel/boost`, which installs a package's `SKILL.md` and
+preserves HTML comments verbatim, leaves it inert, so an inline token reads as a
 **word gap** and its fallback stays hidden inside the comment.
 
 The paired form closes that gap by wrapping a visible default between an open and
@@ -65,7 +65,7 @@ Run <!--boost:conv path="testing.runner" mode="inline"-->Pest<!--boost:conv:end-
   the resolved value; the visible default doubles as the inline fallback (an
   explicit `fallback=` still wins).
 - A resolver-less engine leaves both comments inert, so the visible default reads
-  as ordinary prose — `Run Pest to verify.` — no gap.
+  as ordinary prose: `Run Pest to verify.`, with no gap where the markers were.
 
 The ` ```boost:conv ` fence takes the same `<!--boost:conv:end-->` marker and
 buffers its body as one block, so a multi-line span resolves whole. Paired spans

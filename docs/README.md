@@ -28,12 +28,31 @@ Shared behavior, written once for every family member.
 
 One section per family member.
 
-- [project-boost-php](packages/project-boost-php/index.md) — PHP applications
-- [project-boost-laravel](packages/project-boost-laravel/index.md) — Laravel applications
-- [package-boost-php](packages/package-boost-php/index.md) — framework-agnostic Composer packages
-- [package-boost-laravel](packages/package-boost-laravel/index.md) — Laravel packages
-- [boost-skills](packages/boost-skills/index.md) — the published skill catalog
-- [boost-core](packages/boost-core/index.md) — the bare engine
+Each package area has an overview, then the pages that differ from the guide.
+
+- **project-boost-php** — PHP applications:
+  [overview](packages/project-boost-php/index.md),
+  [install](packages/project-boost-php/install.md),
+  [configuration](packages/project-boost-php/configuration.md)
+- **project-boost-laravel** — Laravel applications:
+  [overview](packages/project-boost-laravel/index.md),
+  [install](packages/project-boost-laravel/install.md),
+  [configuration](packages/project-boost-laravel/configuration.md)
+- **package-boost-php** — framework-agnostic Composer packages:
+  [overview](packages/package-boost-php/index.md),
+  [install](packages/package-boost-php/install.md),
+  [configuration](packages/package-boost-php/configuration.md)
+- **package-boost-laravel** — Laravel packages:
+  [overview](packages/package-boost-laravel/index.md),
+  [install](packages/package-boost-laravel/install.md),
+  [configuration](packages/package-boost-laravel/configuration.md)
+- **boost-skills** — the published skill catalog:
+  [overview](packages/boost-skills/index.md),
+  [catalog](packages/boost-skills/catalog.md)
+- **boost-core** — the bare engine:
+  [overview](packages/boost-core/index.md),
+  [install](packages/boost-core/install.md),
+  [publishing a skill package](packages/boost-core/publishing-skills.md)
 
 ## Reference
 

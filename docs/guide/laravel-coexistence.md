@@ -38,7 +38,7 @@ The two tools write guidance differently:
 | `boost-core` (via this package) | **Wholesale + markerless.** The file is regenerated in full on every sync. boost-core does not recognise laravel/boost's marker. |
 
 So when boost-core syncs, it replaces the *entire* file. That is correct and
-intended for boost-owned content — but a file that laravel/boost seeded (or that
+intended for boost-owned content. A file that laravel/boost seeded (or that
 you hand-edited) holds content boost-core did not author:
 
 - The `<laravel-boost-guidelines>` block itself — **safe under
@@ -63,20 +63,20 @@ php artisan project-boost:reconcile --force   # skip the confirmation prompt
 For each agent guidance file the project's configured agents target, it:
 
 1. **Detects** laravel/boost-seeded files by their `<laravel-boost-guidelines>`
-   marker (the same signal `vendor/bin/boost doctor` uses) — a false-positive-free
+   marker (the same signal `vendor/bin/boost doctor` uses), a false-positive-free
    check that never flags a cleanly boost-owned file.
 2. **Splits** the marker body (laravel/boost's guidelines, re-derivable by sync)
-   from the hand-authored residual outside it (not re-derivable — at risk).
+   from the hand-authored residual outside it (not re-derivable, so at risk).
 3. **Backs up** every at-risk file verbatim to `.boost-reconcile/`, so nothing
    is ever lost even if you change your mind.
 4. **Captures** the deduplicated residual into `.ai/guidelines/reconciled.md`, so
-   boost-core composes it back into every agent file on the next sync — turning
+   boost-core composes it back into every agent file on the next sync, turning
    your one-off hand-edits into durable, fanned-out guidance.
 5. **Runs `project-boost:sync`** to regenerate the files (now including the
    captured content), unless `--no-sync`.
 
-After reconciling, review `.ai/guidelines/reconciled.md` — split or rename it
-into properly named guideline files if you like — and delete `.boost-reconcile/`
+After reconciling, review `.ai/guidelines/reconciled.md`. Split or rename it
+into properly named guideline files if you like, then delete `.boost-reconcile/`
 once you are happy. (Both are safe to add to `.gitignore`.)
 
 > **Durable home for hand-written guidance.** Edit `.ai/guidelines/`, never the
@@ -94,7 +94,7 @@ the cross-agent fan-out of skills + guidelines via `project-boost:sync`.
 ## `boost.json` and the `herd link` trigger
 
 `herd link` runs `php artisan boost:update` by itself whenever `vendor/laravel/boost`
-is present — Herd's bundled valet CLI does it right after linking a site, with no
+is present. Herd's bundled valet CLI does it right after linking a site, with no
 prompt. `boost:update` re-runs laravel/boost's installer: it rewrites the guidance
 files inside its `<laravel-boost-guidelines>` marker and reinstalls its skill
 directories into the agent skill folders. Neither is coordinated with
@@ -102,7 +102,7 @@ directories into the agent skill folders. Neither is coordinated with
 directories sit alongside (and unfiltered by) the ones this package fans out.
 
 The clean stop is to retire `boost.json`, and a successful `project-boost:sync`
-now does that for you — archiving it rather than deleting it, and only after its
+now does that for you, archiving it rather than deleting it, and only after its
 agent list has been adopted into your own config.
 
 Why it is safe:
@@ -114,7 +114,7 @@ Why it is safe:
 - This package does not read it either: every sync re-derives laravel/boost's
   guidelines and skills from `vendor/laravel/boost/.ai/`.
 - `config/boost.php` — laravel/boost's *Laravel* config file (MCP toggles, browser
-  logs, rules) — is a different file and is untouched.
+  logs, rules) is a different file and is untouched.
 
 Why it works: `boost:update` returns early when the file is missing or has no agents
 (`! $config->isValid() || empty($config->getAgents())`), so the Herd trigger becomes
@@ -144,16 +144,16 @@ Run `php artisan boost:install` to bring the file (and laravel/boost's own write
 agents to open `.ai/rules/index.md` (a glob → rule-file map) before editing, and its
 `record-rule` MCP tool writes there. boost-core has no `.ai/rules` pipeline at all.
 
-Nothing needs copying, because the rules are *path-scoped and read on demand* — the
+Nothing needs copying, because the rules are *path-scoped and read on demand*, the
 opposite of `.ai/guidelines/`, which is inlined wholesale into every guidance file.
 Inlining them would duplicate content agents already fetch and throw away the glob
 scoping that makes them cheap.
 
-What matters is that the *instruction* reaches every agent, not just the one talking
-to laravel/boost's MCP server. It does: `project-boost:sync` injects laravel/boost's
+The *instruction* still has to reach every agent, including the ones with no MCP
+connection. It does: `project-boost:sync` injects laravel/boost's
 own `boost/core` guideline into the assembly, and that fragment carries the directive
 (laravel/boost 2.5+; 2.4 has no rules feature). A test pins the injection so it can't
 break silently.
 
 A project WITHOUT this wrapper gets no laravel/boost guidance at all, so its agents
-are never told `.ai/rules` exists — `boost doctor` says so when the directory is there.
+are never told `.ai/rules` exists. `boost doctor` says so when the directory is there.

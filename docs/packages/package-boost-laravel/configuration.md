@@ -38,7 +38,7 @@ The three Laravel skills are untagged, so they ship regardless.
 
 ## Inheritance and coexistence
 
-Three relationships, with distinct shapes:
+Three relationships:
 
 - **Inherits from `package-boost-php`.** A hard Composer dependency. Everything
   that package ships is available without re-declaring it. This package layers

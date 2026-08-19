@@ -75,7 +75,7 @@ rescued skill's own requires ship as well.
   dependent ships degraded. Rescue never overrides an explicit deny.
 - **Missing deps warn, never fail.** A require naming a skill that exists
   nowhere is a sync warning + `boost doctor` finding, not an error.
-- **Cycles are legal.** `a ⇄ b` simply co-ships.
+- **Cycles are legal.** `a ⇄ b` co-ships.
 - **Malformed `boost-requires`** (not a string) warns at sync and is an
   **error** in `boost validate --strict`. Unlike `boost-tags`, it does not
   fail closed, because requires gate completeness, not scoping.

@@ -17,6 +17,7 @@
     "homepage": "https://github.com/sandermuller/boost-core",
     "license": "MIT",
     "type": "library",
+    "version": "1.4.0",
     "authors": [
         {
             "name": "Sander Muller",

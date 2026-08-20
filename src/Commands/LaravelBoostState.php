@@ -29,8 +29,8 @@ final class LaravelBoostState
      * Its `boost.json` stores `Agent::name()` values (snake_case), ours are
      * kebab-case enum values; the only spelling that differs is
      * `claude_code` → `claude-code`, so a `_` → `-` swap covers the whole set.
-     * Agents boost-core has no case for (`antigravity`, `factory`, `grok_build`,
-     * `pi`, `zed`) are unmappable and returned separately rather than dropped, so
+     * Agents boost-core has no case for (`factory`, `grok_build`, `pi`, `zed`)
+     * are unmappable and returned separately rather than dropped, so
      * callers can say why an agent didn't carry over.
      *
      * @return array{agents: list<Agent>, unmappable: list<string>}

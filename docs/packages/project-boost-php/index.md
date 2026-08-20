@@ -14,7 +14,7 @@ Each family package has its own repository and its own release cadence. This sit
 
 Building a **Laravel** application? Install
 [`project-boost-laravel`](/packages/project-boost-laravel/) instead. It layers
-`laravel/boost` coexistence on the same nine-agent fan-out.
+`laravel/boost` coexistence on the same fan-out.
 
 ## Two skills
 

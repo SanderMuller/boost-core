@@ -29,7 +29,7 @@ Each family package has its own repository and its own release cadence. This sit
 
 `project-boost:install` calls `boost:install --mcp`, so `laravel/boost` writes
 its MCP client config exactly as it always does. `project-boost:sync` then takes
-over for the nine-agent fan-out.
+over for the fan-out.
 
 ## Who owns which file
 

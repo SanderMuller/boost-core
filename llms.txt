@@ -72,7 +72,7 @@ the install guide is linked as raw Markdown for direct agent fetching.
 ## Family wrappers
 
 - [project-boost-laravel](https://github.com/sandermuller/project-boost-laravel):
-  Laravel applications — `laravel/boost` MCP coexistence + nine-agent fan-out.
+  Laravel applications — `laravel/boost` MCP coexistence + tag filter + remote skills.
 - [project-boost-php](https://github.com/sandermuller/project-boost-php): PHP
   applications on any framework or none.
 - [package-boost-php](https://github.com/sandermuller/package-boost-php):

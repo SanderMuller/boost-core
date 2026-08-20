@@ -9,7 +9,7 @@ which one:
 | You are building | Install | It ships |
 |---|---|---|
 | A PHP application (not a package) | [`sandermuller/project-boost-php`](/packages/project-boost-php/) | Application-developer skills — dependency injection, legacy coexistence, and the `foundation` guideline |
-| A Laravel application | [`sandermuller/project-boost-laravel`](/packages/project-boost-laravel/) | `laravel/boost` MCP coexistence, nine-agent fan-out, tag filter, remote skills |
+| A Laravel application | [`sandermuller/project-boost-laravel`](/packages/project-boost-laravel/) | `laravel/boost` MCP coexistence, tag filter, remote skills, origin tracing |
 | A framework-agnostic Composer package | [`sandermuller/package-boost-php`](/packages/package-boost-php/) | Package-author skills, plus the `lean` and `gitattributes` commands |
 | A Laravel package | [`sandermuller/package-boost-laravel`](/packages/package-boost-laravel/) | Laravel package skills, plus the `.mcp.json` emitter |
 | Your own skill bundle or tooling | [`sandermuller/boost-core`](/packages/boost-core/) | The bare sync engine. You supply the skills |

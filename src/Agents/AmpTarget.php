@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
+use Override;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\Command;
 
@@ -34,6 +35,7 @@ final class AmpTarget extends AgentTarget
      * Amp commands carry no frontmatter — the whole file is the prompt.
      * Emit body only, so a frontmatter block does not leak into it.
      */
+    #[Override]
     public function formatCommandContent(Command $command): string
     {
         return $command->body;
@@ -45,6 +47,7 @@ final class AmpTarget extends AgentTarget
      * base `transpileCommandBody()` emits placeholders verbatim AND
      * surfaces an "Amp has no placeholder syntax" warning per command.
      */
+    #[Override]
     protected function wrapTranspiledBody(Command $command, string $transpiledBody): string
     {
         return $transpiledBody;

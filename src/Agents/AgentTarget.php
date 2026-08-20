@@ -2,7 +2,6 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
-use SanderMuller\BoostCore\Contracts\BoostWrapperContract;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;
@@ -122,7 +121,18 @@ abstract class AgentTarget
             $writes[] = new PendingWrite(
                 relativePath: $this->skillsDirectoryRelative() . '/' . $this->skillRelativePath($skill),
                 content: $this->formatSkillContent($skill),
+                pruneLegacyFlatSibling: true,
             );
+
+            // Assets ride the same manifest + stale-cleanup as the skill file,
+            // so a removed asset (or skill) reaps its emitted copies — no
+            // dedicated asset tracking exists or is needed.
+            foreach ($skill->assets as $asset) {
+                $writes[] = new PendingWrite(
+                    relativePath: $this->skillsDirectoryRelative() . '/' . $skill->name . '/' . $asset->relativePath,
+                    content: $asset->contents,
+                );
+            }
         }
 
         return $writes;
@@ -135,8 +145,9 @@ abstract class AgentTarget
      *
      * Returns `{writes, warnings}` so per-command transpile warnings
      * (e.g. "Cursor has no placeholder support; body emitted verbatim")
-     * thread back up to `SyncResult::errors`. Warnings are lenient — they
-     * surface to the operator but never abort the sync.
+     * thread back up to `SyncResult::diagnostics`. Warnings are lenient —
+     * they surface to the operator but never abort the sync (and never
+     * fail the CLI's exit code, unlike `SyncResult::errors`).
      *
      * @param  list<Command>  $commands
      * @return array{writes: list<PendingWrite>, warnings: list<string>}

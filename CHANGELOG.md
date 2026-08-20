@@ -5,7 +5,336 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.1.1...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.7.0...HEAD)
+
+## [1.7.0](https://github.com/sandermuller/boost-core/compare/1.6.1...1.7.0) - 2026-08-19
+
+<!-- verified-sha: 939e048fdf32f7af54f285c4c40e2f82bf5fb7e6 -->
+Antigravity joins the fan-out, and the family gets a documentation site.
+
+### Added
+
+- **Antigravity is a selectable agent.** `Agent::ANTIGRAVITY` reads the two paths Codex and Copilot already write — root `AGENTS.md` for guidelines and `.agents/skills/<name>/SKILL.md` for skills — matching `laravel/boost`'s own Antigravity agent. Selecting it next to one of those agents adds no new file; it exists so an Antigravity-only project can pick its own agent in `boost install` and receive the paths it reads, instead of having to know that "Codex" writes them.
+  
+  Antigravity publishes no committable command directory, so `boost sync` writes no command files for it. `boost doctor` says so: when `.ai/commands/` is populated and Antigravity is selected, the **Command-emit limitations** section now names it alongside Codex and Gemini and points at the skill route, which is the surface boost does write for it. Author the workflow as a skill and Antigravity picks it up.
+  
+- **A documentation site for the whole boost family.** [https://sandermuller.github.io/boost-core/](https://sandermuller.github.io/boost-core/) carries the guide, one section per family package, and the full CLI and configuration reference. The README is now the entry point rather than the manual.
+  
+
+### Internal
+
+- The `Agent` enum backing values stay additive, as `PUBLIC_API.md` promises: `antigravity` is new, nothing existing moved. A wrapper resolving `list<Agent>` through `Agent::target()` needs no change.
+- The end-to-end suite regained PHP 8.3 compatibility. It had picked up PHP 8.4's parenthesis-free constructor chaining in fifteen places, which parses only on 8.4 — the declared floor is `^8.3`, so both 8.3 CI legs could not run the suite at all. Shipped code was never affected.
+- CI hardening: workflow checkouts drop the persisted git credential where nothing pushes, a `zizmor` job audits every workflow on each change, and Dependabot waits seven days before proposing a freshly published version.
+
+### Upgrading
+
+Nothing to do. No public API change and no configuration change. To use the new agent, add `Agent::ANTIGRAVITY` to `withAgents([...])` — or re-run `boost install` and pick it from the list.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.6.1...1.7.0
+
+## [1.6.1](https://github.com/sandermuller/boost-core/compare/1.6.0...1.6.1) - 2026-08-15
+
+<!-- verified-sha: ba06630a3212c933d5ac1582e44623e59aa26064 -->
+A one-line correction to advice 1.6.0 shipped. `boost doctor` tells you how to stop `laravel/boost` re-seeding your guidance files, and which half of that you have to do by hand depends on the `sandermuller/project-boost-laravel` version installed. The threshold was set one release too low.
+
+### Fixed
+
+- **`boost doctor` named the wrong wrapper version for the `boost.json` hand-off.** Retiring `boost.json` — which is what stops `boost:update`, and therefore the `herd link` trigger, from re-seeding — ships in **project-boost-laravel 1.3.0**; `src/Coexistence/` and the `--keep-boost-json` flag are absent from the 1.2.0 tag. 1.6.0 gated the advice at `1.2.0`, so a project pinned to 1.2.x was told a successful `project-boost:sync` archives the file for it and could sit waiting for something that never happens. It now gets the manual instruction, exactly as it did before 1.6.0. Projects on 1.3.0 or later are unaffected, and both branches of the advice are pinned by tests.
+
+### Upgrading
+
+Nothing to do. No public API change, no configuration change, and no change to what `boost sync` writes.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.6.0...1.6.1
+
+## [1.6.0](https://github.com/sandermuller/boost-core/compare/1.5.0...1.6.0) - 2026-08-15
+
+<!-- verified-sha: e6b0f4eac39d9140642b756b0045267f7216d27f -->
+A coexistence release. On a project that also runs `laravel/boost`, both tools write into the same agent skill directories — and boost-core's post-sync sweep deleted whatever it had not just written, which meant laravel/boost's bundled skills, on every sync. Nothing said so. Meanwhile `herd link` reinstalled them behind your back, so the two tools took turns undoing each other.
+
+### Fixed
+
+- **Sync no longer deletes — or adopts — files another tool wrote into a boost-managed directory.** The post-sync sweep treated everything under a boost-managed `.gitignore` pattern that the run had not rewritten as stale. `laravel/boost` installs its bundled skills as real directories inside those same agent skill directories, so each `boost sync` removed them silently, and `herd link` put them straight back (it runs `php artisan boost:update` on its own whenever `vendor/laravel/boost` is present). The sweep is now gated on the ownership manifest: **boost deletes only what it owns.** Anything else is preserved and reported in one aggregated INFO. `sync --check` matches, so a CI drift check on a coexistence project stays green.
+  
+  The manifest write is filtered the same way. It used to record every file found under the managed directories, which adopted a preserved foreign file as boost's own output and let the *next* sync delete it — preservation was a one-sync reprieve. Only paths this sync wrote, paths boost already owned, and wrapper-claimed paths are recorded now.
+  
+  Three carve-outs keep the sweep honest. A project with no manifest file at all (a first sync, or `withGitignoreManagement(false)`) keeps the previous clean-slate behaviour, since nothing there can prove a file is not boost's own leftover. An existing but entry-less manifest still gates — "boost owns nothing right now" must not re-arm deletion. And a managed-ignore pattern naming a file exactly (`AGENTS.md`, not `dir/`) remains boost's own proof of authorship, so a de-selected agent's stale guidance is still reaped.
+  
+
+### Added
+
+- **`boost doctor` explains the whole coexistence surface.** When `laravel/boost` is installed, the section now maps the two command families that share the `boost` name — `php artisan boost:*` (laravel/boost), `vendor/bin/boost *` (boost-core), `php artisan project-boost:*` (the wrapper) — and names the trigger behind "my files changed on their own": `herd link` runs `php artisan boost:update` by itself whenever `vendor/laravel/boost` is present, re-seeding guidance and skills with nobody typing a boost command.
+  
+  It also reports what that coexistence leaves on disk: skill directories in boost-managed locations that boost-core does not own (they reach one agent only and never enter the fan-out), skill targets that are symlinks into the source tree (the agent then reads raw source instead of the rendered, tag-filtered output, and `sync --check` shows no drift), and host-authored `.ai/skills/<name>` directories whose name `laravel/boost`'s `boost.json` also claims — it treats that path as its own canonical copy and overwrites it with vendor content on the next install.
+  
+  Finally it spells out how to stop the automatic re-seed for good, since `.ai/skills/` is also laravel/boost's user-skill directory and its mere existence keeps `boost:update` working regardless of what `boost.json` lists.
+  
+- **`boost install` adopts laravel/boost's agent list.** Setting boost-core up on a project that ran `php artisan boost:install` first no longer means re-picking the same agents from memory: the picker pre-selects the ones recorded in `boost.json` (`claude_code` maps to `claude-code`; agents boost-core has no case for are named rather than dropped silently). Deliberately narrow — it fires only when `boost install` scaffolds the config, so an existing `withAgents([])` is never repopulated. Nothing is written without confirmation; these are picker defaults.
+  
+- **Bundled `boost-command-surfaces` skill.** Ships to projects that allowlist `sandermuller/boost-core`. It gives agents the command map, the rule for which sync to run, the three similarly-named config files (`boost.json`, `config/boost.php`, `boost.php`) and what each one is for, plus the reasons guidance files and skills change on their own — the confusion that had agents running `php artisan boost:install` in a boost-core project.
+  
+
+### Internal
+
+- `boost doctor` also explains the `.ai/rules` split: laravel/boost owns that directory, its guideline tells agents to read `.ai/rules/index.md` before editing, and its `record-rule` tool writes there. boost-core neither reads nor composes those files — they stay path-scoped and read on demand — and the instruction to read them travels only with laravel/boost's own guideline, so a project without the Laravel wrapper never learns the directory exists.
+- `SyncManifest` gained `hasUnder()` and `existsForProjectRoot()`; the manifest-claim filter lives in `ManagedFileOps::claimableManagedFiles()`. All `@internal`.
+
+### Upgrading
+
+Nothing to do. No public API change and no configuration change. On a project that also runs `laravel/boost`, the first sync after upgrading stops deleting its bundled skill directories and reports what it preserved — run `boost doctor` for the full division of labour.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.5.0...1.6.0
+
+## [1.5.0](https://github.com/sandermuller/boost-core/compare/1.4.2...1.5.0) - 2026-08-07
+
+<!-- verified-sha: 4e40e4bf782d0c1e4aedf491f070fd2ec06e2e71 -->
+Remote skill sources have been fetchable since 1.3, but declaring them was blind work: you had to already know a repo's skill names or its subdirectory layout before you could write a `withRemoteSkills()` entry. `boost remote` reads the repo first and lets you pick.
+
+### Added
+
+- **`boost remote [<owner>/<repo>]` — pick remote skills instead of declaring them blind.** The command resolves the ref, works out whether the repo publishes `.skill` release assets (bundle mode) or skill directories (path mode), reads each skill's `SKILL.md` frontmatter, and presents a checklist showing every skill with its description, its tags, and any clash with a skill the project already receives — a host `.ai/` skill that would shadow it, a vendor skill that would make the sync fail, or a `withExcludedSkills()` entry already blocking it. What you check is written to `boost.php`; what you uncheck is removed. The repo argument takes a bare `<owner>/<repo>` slug or any GitHub URL, and is prompted for when omitted. `--ref=<tag|branch|sha>` pins the source; `--mode=bundle|path` overrides detection. A new source defaults to the moving ref `latest`, and a source already declared keeps whatever version it has — re-running the picker to tick one extra skill never un-pins production config.
+- **Dependencies from the same repo are pulled in.** A remote skill's `metadata.boost-requires` can only be satisfied when the config names the dependency too: the ingester fetches the declared refs and nothing else, so `SkillDependencyResolver` has no candidate to rescue and the sync could only warn that the dependency is missing. The picker now closes the selection over `boost-requires` transitively within the repo, reports what it added and why, and warns about names the repo does not publish.
+- **Missing tags are offered up front.** Remote skills are tag-filtered exactly like vendor skills, so declaring a tagged skill without the matching `withTags()` entry writes config that never produces a file. The command detects that gap and offers to add the tags in the same run.
+- **What was downloaded is kept.** Discovery has to fetch and unpack the repo to read frontmatter at all; that content is pruned to the selection and promoted into the normal cache slot, so the `boost sync` the command offers to run afterwards needs no network. A moving ref's resolution is recorded alongside it. A cache that cannot be written is reported and skipped, never fatal.
+- `RemoteFetcher::listReleaseAssets()` reads the release payload `fetchAsset()` already fetches, so listing a repo's bundles costs one request instead of one per asset.
+
+### Changed
+
+- **The starter `boost.php` now ships `->withRemoteSkills([])` and imports `RemoteSkillSource`.** Existing configs are untouched, and nothing about sync behaviour changes. Without the empty array present, the first entry has to be spliced into the fluent chain, and php-parser's insertion heuristic produces cramped output; with it, writing an entry is a clean in-place array rewrite and the import keeps the emitted call short instead of fully-qualified.
+- The starter template moved out of `InstallCommand` into `SanderMuller\BoostCore\Config\ConfigScaffolder`, so `boost install` and `boost remote` scaffold identically rather than from two drifting copies. `InstallCommand::scaffoldTarget()` still exists and delegates to it.
+
+### Internal
+
+- `withRemoteSkills([...])` is edited element-wise by a dedicated AST writer alongside `BoostConfigWriter`, matched on `(source, mode)` and deliberately ignoring the version so a re-pin updates the entry rather than appending a second one for the same repo — the shape the ingester rejects as a collision. It refuses outright, writing nothing and naming the offending line, when the array holds an entry it cannot read back, such as a raw `new RemoteSkillSource(...)`.
+- **Dropped the abandoned `rector/type-perfect` dev dependency.** `tomasvotruba/type-coverage` 2.3.0 — the package type-perfect's own abandonment notice points at — absorbed it and ships its config, so requiring both registered `MethodNodeAnalyser` twice and PHPStan refused to boot. Only CI hit it: `composer.lock` is not committed, so CI resolves fresh and picked up 2.3.0 the day it shipped while local installs stayed on the working combination. The type-perfect rules are unchanged; on the PHP 8.4 analysis job they now load through one package instead of two. The `^2.1` constraint is deliberately not raised, since 2.3.0 requires PHP 8.4 and the test matrix still covers 8.3.
+
+### Upgrading
+
+Nothing to do. `boost remote` is additive, no public API changed, and existing `withRemoteSkills()` entries keep working exactly as before.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.4.2...1.5.0
+
+### Fixed
+
+- **Sync no longer deletes — or adopts — files another tool wrote into a boost-managed directory.** The post-sync sweep treated everything under a boost-managed `.gitignore` pattern that the current sync didn't rewrite as stale. `laravel/boost` installs its bundled skills as real directories inside those same agent skill directories, so every `boost sync` silently deleted them — and `herd link` runs `php artisan boost:update` on its own whenever `vendor/laravel/boost` is present (Herd's valet CLI, verified in `Resources/valet/cli/app.php`), which put them straight back. The sweep is now gated on the ownership manifest: boost deletes only what it owns, preserves the rest, and reports one aggregated INFO naming what it kept. `sync --check` matches, so CI drift checks don't go red on a coexistence project. Two carve-outs: with no manifest FILE at all (first sync, unmanaged `.gitignore`) the pass stays clean-slate — an existing but entry-less manifest still gates, since "boost owns nothing right now" must not re-arm deletion of another tool's files, and a managed-ignore pattern naming a file exactly (`AGENTS.md`) is still boost's own proof of authorship, so a dropped agent's stale guidance is reaped as before. The manifest write is filtered to match: it used to record every file found under the managed directories, which adopted a preserved foreign file into boost's ownership and let the *next* sync delete it — only paths this sync wrote, already owned, or wrapper-claimed are recorded now.
+
+### Added
+
+- **`boost doctor` maps the two colliding `boost` command surfaces.** When `laravel/boost` is installed, the coexistence section now spells out which entry point owns which verb — `php artisan boost:*` (laravel/boost), `vendor/bin/boost *` (boost-core), `php artisan project-boost:*` (the wrapper) — names the sync to run for that project's layout, and flags the `herd link` → `boost:update` trigger that re-seeds guidance without anyone typing a boost command.
+- **`boost doctor` flags foreign skill directories and contested skill names.** It lists skill directories in boost-managed locations that boost-core does not own (they reach only that one agent and never enter the fan-out), and says so plainly when there is no manifest yet (the just-`boost:install`ed project) instead of staying silent, and warns when a host-authored `.ai/skills/<name>` collides with a name in `laravel/boost`'s `boost.json` — laravel/boost treats that path as its own canonical copy and overwrites it with vendor content on the next `boost:install` / `boost:update`.
+- **`boost doctor` explains the `.ai/rules` split.** laravel/boost's bundled guideline tells agents to read `.ai/rules/index.md` before editing, and its `record-rule` MCP tool writes there. boost-core composes `.ai/guidelines/` and `.ai/skills/` and has no `.ai/rules` pipeline — the rule files stay path-scoped and read on demand. When the directory exists, doctor says who owns it, notes that the instruction to read it only travels with laravel/boost's guideline (so a project without the wrapper never gets it), and points always-on guidance at `.ai/guidelines/`.
+- **`boost doctor` states how to stop the automatic re-seed.** `.ai/skills/` is also laravel/boost's user-skill directory: its installer adopts every directory there and publishes it to its own agents (symlink or copy), bypassing boost-core's rendering and tag filtering, and that directory's mere existence keeps `boost:update` doing work regardless of `boost.json`'s `skills` list. On a wrapper project the clean exit is to delete `boost.json`: only `boost:install` and `boost:update` read it (the MCP server, boost-core, and the wrapper all do not), and `boost:update` refuses to run without it, so the `herd link` trigger becomes a no-op. On a wrapper from 1.2 on, doctor instead notes that `project-boost:sync` removes the file for you (`--keep-boost-json` opts out). Below that, doctor says to delete it by hand, with the narrower `"guidelines": false` + `"skills": []` + `->withSkillsPath(...)` alternative for projects that want to keep the file — and warns that a project without the wrapper must keep `boost.json`, since nothing else would deliver laravel/boost's bundled content. Stated as options; no default changed.
+- **`boost doctor` warns about symlinked skill targets.** laravel/boost links `<agent skills dir>/<name>` straight at the source tree; boost-core never writes through a live symlink, so its rendered, tag-filtered output is silently displaced by the raw source while `sync --check` reports no drift.
+- **`boost install` adopts laravel/boost's agent list.** On a project that ran `php artisan boost:install` first, the agent picker now pre-selects the agents recorded in laravel/boost's `boost.json` (its snake_case names map onto the enum; `claude_code` → `claude-code`), so adopting boost-core doesn't mean re-picking the same list from memory. Deliberately narrow: it fires only when `boost install` SCAFFOLDS the config — an existing `boost.php` is the operator's decision, including `withAgents([])`, which reads like "not adopted yet" but means every agent was turned off and must not be repopulated from laravel/boost's state. Nothing is written without confirmation; these are picker defaults. Agents boost-core has no case for (`antigravity`, `factory`, `grok_build`, `pi`, `zed`) are named as not carried over rather than dropped silently. This is the adoption step `project-boost:sync` waits for before retiring `boost.json`.
+- **Bundled `boost-command-surfaces` skill.** Ships to projects that allowlist `sandermuller/boost-core`. It gives agents the command map, the "which sync do I run" rule, the editing rules for `.ai/` vs `boost.json`, and the reasons guidance files and skills change on their own — the confusion that made agents run `php artisan boost:install` in a boost-core project.
+
+## [1.4.2](https://github.com/sandermuller/boost-core/compare/1.4.1...1.4.2) - 2026-07-29
+
+<!-- verified-sha: b61dd50a6f1f239e7a58dabf7b918fda6576c411 -->
+A compatibility patch. `sandermuller/boost-core` pinned `sebastian/diff` to `^7.0`, which made it a hard blocker for any consumer that wanted PHPUnit 13 — and therefore Pest 5. The pin reached those projects three ways: a direct require-dev, and transitively through `sandermuller/boost-skills` and `sandermuller/project-boost-laravel`.
+
+### Changed
+
+- **`sebastian/diff` constraint widened to `^7.0 || ^8.0 || ^9.0`.** PHPUnit 13.2 requires `sebastian/diff ^9.0`, so the old pin left Composer with nothing to resolve. Surfaced by a downstream Pest 4 → 5 upgrade.
+
+### Internal
+
+- `boost where --diff=<name>` now builds its unified diff with `StrictUnifiedDiffOutputBuilder` instead of `UnifiedDiffOutputBuilder`, which `sebastian/diff` 9.0 removed — widening the constraint alone would not have been enough. The `--- vendor:` / `+++ host:` header lines come from the builder's `fromFile` / `toFile` options rather than being written by hand, so the text of the diff is unchanged; the only visible difference is that those two lines are no longer dimmed. Only options present in both diff 7 and diff 9 are passed, so behaviour is identical on every supported major.
+- **CI now resolves dependencies on branches other than `main`.** Composer guesses the root package version from the checked-out ref, so on a feature branch it resolved as `dev-<sha>` and the `extra.branch-alias` entry never applied. The self-referential `sandermuller/boost-skills` dev dependency requires `sandermuller/boost-core`, so nothing satisfied it and every workflow died at `composer install`. The four PHP workflows now set `COMPOSER_ROOT_VERSION: dev-main`, and the alias itself — still pointing at `1.2.x-dev` — was bumped to `1.4.x-dev`.
+- `CurlHttpTransport::get()` rejects an empty URL up front with a `network-unreachable` `RemoteFetchException` instead of handing `''` to cURL, and `HttpTransport::get()` documents that failure mode. Covered by new tests.
+- Style-only rewrites in `SkillAssetCollector` and `GuidanceWriter` for the current Rector rule set.
+
+### Upgrading
+
+Nothing to do. No public API change, no configuration change, and `boost where --diff` output is unchanged. `sandermuller/boost-skills` (`^1.4`) and `sandermuller/project-boost-laravel` (`^1.0`) already accept this release.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.4.1...1.4.2
+
+## [1.4.1](https://github.com/sandermuller/boost-core/compare/1.4.0...1.4.1) - 2026-07-26
+
+<!-- verified-sha: b3b1f5c826f417247ec34674b0931a92eaa46e44 -->
+A single-bug patch, surfaced by production dogfood: an advisory warning was travelling down the fatal channel, so a fully successful sync reported errors. Any project with a Cursor-, Amp-, Kiro- or Junie-targeted command using argument placeholders was affected.
+
+### Fixed
+
+- **Command-transpile advisory warnings no longer fail the sync.** Cursor/Amp's "no placeholder syntax" warning and Kiro/Junie's named-argument warnings were pushed into `SyncResult::errors` — the fatal channel — rather than `SyncResult::diagnostics`. Two consequences for any project with a command using `$ARGUMENTS`/`$N`/`$name` on one of those agents. First, `boost sync`, `boost where` and `project-boost:sync` exited non-zero, which broke `composer install`/`composer update` wherever `project-boost-laravel` wires the sync into `post-install-cmd`. Second, the engine reads that same channel as a partial-sync signal, so the clean-slate stale pass, the manifest-orphan reap and the `.boost/manifest.json` write were skipped on every sync — those projects never built an ownership record. The warnings now route through `SyncResult::diagnostics`, matching `Diagnostic`'s documented contract and every other lenient warning in the pipeline. They still render under the operator-visible "Diagnostics" section of `boost sync` and `boost where`; the exit code and the error-state gate are what change.
+
+### Docs
+
+- Corrected the `command-arguments` skill and `AgentTarget::planCommands()`'s docblock, which both described the old (incorrect) routing through `SyncResult::errors`.
+- README: propagated skill dependencies through the laravel/boost comparison table, the tag-filtering rule (which contradicted the dependency-rescue section) and the `boost validate` / `boost doctor` CLI rows.
+
+### Internal
+
+- Regression coverage on three surfaces: the engine (no errors, command body written verbatim, warning present in `diagnostics`), the second-order manifest write, and the CLI exit code for both `boost sync` and `boost sync --check`.
+- Removed a duplicated `fanOut()` docblock that had to be hand-mirrored on every signature change.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.4.0...1.4.1
+
+## [1.4.0](https://github.com/sandermuller/boost-core/compare/1.3.1...1.4.0) - 2026-07-10
+
+<!-- verified-sha: 2198f215e09619ddc9b4df088c0586d6bc525970 -->
+Skills can now declare hard dependencies on other skills. Sync guarantees the dependency ships whenever the dependent does — including pulling a dependency back in when tag filtering would otherwise have dropped it. Designed against the real cross-reference graph of `sandermuller/boost-skills`, which dogfoods the feature.
+
+### Added
+
+- **Skill dependencies via `metadata.boost-requires`.** A skill lists the skills it hands off to, as bare names in the Agent Skills standard's `metadata` map (space-delimited, mirroring `boost-tags`):
+  
+  ```yaml
+  ---
+  name: interview
+  metadata:
+    boost-requires: "write-spec"
+  ---
+  
+  
+  
+  
+  
+  
+  
+  ```
+  Whenever the skill ships, every required name ships too. A dependency that tag filtering would drop is *rescued* — pulled in despite the tag mismatch, transitively, and surfaced as an INFO diagnostic so the pull-in is always visible. The semantics stay predictable: names bind to whatever provider wins resolution (a host `.ai/skills/` override satisfies the dependency), `withExcludedSkills()` always wins over rescue (warning, never an override), a dependency that exists nowhere warns without failing the sync, cycles simply co-ship, and candidate collisions follow the existing resolver rules (`CollidingSkillsException` unless `--force`; same-provider duplicates always throw). `sync --check` previews rescues identically to a real sync.
+  
+- **`boost validate` checks dependencies** over the same resolved set a sync ships: a malformed `boost-requires` is an error (fails `--strict` — unlike sync, which warns and keeps the skill), an unsatisfied dependency is a warning, and a require that crosses a tag boundary is an info-level nudge under `-v` to confirm the hard dependency is intentional.
+  
+- **`boost doctor` gained a "Skill dependencies" section** reporting unsatisfied or excluded dependencies; silent when no installed skill declares any.
+  
+- **Wrapper-integration surface:** the `BoostRequires` parse seam (`parse()` / `declaresRequires()`, mirroring `BoostTags` — names are not case-folded, and malformed values do not fail closed) and appended `Skill::$requires` / `Skill::$requiresValid` constructor properties, per the frozen-constructor append rule. Injected vendor skills participate in rescue on both sides.
+  
+
+### Docs
+
+- New README "Skill dependencies" section, including authoring guidance: declare only hard hand-offs — conditional references ("delegate where synced") and routing notes ("NOT for X — use Y") stay undeclared, or rescue drags scoped tooling into projects that opted out via tags.
+
+### Internal
+
+- New `SkillDependencyResolver` (the rescue fixpoint) with a full unit matrix — transitive chains, cycles, collision and duplicate handling, exclusion fallback, aggregated warnings — plus end-to-end coverage for rescue, `--check` parity, pruner interaction, and injected + remote skill sources. The tag filter now returns dropped skills grouped by reason so rescue candidates stay available through the whole pipeline.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.3.1...1.4.0
+
+## [1.3.1](https://github.com/sandermuller/boost-core/compare/1.3.0...1.3.1) - 2026-07-04
+
+<!-- verified-sha: 5f93b71e52846babf145d7b37681eb6ae76e3760 -->
+### Fixed
+
+- **`boost sync --check` now previews the deletions a real sync performs.** Two destructive passes were invisible to `--check`: the manifest-orphan reap (a de-selected agent's boost-owned guidance file, or a dormant emitter's output) and the dead-symlink prune. A `--check` CI gate could report no drift while the next real sync deleted a tracked file. Both now emit `WOULD_DELETE` under `--check`, so the dry run predicts what a real sync removes; the ownership manifest is still never written on a check run. One narrow residual — a dead symlink occupying a path the sync also re-emits — is documented in the code.
+  
+- **The remote tarball extractor validates every entry before writing a byte.** `TarballExtractor` now rejects path-traversal (`..`), absolute-path, and symlink members, and enforces the per-file / total / entry-count caps, from the archive listing *before* extraction runs — closing a window where those checks only ran after `tar` had already extracted to a staging directory. Enumeration behaves identically under GNU tar and bsdtar, and a post-extraction scan of the staged tree remains as defense-in-depth. Reachable only via path-mode GitHub tarball fetches; behavior for well-formed archives is unchanged.
+  
+
+### Docs
+
+- Documented `boost new` (scaffold a skill or guideline) and `boost scan` (re-run the vendor allowlist picker) in the README CLI reference — both are live, non-hidden commands that were missing from the table.
+
+### Internal
+
+- Added committed adversarial tarball fixtures and direct tests for the traversal, absolute-path, symlink, and total-size guards, plus `--check` parity tests for the orphan-reap and dead-symlink paths.
+- Pest's `.phpunit.cache/` result-cache directory is now gitignored.
+- Resolved a Rector/Pint disagreement over a docblock-only import in `SkillAssetCollector`.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.3.0...1.3.1
+
+## [1.3.0](https://github.com/sandermuller/boost-core/compare/1.2.1...1.3.0) - 2026-07-02
+
+<!-- verified-sha: 794417116f8e88a444c81a1ac5f9ecefe45a00a9 -->
+Skills stop being single-file. A nested skill's companion files — `scripts/`, `references/`, `examples/` — now emit beside the rendered `SKILL.md` in every configured agent's skill directory, so a skill that ships a runnable script no longer has to embed it in the skill body and have the agent materialize it at runtime.
+
+### Added
+
+- **Skill asset-sibling emission.** Every non-`SKILL.*` file under a nested skill's `<name>/` directory (any depth; hidden and backup/editor-temp files excluded) is collected at load time and emitted verbatim to `<skillsDir>/<name>/<relativePath>` for each configured agent. Applies uniformly to host-authored `.ai/skills/`, Composer vendor, wrapper-injected, and remote skills — remote bundles' `scripts/` siblings, previously extracted into the cache but never fanned out, now emit too. Assets ride the existing sync manifest, clean-slate stale cleanup (removing an asset — or the whole skill — reaps the emitted copies on the next sync), and tag-gating (a filtered skill ships no assets). Flat-layout skills (`skills/<name>.md`) have no directory to own and collect nothing.
+  
+  New `@api` value type `SkillAsset` (`relativePath`, `contents`) lets a wrapper attach companion files to an injected skill; `Skill` gains an appended-with-default `assets` constructor property per its frozen-surface append rule. A wrapper injecting skills with assets must also claim each asset's emit path in `BoostWrapperContract::injectedEmitPaths()`, or a bare-CLI sync reaps the copies as stale — documented on the contract and in `PUBLIC_API.md`.
+  
+  Emitted assets are plain file writes with no executable bit — invoke scripts via their interpreter (`node .claude/skills/<name>/scripts/run.mjs`), not directly.
+  
+
+### Fixed
+
+- **Legacy flat-sibling prune no longer fires on asset writes.** The pre-existing cleanup that deletes an obsolete flat `<name>.md` after writing `<name>/SKILL.md` keyed on the path shape, so an asset emitted at a deeper `…/examples/SKILL.md` would have deleted the skill's own just-written `examples.md` sibling. The prune is now scoped to the skill's entry write explicitly. (Caught in review before this feature ever shipped — no released version was affected.)
+
+
+---
+
+**Upgrade note:** none — a strict minor over 1.2.x. Skills without companion files sync byte-identically to before. Skill packages that adopt asset siblings should floor their boost-core constraint at `^1.3`. No breaking change to configuration, CLI, hooks, or the 1.0 `@api` surface.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.2.1...1.3.0
+
+## [1.2.1](https://github.com/sandermuller/boost-core/compare/1.2.0...1.2.1) - 2026-06-19
+
+<!-- verified-sha: c91935ac8e9e686a49dc83033da6535a958ac5b4 -->
+### Added
+
+- **Paired visible-default conventions tokens.** A bare `<!--boost:conv …-->` token resolves only under boost-core. An engine with no resolver — notably `laravel/boost`, which installs a package's `SKILL.md` and preserves HTML comments verbatim — leaves it inert, so an inline token reads as a word gap and its fallback stays hidden inside the comment. The paired form closes that gap:
+  
+  ```
+  Run <!--boost:conv path="testing.runner" mode="inline"-->Pest<!--boost:conv:end--> to verify.
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  ```
+  boost-core replaces the whole span with the resolved value; the visible default doubles as the inline fallback (an explicit `fallback=` still wins). A resolver-less engine leaves both comments inert, so the visible default reads as ordinary prose — `Run Pest to verify.` — no gap. Resolution order is unchanged (declared → schema default → fallback). The ````boost:conv`fence takes the same`<!--boost:conv:end-->` marker and buffers its body as one block, so a multi-line span resolves whole; paired spans resolve before bare tokens so the open comment is never consumed as a stray unpaired token; inline-code and plain-fence examples stay literal; an orphan end marker is inert and keeps the Project Conventions block.
+  
+  The contract addition is documented in `PUBLIC_API.md` (Textual / wire formats) and `docs/conventions.md`; a new authoring skill, `conventions-token-migration`, guides vendor-skill authors migrating bare tokens to the paired form.
+  
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.2.0...1.2.1
+
+## [1.2.0](https://github.com/sandermuller/boost-core/compare/1.1.2...1.2.0) - 2026-06-19
+
+<!-- verified-sha: REPIN-TO-GREEN-MAIN-SHA -->
+### Added
+
+- **Paired visible-default conventions tokens.** A bare `<!--boost:conv …-->` token resolves only under boost-core. An engine with no resolver — notably `laravel/boost`, which installs a package's `SKILL.md` and preserves HTML comments verbatim — leaves it inert, so an inline token reads as a word gap and its fallback stays hidden inside the comment. The paired form closes that gap:
+  
+  ```
+  Run <!--boost:conv path="testing.runner" mode="inline"-->Pest<!--boost:conv:end--> to verify.
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  ```
+  boost-core replaces the whole span with the resolved value; the visible default doubles as the inline fallback (an explicit `fallback=` still wins). A resolver-less engine leaves both comments inert, so the visible default reads as ordinary prose — `Run Pest to verify.` — no gap. Resolution order is unchanged (declared → schema default → fallback). The ````boost:conv`fence takes the same`<!--boost:conv:end-->` marker and buffers its body as one block, so a multi-line span resolves whole; paired spans resolve before bare tokens so the open comment is never consumed as a stray unpaired token; inline-code and plain-fence examples stay literal; an orphan end marker is inert and keeps the Project Conventions block.
+  
+  The contract addition is documented in `PUBLIC_API.md` (Textual / wire formats) and `docs/conventions.md`; a new authoring skill, `conventions-token-migration`, guides vendor-skill authors migrating bare tokens to the paired form.
+  
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.1.2...1.2.0
+
+### Added
+
+- **Paired visible-default conventions tokens.** A bare `<!--boost:conv ...-->` token resolves only under boost-core; engines with no resolver — notably `laravel/boost`, which installs a package's `SKILL.md` and preserves HTML comments verbatim — leave it inert, so an inline token reads as a word gap and its fallback stays hidden inside the comment. The paired form `<!--boost:conv path="x" mode="inline"-->Pest<!--boost:conv:end-->` closes that gap: boost-core replaces the whole span with the resolved value (the visible default doubles as the inline fallback; an explicit `fallback=` still wins), while a resolver-less engine leaves both comments inert so the visible default reads as ordinary prose. Resolution order is unchanged (declared → schema default → fallback). Fenced yaml/json opt-in blocks take the same markers and are buffered so a multi-line span resolves as one block; paired spans resolve before bare tokens; inline-code and plain-fence examples stay literal; an orphan end marker keeps the conventions block. The new authoring skill `conventions-token-migration` documents the paired form.
+
+## [1.1.2](https://github.com/sandermuller/boost-core/compare/1.1.1...1.1.2) - 2026-06-14
+
+<!-- verified-sha: 1eae26f5e20cdb25c87ae140c08800299f7cecbe -->
+### Fixed
+
+- **Dead symlinks are now counted in `deleted=N`.** `boost sync` prunes broken legacy symlinks left by older installs, but previously discarded the removal count — those deletions were invisible in the summary line. They are now recorded as deletions and listed in the delete attribution. The attribution message is also corrected: it previously claimed every deleted path had "a source no longer eligible", which was wrong for a dead-symlink prune. The message now names that cause alongside the source-ineligible ones. (#147)
+  
+- **`boost doctor` version-gates the `project-boost:reconcile` offer.** The foreign-seeded guidance warning now names `php artisan project-boost:reconcile` — the guided takeover introduced in `sandermuller/project-boost-laravel` 1.1.0 — only when the installed wrapper is actually ≥ 1.1.0. On an older wrapper that command does not exist; `project-boost:sync` is the correct alternative and is shown instead. Dev or unparseable wrapper versions also fall back conservatively to avoid pointing at a possibly-absent command.
+  
+
+### Changed
+
+- **Symfony dependency constraints widened to `^6.4||^7.0||^8.0`** (was `^7.0||^8.0`). boost-core now installs alongside symfony 6.4 LTS consumers — for example `rectorphp/rector-src`, which pins `symfony/console ^6.4`. Runtime code uses only basic Console/Finder/Process/Yaml APIs present in symfony 6.4; the dev toolchain (pest/paratest) continues to require symfony ≥ 7.4 and CI runs on 7.4/8.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.1.1...1.1.2
 
 ## [1.1.1](https://github.com/sandermuller/boost-core/compare/1.1.0...1.1.1) - 2026-06-05
 
@@ -207,6 +536,18 @@ The final 1.0-readiness release. A family + downstream-consumer review of the pu
   
   
   
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   ```
   Returning `null` no longer compiles; return `[]` to skip. See [`UPGRADING.md`](../UPGRADING.md). This is the only `FileEmitter` shape change planned before `1.0` — the signature locks at the `1.0` tag.
   
@@ -241,6 +582,18 @@ The 1.0-readiness release: boost-core now **declares and locks its public API su
   ->withTags(Tag::Php, Tag::Jira)
   // after
   ->withTags([Tag::Php, Tag::Jira])
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   
@@ -694,24 +1047,6 @@ A bare-CLI `boost sync` / `boost sync --check` carries no injection args, so the
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Sourced from production dogfood: a downstream Laravel consumer added a workflow-rule note to their CI explicitly forbidding `boost sync` invocations — documenting a workaround for what should be an engine guarantee.
 
@@ -734,24 +1069,6 @@ final class BoostWrapper implements BoostWrapperContract
         return ['.agents/skills/some-injected-skill/SKILL.md', /* ... */];
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -809,25 +1126,6 @@ Boost-core's retired-paths cleanup walks `.github/skills/` (retired in 0.9.1) on
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 This was the older Copilot path-consumption route for `laravel/mcp`-shipped skills. Operators who upgraded across the 0.9.x line carry these symlinks until cleanup removes them.
 
@@ -874,25 +1172,6 @@ gh release create 0.10.3 \
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 **Full Changelog**: https://github.com/SanderMuller/boost-core/compare/0.10.2...0.10.3
 
@@ -932,26 +1211,6 @@ Before 0.10.2, all three failure modes produced the same visible signal as a suc
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Operators get a concrete fix path (`chmod`, identify the holding process, retry sync) instead of opaque persistent drift.
 
@@ -982,26 +1241,6 @@ gh release create 0.10.2 \
     --target main \
     --title "v0.10.2" \
     -F internal/release-notes-0.10.2.md
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1046,27 +1285,6 @@ Retired paths still present on disk. Next `vendor/bin/boost sync` will delete:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 When Copilot is not in the project's active agents, the audit surfaces `Copilot not in active agents. Retired-paths registry is Copilot-scoped — nothing to audit.` rather than silently returning clean, since a non-Copilot project may have `.github/skills/` from an unrelated source that boost-core has no intent to delete.
 
@@ -1081,27 +1299,6 @@ Registry extracted to a single source of truth (`SyncEngine::RETIRED_COPILOT_PAT
 ```
 ℹ 3 of 4 allowlisted vendor(s) ship no conventions-schema.json. Inspect
   `boost doctor` vendor allowlist section for the per-vendor list.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1144,27 +1341,6 @@ gh release create 0.10.1 \
     --target main \
     --title "v0.10.1" \
     -F internal/release-notes-0.10.1.md
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1247,28 +1423,6 @@ gh release create 0.10.0 \
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 **Full Changelog**: https://github.com/SanderMuller/boost-core/compare/0.9.7...0.10.0
 
@@ -1324,29 +1478,6 @@ rm CLAUDE.md && vendor/bin/boost sync
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 `boost.php` and `.ai/` are authoritative — the rendered file is derived. Removing it is non-destructive; the next sync re-renders from canonical sources.
 
@@ -1363,29 +1494,6 @@ gh release create 0.9.7 \
     --target main \
     --title "v0.9.7" \
     -F internal/release-notes-0.9.7.md
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1489,30 +1597,6 @@ gh release create 0.9.6 \
     --target main \
     --title "v0.9.6" \
     -F internal/release-notes-0.9.6.md
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1752,36 +1836,6 @@ return BoostConfig::configure()
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 `boost sync` renders the values into CLAUDE.md's marker-bounded region (audit trail) and runs schema validation. `boost validate` / `boost slots` / `boost doctor --check-conventions` source from `boost.php`'s declared values.
 
@@ -1807,36 +1861,6 @@ vendor/bin/boost sync                             # re-render CLAUDE.md from boo
 vendor/bin/boost validate                         # confirm 0 errors
 git add boost.php CLAUDE.md
 git commit -m "Migrate Project Conventions to boost.php"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1876,37 +1900,6 @@ composer update sandermuller/boost-core
 vendor/bin/boost sync          # rewrites .gitignore's managed block
 git add CLAUDE.md              # or AGENTS.md / GEMINI.md per active agents
 git commit
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1977,38 +1970,6 @@ composer update sandermuller/boost-core
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Any consumer using the conventions-schema slot fill-in (boost-skills 1.7.0-rc1 + downstream) MUST be on 0.8.2 or later. Consumers not using conventions schema are unaffected — guideline files written by 0.8.x without the markered region were structurally identical to the pre-0.8.x format, and 0.8.2 transparently wraps the content on first sync.
 
@@ -2070,40 +2031,6 @@ github:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Operator owns the H2, the explainer comment, and the YAML body. boost-core never overwrites values — it only reports diagnostics. The `schema-version` field defaults to `1` if omitted; the scaffold seeds the highest `min(metadata.schema-required)` across allowlisted vendors so newer-schema vendors apply on first run.
 
@@ -2114,40 +2041,6 @@ boost validate [--strict] [--json]      # validate Project Conventions against v
 boost slots [--vendor=X] [--missing] [--filled] [--json]   # list slots, fill state, declaring vendor
 boost paths [--managed] [--json]        # list path globs boost-core manages
 boost doctor --check-conventions        # opt-in conventions diagnostics in doctor output
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2181,40 +2074,6 @@ final readonly class SyncResult
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Conventions diagnostics (error / warning / info) route through `SyncResult::diagnostics` and never affect `hasErrors()`. `SyncCommand` and `WhereCommand` render diagnostics after their primary output so error-level lines stay visible despite never triggering exit FAILURE. Backward-compatible — every 0.7.x reader of `SyncResult::errors` continues to work.
 
@@ -2223,40 +2082,6 @@ Conventions diagnostics (error / warning / info) route through `SyncResult::diag
 ```php
 $paths = \SanderMuller\BoostCore\Conventions\Conventions::default()
     ->managedPaths($config);  // list<string> of glob patterns
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2321,41 +2146,6 @@ Cost: \$100. Variable: \$ARGUMENTS.
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 The frontmatter `arguments:` list is optional but recommended for named arguments — Junie uses it to satisfy its all-required-named-args contract; Claude/Copilot/OpenCode all benefit when the operator wants to declare names explicitly.
 
@@ -2379,41 +2169,6 @@ Sample warning lines (lenient — sync continues):
 [cursor] deploy: cursor has no placeholder syntax; canonical placeholders emitted verbatim.
 [junie] deploy: Junie requires named+required args; positional `$1`, `$2` auto-named to `$arg1`, `$arg2` — declare them in the source frontmatter `arguments:` list so Junie can surface the required-fields prompt.
 [kiro] deploy: Kiro does not document named placeholders; `$issue` emitted verbatim. Use `$ARGUMENTS` (unsplit) or `${1}`/`${2}` (positional) for cross-agent portability.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2449,41 +2204,6 @@ public function planCommands(array $commands): array  // array{writes: list<Pend
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Internal-facing — `SyncEngine` is the only documented caller. The new `warnings` channel surfaces per-command transpile issues (e.g. "Cursor has no placeholder syntax; canonical placeholders emitted verbatim") that previously had nowhere to go.
 
@@ -2499,41 +2219,6 @@ public function transpileCommandBody(Command $command): CommandTranspileResult
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Base implementation = "warn-and-verbatim" (used by Cursor + Amp). Five agents override with their native shapes: Claude, Copilot, Junie, OpenCode, Kiro. `CommandTranspileResult` carries `{content, warnings}`.
 
@@ -2541,41 +2226,6 @@ Base implementation = "warn-and-verbatim" (used by Cursor + Amp). Five agents ov
 
 ```bash
 composer update sandermuller/boost-core
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2615,42 +2265,6 @@ If you're a wrapper author calling `AgentTarget::planCommands()` directly: pull 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Runs after the vendor picker. Pre-checks any tag already declared in `withTags(...)` AND present in the discovered set; declared-but-undiscovered tags (e.g. org-internal tags, tags added ahead of vendor support) are preserved silently and merged back into the final selection.
 
@@ -2661,42 +2275,6 @@ Empty operator selection clears `withTags(...)` from the chain entirely. Skippin
 ```php
 $counts = (new AvailableTagsDiscovery($packages))->discover($vendorNames, $renderers);
 // ['github' => 1, 'jira' => 1, 'php' => 2, ...]
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2718,42 +2296,6 @@ $writer->update(
     disabledEmitters: [],
     tags: ['php', 'jira'],          // new — null/[] / non-empty trio of behaviors
 );
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2791,43 +2333,6 @@ vendor/bin/boost where --diff=deploy
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Resolves a single named host skill and the upstream vendor copy it shadows. Three exit paths:
 
@@ -2849,86 +2354,12 @@ Shadow diff — `deploy` (host) vs `acme/skills` (vendor)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 **Byte-identical** — host and vendor copies match exactly. The command prints:
 
 ```
 [OK] Host skill `deploy` is byte-identical to the `acme/skills` vendor copy.
      The override earns nothing — consider removing `<host path>` and shipping the vendor version.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2952,43 +2383,6 @@ New public inspection helper backing `--diff`. Returns `array{hostPath: string, 
 
 ```bash
 composer update sandermuller/boost-core
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3055,44 +2449,6 @@ host · .ai/commands/ (host) · 1 command(s)
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Each category renders only when it has resolved items — empty sections vanish. The label scheme established in 0.7.2 carries across all three categories:
 
@@ -3121,44 +2477,6 @@ $inspection = SyncEngine::default()->resolveForInspection($projectRoot);
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 The 0.7.2 `SyncEngine::resolveSkillsForInspection()` is preserved as a thin back-compat wrapper that delegates to the new method and projects the result into the 0.7.2 shape (`{skills, remoteSourceKeys, scannedVendorKeys}` with `scannedVendorKeys` = the union of skill + guideline vendor sets). External callers wrapping the 0.7.2 method directly keep working without changes.
 
@@ -3171,44 +2489,6 @@ The 0.7.2 `SyncEngine::resolveSkillsForInspection()` is preserved as a thin back
 
 ```bash
 composer update sandermuller/boost-core
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3244,44 +2524,6 @@ vendor/bin/boost doctor --check-versions
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 When the flag is set, doctor enumerates installed boost-* family packages, identifies the ones whose install path is OUTSIDE the project's `vendor/` (the Composer `path` repo signature, including the `symlink: true` default), and compares each against the latest stable version Packagist publishes.
 
@@ -3297,44 +2539,6 @@ Path-repo version check
 
 Path repos silently override Packagist resolution for matching constraints.
 Remove unused `repositories[]` entries from composer.json + re-run `composer update` to pull from Packagist.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3378,44 +2582,6 @@ $inspection = $engine->resolveSkillsForInspection($projectRoot);
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Internal-facing inspection API — no documented public consumers besides `WhereCommand` itself. External callers wrapping the method directly would need to dereference `['skills']`. Surfaced in the changelog under Changed (not Fixed) for that reason.
 
@@ -3423,44 +2589,6 @@ Internal-facing inspection API — no documented public consumers besides `Where
 
 ```bash
 composer update sandermuller/boost-core
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3500,45 +2628,6 @@ If you're a wrapper author who calls `SyncEngine::resolveSkillsForInspection()` 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 `commandsDirectoryRelative()` stays `null` for Kiro so the managed `.gitignore` block, directory tooling, and gitignore-pattern reporters don't double-count `.kiro/commands/` (a directory Kiro doesn't use). The skill directory `.kiro/skills/` is already covered by the existing gitignore pattern.
 
@@ -3553,45 +2642,6 @@ Command-emit limitations
   `~/.codex/prompts/` manually.
 • Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands
   directly in `.gemini/commands/<name>.toml` or use a skill instead.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3652,46 +2702,6 @@ return BoostConfig::configure()
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Resolved on the next `composer install` / `update` through the existing `BoostAutoSync` hook — no separate command, no separate cache-warm step. First sync hits the network; later syncs are offline-fast (cache lives at `<project>/.boost-remote-cache/`, auto-added to the managed `.gitignore`). Removing an entry prunes its agent-dir output on next sync; removing an entire source prunes every skill it last contributed.
 
@@ -3708,46 +2718,6 @@ use SanderMuller\ProjectBoostLaravel\Rendering\BladeRenderer;
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE])
     ->withSkillRenderers([new BladeRenderer]);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3776,46 +2746,6 @@ $engine->sync(
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 Three new optional parameters for wrapper packages whose source layout `VendorScanner` cannot reach (laravel/boost's `.ai/<pkg>/...` is the motivating case — `sandermuller/project-boost-laravel` uses this seam). Tag-filtered and collision-detected identically to scanned vendors. Same-vendor name collisions between injected and scanned skills throw `SkillSourceCollisionException`, caught in `SyncEngine::sync` and converted to a `SyncResult::errors` entry (lenient) or rethrown (strict). All three default to `[]`; existing call sites are unchanged.
 
@@ -3823,46 +2753,6 @@ Three new optional parameters for wrapper packages whose source layout `VendorSc
 
 ```bash
 vendor/bin/boost where
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3889,46 +2779,6 @@ if ($attribution = $result->renderDeleteAttribution()) {
     $this->warn($attribution); // Laravel artisan
     // or $io->warning($attribution); // Symfony console
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -3996,6 +2846,18 @@ No migration required from 0.6.x. The three additive surfaces (`withRemoteSkills
   ```
   ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
           Run `vendor/bin/boost tags` to see them.
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   
@@ -4121,6 +2983,18 @@ boost-core is no longer a Composer plugin. It ships as a plain `type: library` �
   
   ```php
   ->withExcludedGuidelines(['acme/pack:database-safety'])
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   
@@ -4422,6 +3296,18 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   
   
   
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
     ```
 
 ### Fixed
@@ -4455,6 +3341,18 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   

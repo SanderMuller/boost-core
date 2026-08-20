@@ -2,8 +2,6 @@
 
 namespace SanderMuller\BoostCore\Skills\Rendering;
 
-use SanderMuller\BoostCore\Contracts\SkillRenderer;
-
 /**
  * Read-only context handed to a {@see SkillRenderer}.
  *

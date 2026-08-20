@@ -35,4 +35,17 @@ interface RemoteFetcher
      * Download a repo tarball at a ref to a local temp file path.
      */
     public function fetchTarball(string $source, ResolvedRef $ref, string $destinationPath): void;
+
+    /**
+     * Every `.skill` release asset published at `$ref`, as
+     * `['name' => 'code-review', 'asset' => 'code-review.skill']`.
+     *
+     * Reads the SAME release payload {@see fetchAsset()} already fetches, so
+     * listing costs one request and never one per asset. An empty list means
+     * the release exists but publishes no `.skill` assets — the caller then
+     * treats the repo as path-mode.
+     *
+     * @return list<array{name: string, asset: string}>
+     */
+    public function listReleaseAssets(string $source, ResolvedRef $ref): array;
 }

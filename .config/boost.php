@@ -18,6 +18,7 @@ return BoostConfig::configure()
         Tag::Github,
         Tag::Pest,
         'release-automation',
+        'voice',
     ])
     ->withExcludedGuidelines([
         // boost-core is a framework-free Composer plugin — no database, no

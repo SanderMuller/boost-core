@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Skills\Remote;
 
 use SanderMuller\BoostCore\Env;
+use SanderMuller\BoostCore\Skills\BoostRequires;
 use SanderMuller\BoostCore\Skills\BoostTags;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Rendering\MatchedRenderer;
@@ -11,6 +12,7 @@ use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRenderException;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\SkillAssetCollector;
 use Throwable;
 
 /**
@@ -221,6 +223,7 @@ final readonly class RemoteSkillIngester
             : null;
 
         [$tags, $tagsValid] = BoostTags::parse($parsed->frontmatter);
+        [$requires, $requiresValid] = BoostRequires::parse($parsed->frontmatter);
 
         return new Skill(
             name: $ref->name,
@@ -231,6 +234,12 @@ final readonly class RemoteSkillIngester
             sourceVendor: $source->source,
             tags: $tags,
             tagsValid: $tagsValid,
+            // Cache-slot bundle siblings emit as assets, same as local nested
+            // skills. A slot with a flat (non-`SKILL.*`) entry collects none —
+            // its dir isn't skill-owned.
+            assets: SkillAssetCollector::collect($skillPath),
+            requires: $requires,
+            requiresValid: $requiresValid,
         );
     }
 

@@ -4,6 +4,7 @@ use Composer\Console\Application as ComposerApplication;
 use SanderMuller\BoostCore\Commands\ValidateCommand;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
+use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Tester\CommandTester;
 
 function validateTempProject(string $boostBody): string
@@ -143,5 +144,115 @@ it('legacy-ref scan: warns (advisory, never fails --strict) on a $.<root> ref in
     } finally {
         validateCleanup($dir);
         validateCleanup($vendor);
+    }
+});
+
+// ============================================================================
+// Skill-dependency checks (`metadata.boost-requires`) — spec §4.7.
+// ============================================================================
+
+/**
+ * @param  array<string, string>  $skills  skill name => extra frontmatter (newline-terminated lines)
+ */
+function validateDepVendor(string $dir, string $vendor, array $skills): PackageInfo
+{
+    $path = $dir . '/vendor/' . $vendor;
+    mkdir($path . '/resources/boost/skills', 0o755, recursive: true);
+    file_put_contents($path . '/composer.json', '{"name":"' . $vendor . '","type":"library"}');
+    foreach ($skills as $name => $frontmatter) {
+        file_put_contents($path . '/resources/boost/skills/' . $name . '.md', "---\nname: {$name}\n{$frontmatter}---\nBody.\n");
+    }
+
+    return new PackageInfo($vendor, '1.0.0', $path);
+}
+
+/**
+ * @param  array<string, bool|string>  $options
+ * @param  array<string, int>  $testerOptions
+ * @return array{exit: int, display: string}
+ */
+function runValidateWithPackages(string $dir, InstalledPackages $packages, array $options = [], array $testerOptions = []): array
+{
+    $command = new ValidateCommand($packages);
+    $app = new ComposerApplication();
+    $app->addCommand($command);
+
+    $tester = new CommandTester($command);
+    $exit = $tester->execute(['--working-dir' => $dir, ...$options], $testerOptions);
+
+    return ['exit' => $exit, 'display' => $tester->getDisplay()];
+}
+
+it('dependency check: malformed boost-requires is an error and fails --strict', function (): void {
+    $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    try {
+        $pkg = validateDepVendor($dir, 'acme/pack', [
+            'broken' => "metadata:\n  boost-requires:\n    - not-a-string\n",
+        ]);
+
+        $result = runValidateWithPackages($dir, new InstalledPackages(['acme/pack' => $pkg]), ['--strict' => true]);
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+
+        expect($result['exit'])->toBe(1)
+            ->and($display)->toContain('malformed `metadata.boost-requires`');
+    } finally {
+        validateCleanup($dir);
+    }
+});
+
+it('dependency check: a missing dependency warns but does not fail --strict', function (): void {
+    $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    try {
+        $pkg = validateDepVendor($dir, 'acme/pack', [
+            'dependent' => "metadata:\n  boost-requires: ghost\n",
+        ]);
+
+        $result = runValidateWithPackages($dir, new InstalledPackages(['acme/pack' => $pkg]), ['--strict' => true]);
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+
+        expect($result['exit'])->toBe(0)
+            ->and($display)->toContain('does not exist in any source')
+            ->and($display)->toContain('`ghost`');
+    } finally {
+        validateCleanup($dir);
+    }
+});
+
+it('dependency check: a cross-tag-boundary require surfaces as info under -v only', function (): void {
+    $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    try {
+        $pkg = validateDepVendor($dir, 'acme/pack', [
+            'dependent' => "metadata:\n  boost-requires: helper\n",
+            'helper' => "metadata:\n  boost-tags: jira\n",
+        ]);
+        $packages = new InstalledPackages(['acme/pack' => $pkg]);
+
+        $quiet = runValidateWithPackages($dir, $packages);
+        expect($quiet['exit'])->toBe(0)
+            ->and($quiet['display'])->not->toContain('Confirm this is a hard dependency');
+
+        $verbose = runValidateWithPackages($dir, $packages, [], ['verbosity' => OutputInterface::VERBOSITY_VERBOSE]);
+        $display = preg_replace('/\s+/', ' ', $verbose['display']) ?? '';
+        expect($verbose['exit'])->toBe(0)
+            ->and($display)->toContain('Confirm this is a hard dependency');
+    } finally {
+        validateCleanup($dir);
+    }
+});
+
+it('dependency check: satisfied dependencies stay silent and pass --strict', function (): void {
+    $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    try {
+        $pkg = validateDepVendor($dir, 'acme/pack', [
+            'dependent' => "metadata:\n  boost-requires: helper\n",
+            'helper' => '',
+        ]);
+
+        $result = runValidateWithPackages($dir, new InstalledPackages(['acme/pack' => $pkg]), ['--strict' => true]);
+
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->not->toContain('skill dependency');
+    } finally {
+        validateCleanup($dir);
     }
 });

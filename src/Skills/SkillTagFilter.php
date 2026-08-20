@@ -42,8 +42,15 @@ final class SkillTagFilter
     private const DROP_TAG_MISMATCH = 'tag-mismatch';
 
     /**
+     * The dropped skills come back grouped by reason so dependency rescue
+     * (see `internal/specs/skill-dependencies.md` §4.2) can re-admit them:
+     * `tagMismatchDrops` are the rescue-eligible candidates, `excludedDrops`
+     * exist only to classify an unsatisfiable demand as "excluded" rather
+     * than "missing" in the warning. Malformed-tag drops are retained in
+     * neither — fail closed stands, rescue must not resurrect broken content.
+     *
      * @param  iterable<Skill>  $skills
-     * @return array{kept: list<Skill>, droppedNames: list<string>, droppedByTag: int}
+     * @return array{kept: list<Skill>, droppedNames: list<string>, droppedByTag: int, tagMismatchDrops: list<Skill>, excludedDrops: list<Skill>}
      */
     public function filter(iterable $skills, BoostConfig $config): array
     {
@@ -52,6 +59,10 @@ final class SkillTagFilter
         /** @var list<string> $droppedNames */
         $droppedNames = [];
         $droppedByTag = 0;
+        /** @var list<Skill> $tagMismatchDrops */
+        $tagMismatchDrops = [];
+        /** @var list<Skill> $excludedDrops */
+        $excludedDrops = [];
 
         foreach ($skills as $skill) {
             $verdict = $this->classify($skill, $config);
@@ -64,10 +75,19 @@ final class SkillTagFilter
             $droppedNames[] = $skill->name;
             if ($verdict === self::DROP_TAG_MISMATCH) {
                 ++$droppedByTag;
+                $tagMismatchDrops[] = $skill;
+            } elseif ($verdict === self::DROP_EXCLUDED) {
+                $excludedDrops[] = $skill;
             }
         }
 
-        return ['kept' => $kept, 'droppedNames' => $droppedNames, 'droppedByTag' => $droppedByTag];
+        return [
+            'kept' => $kept,
+            'droppedNames' => $droppedNames,
+            'droppedByTag' => $droppedByTag,
+            'tagMismatchDrops' => $tagMismatchDrops,
+            'excludedDrops' => $excludedDrops,
+        ];
     }
 
     private function classify(Skill $skill, BoostConfig $config): string

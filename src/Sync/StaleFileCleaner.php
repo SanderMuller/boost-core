@@ -107,10 +107,45 @@ final readonly class StaleFileCleaner
      *   sync. Scoped to the EMITTED set, NOT all known agents: a DROPPED agent's
      *   guidance is absent here so it IS reaped rather than lingering forever
      *   (OrphanReaper is manifest-gated and has no entry for it on first sync).
-     * @return list<WrittenFile>
+     * @param  ?SyncManifest  $priorManifest  the ownership manifest written by the
+     *   PREVIOUS sync. When a manifest FILE exists, it turns this pass from
+     *   clean-slate into manifest-gated: a file boost never recorded as its own
+     *   output is FOREIGN (another tool wrote it into a boost-managed directory)
+     *   and is preserved instead of deleted. Only a project with NO manifest file —
+     *   a first sync, or an unmanaged-gitignore project where none is ever written —
+     *   keeps the historical clean-slate behaviour, since nothing there can prove the
+     *   file isn't boost's own leftover. An existing but ENTRY-LESS manifest still
+     *   gates: it says boost owns nothing at the moment (every output was removed),
+     *   which must not silently re-arm deletion of another tool's files.
+     * @param  list<string>  $priorManagedPatterns  the prior managed-gitignore
+     *   patterns. A pattern naming a FILE exactly (`AGENTS.md`, not a `dir/`
+     *   pattern) is boost's own proof of authorship — boost wrote that ignore
+     *   entry because it emitted that file — so such a path stays clean-slate
+     *   even under manifest gating. Only files discovered by RECURSING a managed
+     *   directory can be another writer's, and only those are gated. Without this,
+     *   a pre-0.12 block listing a since-dropped agent's guidance file could never
+     *   be reaped (no manifest entry) and the stale guidance lingered forever.
+     * @return array{writes: list<WrittenFile>, diagnostics: list<Diagnostic>}
      */
-    public function cleanupStaleManagedFiles(string $projectRoot, array $priorManagedFiles, array $writes, bool $checkOnly, array $wrapperExcludedPaths = [], array $exemptGuidancePaths = []): array
+    public function cleanupStaleManagedFiles(string $projectRoot, array $priorManagedFiles, array $writes, bool $checkOnly, array $wrapperExcludedPaths = [], array $exemptGuidancePaths = [], ?SyncManifest $priorManifest = null, array $priorManagedPatterns = [], bool $inConfigDir = false): array
     {
+        $manifestGated = $priorManifest instanceof SyncManifest
+            && (SyncManifest::existsForProjectRoot($projectRoot, $inConfigDir) || ! $priorManifest->isEmpty());
+        $preserved = [];
+
+        $exactFilePatterns = [];
+        foreach ($priorManagedPatterns as $pattern) {
+            if ($pattern === '') {
+                continue;
+            }
+
+            if (str_ends_with($pattern, '/')) {
+                continue;
+            }
+
+            $exactFilePatterns[ltrim($pattern, '/')] = true;
+        }
+
         $writtenPaths = [];
         foreach ($writes as $w) {
             $writtenPaths[$w->relativePath] = true;
@@ -147,6 +182,18 @@ final readonly class StaleFileCleaner
                 continue;
             }
 
+            // Manifest-gated: boost deletes only what it owns. A path inside a
+            // boost-managed directory that the prior manifest never recorded was
+            // written by somebody else (laravel/boost installs its bundled skill
+            // directories into `.claude/skills/`, and `herd link` re-runs
+            // `php artisan boost:update` to reinstate them) — deleting it here
+            // produced a silent delete/reinstall flip-flop. Preserve and report.
+            if ($manifestGated && ! isset($exactFilePatterns[$relativePath]) && ! $priorManifest->has($relativePath)) {
+                $preserved[] = $relativePath;
+
+                continue;
+            }
+
             if (! $checkOnly) {
                 @unlink($absolute);
                 ManagedFileOps::removeEmptyParentDirs($projectRoot, $absolute);
@@ -159,7 +206,30 @@ final readonly class StaleFileCleaner
             );
         }
 
-        return $writes;
+        sort($preserved);
+
+        return ['writes' => $writes, 'diagnostics' => $this->preservedForeignDiagnostics($preserved)];
+    }
+
+    /**
+     * ONE aggregated INFO for everything the manifest gate preserved. It fires on
+     * every sync for as long as the other tool is installed, so the detail — which
+     * tool, what to do about it — belongs in `boost doctor`, not in sync output.
+     *
+     * @param  list<string>  $preserved
+     * @return list<Diagnostic>
+     */
+    private function preservedForeignDiagnostics(array $preserved): array
+    {
+        if ($preserved === []) {
+            return [];
+        }
+
+        return [Diagnostic::info(null, sprintf(
+            '%d file(s) under boost-managed directories were written by another tool and are preserved (boost deletes only what it owns): %s. Run `boost doctor` for who owns what.',
+            count($preserved),
+            implode(', ', $preserved),
+        ))];
     }
 
     /**

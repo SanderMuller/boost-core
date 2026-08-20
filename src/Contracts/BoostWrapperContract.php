@@ -82,6 +82,12 @@ interface BoostWrapperContract
      * Engine excludes the union of all wrappers' returned paths from the
      * stale-file-cleanup pass.
      *
+     * A wrapper injecting skills WITH `Skill::$assets` (1.3) must claim each
+     * asset's emit path too (`<skillsDir>/<name>/<assetRelativePath>`), not
+     * just the `<name>/SKILL.md` entry — otherwise a bare-CLI sync (no
+     * wrapper injection in play) classifies the asset copies as stale and
+     * deletes them while keeping the claimed SKILL.md.
+     *
      * @param  list<string>  $activeAgents  agent enum values (`Agent::value`)
      *   in the project's `withAgents(...)` set. Use these to compute the
      *   per-agent emit paths for the injected skills (see the class-level

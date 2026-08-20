@@ -33,6 +33,7 @@ final readonly class RemoteSkillSyncCoordinator
      * @param  array<string, list<Skill>>  $vendorSkills  appended to in-place
      * @param  list<string>  $droppedNames  appended to in-place
      * @param  int  $tagFilteredCount  summed in-place
+     * @param  array<string, array{tagMismatch: list<Skill>, excluded: list<Skill>}>  $retainedDrops  appended to in-place: per-source dropped skills retained as dependency-rescue candidates, in ingest order so map insertion order stays precedence order.
      * @return array{skills: array<string, list<Skill>>, errors: list<string>}
      */
     public function ingestIntoVendorMap(
@@ -42,6 +43,7 @@ final readonly class RemoteSkillSyncCoordinator
         int &$tagFilteredCount,
         ?SkillRendererDispatcher $renderers = null,
         bool $checkOnly = false,
+        array &$retainedDrops = [],
     ): array {
         // Check mode: filter `$config->remoteSkills` to only those already
         // cached offline. Cache misses are recorded as a "would-fetch"
@@ -90,6 +92,13 @@ final readonly class RemoteSkillSyncCoordinator
             }
 
             $tagFilteredCount += $filtered['droppedByTag'];
+
+            if ($filtered['tagMismatchDrops'] !== [] || $filtered['excludedDrops'] !== []) {
+                $retainedDrops[$sourceName] = [
+                    'tagMismatch' => array_merge($retainedDrops[$sourceName]['tagMismatch'] ?? [], $filtered['tagMismatchDrops']),
+                    'excluded' => array_merge($retainedDrops[$sourceName]['excluded'] ?? [], $filtered['excludedDrops']),
+                ];
+            }
         }
 
         return $remote;

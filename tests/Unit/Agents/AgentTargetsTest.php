@@ -2,6 +2,7 @@
 
 use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Agents\AmpTarget;
+use SanderMuller\BoostCore\Agents\AntigravityTarget;
 use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
 use SanderMuller\BoostCore\Agents\CodexTarget;
 use SanderMuller\BoostCore\Agents\CopilotTarget;
@@ -13,6 +14,8 @@ use SanderMuller\BoostCore\Agents\OpenCodeTarget;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\SkillAsset;
+use SanderMuller\BoostCore\Sync\PendingWrite;
 
 /**
  * @return list<array{AgentTarget, Agent, string, ?string}> [target, agent, skillsDir, guidelinesFile]
@@ -35,6 +38,9 @@ function allTargets(): array
         [new KiroTarget(), Agent::KIRO, '.kiro/skills', 'AGENTS.md'],
         [new OpenCodeTarget(), Agent::OPENCODE, '.opencode/skills', 'AGENTS.md'],
         [new AmpTarget(), Agent::AMP, '.amp/skills', 'AGENTS.md'],
+        // Antigravity reads the same paths as Codex/Copilot (laravel/boost's
+        // own Antigravity agent: AGENTS.md + .agents/skills).
+        [new AntigravityTarget(), Agent::ANTIGRAVITY, '.agents/skills', 'AGENTS.md'],
     ];
 }
 
@@ -114,5 +120,32 @@ it('every target plans at least one skill file when given one skill', function (
         expect($writes)->toHaveCount(1)
             ->and($writes[0]->relativePath)
             ->toBe($skillsDir . '/foo/SKILL.md');
+    }
+});
+
+it('every target plans asset writes beside SKILL.md, riding the skill name (1.3.0)', function (): void {
+    $skill = new Skill(
+        name: 'codex-review',
+        description: null,
+        frontmatter: ['name' => 'codex-review'],
+        body: 'body',
+        sourcePath: '/fake',
+        sourceVendor: null,
+        assets: [
+            new SkillAsset(relativePath: 'scripts/run.mjs', contents: "console.log('go');\n"),
+            new SkillAsset(relativePath: 'references/api.md', contents: "# api\n"),
+        ],
+    );
+
+    foreach (allTargets() as [$target, $agent, $skillsDir]) {
+        $writes = $target->plan([$skill], []);
+        $paths = array_map(fn (PendingWrite $w): string => $w->relativePath, $writes);
+
+        expect($paths)->toBe([
+            $skillsDir . '/codex-review/SKILL.md',
+            $skillsDir . '/codex-review/scripts/run.mjs',
+            $skillsDir . '/codex-review/references/api.md',
+        ])
+            ->and($writes[1]->content)->toBe("console.log('go');\n");
     }
 });

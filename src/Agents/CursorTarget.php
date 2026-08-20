@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
+use Override;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\Command;
 
@@ -34,6 +35,7 @@ final class CursorTarget extends AgentTarget
      * Cursor commands treat the whole file as the prompt — emit body only,
      * so a frontmatter block does not leak into it.
      */
+    #[Override]
     public function formatCommandContent(Command $command): string
     {
         return $command->body;
@@ -45,6 +47,7 @@ final class CursorTarget extends AgentTarget
      * base `transpileCommandBody()` emits placeholders verbatim AND
      * surfaces a "Cursor has no placeholder syntax" warning per command.
      */
+    #[Override]
     protected function wrapTranspiledBody(Command $command, string $transpiledBody): string
     {
         return $transpiledBody;

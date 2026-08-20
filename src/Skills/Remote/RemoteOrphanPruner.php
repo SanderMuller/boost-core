@@ -4,7 +4,6 @@ namespace SanderMuller\BoostCore\Skills\Remote;
 
 use JsonException;
 use SanderMuller\BoostCore\Agents\AgentTarget;
-use SanderMuller\BoostCore\Sync\FilteredSkillPruner;
 use SanderMuller\BoostCore\Sync\SyncManifest;
 use SanderMuller\BoostCore\Sync\WriteAction;
 use SanderMuller\BoostCore\Sync\WrittenFile;

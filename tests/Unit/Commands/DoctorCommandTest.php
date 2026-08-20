@@ -188,6 +188,24 @@ it('doctor: prints the Gemini manual-path note when commands present and Gemini 
     }
 });
 
+it('doctor: prints the Antigravity manual-path note when commands present and Antigravity selected', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::ANTIGRAVITY])');
+    try {
+        mkdir($dir . '/.ai/commands', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/commands/deploy.md', "---\ndescription: Ship.\n---\n\nBody.\n");
+
+        $result = runDoctor($dir);
+
+        expect($result['exit'])->toBe(0)
+            ->and($result['display'])->toContain('Command-emit limitations')
+            ->and($result['display'])->toContain('Antigravity')
+            ->and($result['display'])->not->toContain('~/.codex/prompts/')
+            ->and($result['display'])->not->toContain('.gemini/commands/');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
 it('doctor: omits the command-emit limitations section when no .ai/commands/ exists', function (): void {
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CODEX, Agent::GEMINI])');
     try {
@@ -1153,6 +1171,263 @@ it('0.23.0 doctor reports dead + live agent-dir symlinks across all agents (proj
             // `.agents` is absent (no Codex/Copilot link reported). Absence assertion
             // is wrap-robust (Symfony NOTE blocks inject `! ` line-prefixes).
             ->and($display)->not->toContain('.agents');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+// ============================================================================
+// Skill-dependency section (`metadata.boost-requires`).
+// ============================================================================
+
+it('doctor surfaces an unsatisfied skill dependency', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    try {
+        $path = $dir . '/vendor/acme/pack';
+        mkdir($path . '/resources/boost/skills', 0o755, recursive: true);
+        file_put_contents($path . '/composer.json', '{"name":"acme/pack","type":"library"}');
+        file_put_contents(
+            $path . '/resources/boost/skills/dependent.md',
+            "---\nname: dependent\nmetadata:\n  boost-requires: ghost\n---\nBody.\n",
+        );
+
+        $command = new DoctorCommand(injectedPackages: new InstalledPackages(['acme/pack' => new PackageInfo('acme/pack', '1.0.0', $path)]));
+        $app = new ComposerApplication();
+        $app->addCommand($command);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('Skill dependencies')
+            ->and($display)->toContain('does not exist in any source');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor stays silent on skill dependencies when no skill declares any', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $result = runDoctor($dir);
+
+        expect($result['display'])->not->toContain('Skill dependencies');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: maps the two colliding `boost` command surfaces and names the herd link trigger', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('php artisan boost:*')
+            ->and($display)->toContain('vendor/bin/boost')
+            ->and($display)->toContain('herd link');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: flags a skill directory another tool installed into a boost-managed location', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.boost', 0o755, recursive: true);
+        file_put_contents($dir . '/.boost/manifest.json', json_encode([
+            'version' => 1,
+            'generatedBy' => 'boost-core',
+            'emitted' => [
+                '.claude/skills/ours/SKILL.md' => ['sha256' => str_repeat('a', 64), 'category' => 'skill', 'provenance' => 'engine', 'scope' => 'project'],
+            ],
+        ], JSON_THROW_ON_ERROR));
+
+        mkdir($dir . '/.claude/skills/ours', 0o755, recursive: true);
+        file_put_contents($dir . '/.claude/skills/ours/SKILL.md', "---\nname: ours\n---\nBody.\n");
+        mkdir($dir . '/.claude/skills/laravel-best-practices', 0o755, recursive: true);
+        file_put_contents($dir . '/.claude/skills/laravel-best-practices/SKILL.md', "---\nname: laravel-best-practices\n---\nForeign.\n");
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('laravel-best-practices')
+            ->and($display)->not->toContain('.claude/skills/ours');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: warns when a host-authored skill name is also claimed in laravel/boost boost.json', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/skills/code-review', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/skills/code-review/SKILL.md', "---\nname: code-review\n---\nHost body.\n");
+        file_put_contents($dir . '/boost.json', json_encode(['skills' => ['code-review', 'pennant-development']], JSON_THROW_ON_ERROR));
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('code-review')
+            ->and($display)->toContain('OVERWRITES')
+            ->and($display)->not->toContain('pennant-development');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: explains that `.ai/rules` is laravel/boost-owned and not composed by boost-core', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/rules', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/rules/index.md', "# Rules index\n");
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('.ai/rules/')
+            ->and($display)->toContain('.ai/guidelines/');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: says skill dirs exist but are unclassifiable when there is no manifest yet', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        // A project right after laravel/boost `boost:install`: skills on disk, no boost sync yet.
+        mkdir($dir . '/.claude/skills/laravel-best-practices', 0o755, recursive: true);
+        file_put_contents($dir . '/.claude/skills/laravel-best-practices/SKILL.md', "---\nname: laravel-best-practices\n---\nForeign.\n");
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('.claude/skills')
+            ->and($display)->toContain('ownership manifest yet');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: names `.ai/skills` as laravel/boost adoption glob; no-wrapper project keeps its bundled content', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('user-skill directory')
+            ->and($display)->toContain('would then never reach this project');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: warns that a symlinked skill target displaces boost-core output', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/skills/foo', 0o755, recursive: true);
+        file_put_contents($dir . '/.ai/skills/foo/SKILL.md', "---\nname: foo\n---\nBody.\n");
+        mkdir($dir . '/.claude/skills', 0o755, recursive: true);
+        symlink($dir . '/.ai/skills/foo', $dir . '/.claude/skills/foo');
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('symlink')
+            ->and($display)->toContain('.claude/skills/foo');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: on a wrapper project, offers deleting boost.json as the way to stop the automatic re-seed', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+            'sandermuller/project-boost-laravel' => new PackageInfo(name: 'sandermuller/project-boost-laravel', version: '1.1.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('DELETE `boost.json`')
+            ->and($display)->toContain('withSkillsPath')
+            ->and($display)->toContain('"skills": []');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: on wrapper >= 1.3 says the sync retires boost.json instead of telling the operator to', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+            'sandermuller/project-boost-laravel' => new PackageInfo(name: 'sandermuller/project-boost-laravel', version: '1.3.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('--keep-boost-json')
+            ->and($display)->not->toContain('DELETE `boost.json`');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: on wrapper 1.2 still tells the operator to remove boost.json themselves', function (): void {
+    // The retire step ships in project-boost-laravel 1.3.0 — `src/Coexistence/` and
+    // `--keep-boost-json` do not exist at 1.2.0. Promising automatic archiving there
+    // would send the operator looking for a command that cannot run.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    try {
+        mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+
+        $packages = new InstalledPackages([
+            'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
+            'sandermuller/project-boost-laravel' => new PackageInfo(name: 'sandermuller/project-boost-laravel', version: '1.2.0', installPath: $dir),
+        ]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('DELETE `boost.json`')
+            ->and($display)->not->toContain('--keep-boost-json');
     } finally {
         doctorCleanup($dir);
     }

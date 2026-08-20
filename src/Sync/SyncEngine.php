@@ -44,6 +44,8 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSyncCoordinator;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\SkillDependencyDiagnostics;
+use SanderMuller\BoostCore\Skills\SkillDependencyResolver;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
@@ -126,6 +128,7 @@ final readonly class SyncEngine
         private SyncManifestWriter $manifestWriter = new SyncManifestWriter(),
         private StaleFileCleaner $staleFileCleaner = new StaleFileCleaner(),
         private UserScopeManifestWriter $userScopeManifestWriter = new UserScopeManifestWriter(),
+        private SkillDependencyResolver $skillDependencyResolver = new SkillDependencyResolver(),
     ) {
         $this->injectedVendorMerger = new InjectedVendorMerger($this->skillTagFilter, $this->guidelineTagFilter);
         $this->installedPackages = $installedPackages ?? InstalledPackages::fromComposer();
@@ -258,7 +261,7 @@ final readonly class SyncEngine
                 $emittedPaths[$rewritten] = true;
                 $this->writeAndPrune(
                     $home,
-                    new PendingWrite($rewritten, $pending->content),
+                    new PendingWrite($rewritten, $pending->content, pruneLegacyFlatSibling: $pending->pruneLegacyFlatSibling),
                     $target,
                     $checkOnly,
                     $writes,
@@ -499,7 +502,7 @@ final readonly class SyncEngine
      * included — those are runtime-only inputs to `sync()` and the
      * wrapper owns its own inspection surface.
      *
-     * @return array{skills: list<Skill>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedSkillVendorKeys: list<string>, scannedGuidelineVendorKeys: list<string>}
+     * @return array{skills: list<Skill>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedSkillVendorKeys: list<string>, scannedGuidelineVendorKeys: list<string>, skillDependencyWarnings: list<array{name: string, dependents: list<string>, reason: 'excluded'|'missing'}>, skillMalformedRequires: list<string>}  The two skill-dependency keys mirror `resolveSkills()` so `boost validate` / `boost doctor` report the exact demand outcome a sync would produce.
      */
     public function resolveForInspection(string $projectRoot): array
     {
@@ -525,14 +528,17 @@ final readonly class SyncEngine
         }
 
         $renderErrors = [];
+        $skillResolution = $this->resolveSkills($projectRoot, $config, $allowedVendors, false, [], true);
 
         return [
-            'skills' => $this->resolveSkills($projectRoot, $config, $allowedVendors, false, [], true)['skills'],
+            'skills' => $skillResolution['skills'],
             'guidelines' => $this->resolveGuidelines($projectRoot, $config, $allowedVendors, false, [], $renderErrors),
             'commands' => $this->resolveCommands($config),
             'remoteSourceKeys' => array_values($remoteSourceKeys),
             'scannedSkillVendorKeys' => $scannedSkillVendorKeys,
             'scannedGuidelineVendorKeys' => $scannedGuidelineVendorKeys,
+            'skillDependencyWarnings' => $skillResolution['dependencyWarnings'],
+            'skillMalformedRequires' => $skillResolution['malformedRequires'],
         ];
     }
 
@@ -700,7 +706,7 @@ final readonly class SyncEngine
             'hasLiveOutput' => $hasLiveEmitterOutput,
         ] = OrphanReaper::emitterReapSets($emitterResults);
 
-        [$fanOutWrites, $fanOutErrors] = $this->fanOut(
+        [$fanOutWrites, $fanOutErrors, $fanOutCommandWarnings] = $this->fanOut(
             $projectRoot,
             $config,
             $resolvedSkills,
@@ -820,6 +826,8 @@ final readonly class SyncEngine
         // declarations across all installed wrappers, and the cleanup pass
         // excludes those paths from stale-file classification.
         // ($wrapperEmits already computed above to feed the gitignore pass.)
+        /** @var list<Diagnostic> $preservedForeignDiagnostics */
+        $preservedForeignDiagnostics = [];
         if (! $hasAnyError) {
             // Guidance files boost EMITTED this sync (configured agents +
             // conventions-CLAUDE.md) are managed wholesale by GuidanceWriter, NEVER
@@ -829,14 +837,23 @@ final readonly class SyncEngine
             // from $writes) on the first post-migration sync. The exemption is
             // scoped to the EMITTED set (not all known agents) so a DROPPED agent's
             // stale guidance is still reaped rather than lingering forever.
-            $writes = $this->staleFileCleaner->cleanupStaleManagedFiles(
+            //
+            // The prior manifest gates the pass: a path under a boost-managed
+            // directory that boost never recorded as its own output belongs to
+            // another writer and is PRESERVED (reported below), not reaped.
+            $stale = $this->staleFileCleaner->cleanupStaleManagedFiles(
                 $projectRoot,
                 $priorManagedFiles,
                 $writes,
                 $checkOnly,
                 $wrapperEmits['paths'],
                 $guidanceResult['emittedGuidancePaths'],
+                $priorManifest,
+                $priorManagedPatterns,
+                $inConfigDir,
             );
+            $writes = $stale['writes'];
+            $preservedForeignDiagnostics = $stale['diagnostics'];
         }
 
         // Write the NEW ownership manifest LAST — only on a successful,
@@ -854,14 +871,19 @@ final readonly class SyncEngine
         // so rewriting the manifest would DROP guidance ownership and a later
         // empty sync could no longer converge previously-owned files. Leaving
         // the prior manifest untouched keeps it last-known-good.
-        if (! $checkOnly && ! $hasAnyError && $gitignoreManaged && $guidelineRenderErrors === []) {
-            // Reconcile-on-sync orphan reap — delete boost-owned files recorded
-            // in the PRIOR manifest that this sync no longer intends to emit (a
-            // dormant FileEmitter, a de-selected agent's guidance file).
-            // Manifest-GATED: the delete predicate consults the prior manifest's
-            // ownership, NOT raw gitignore membership. Runs after all
-            // non-destructive writes + cleanup succeeded, before the new manifest
-            // is written. The reap's targets are absent from the
+        // Runs in BOTH check and real mode: the orphan reap must be PREVIEWED
+        // under `--check` (WOULD_DELETE) so `sync --check` predicts the deletes a
+        // real sync performs — check==real parity. Only the manifest WRITE below
+        // is gated real-only (persisted ownership state is never written on a
+        // check run).
+        if (! $hasAnyError && $gitignoreManaged && $guidelineRenderErrors === []) {
+            // Reconcile-on-sync orphan reap — delete (or, under --check, preview)
+            // boost-owned files recorded in the PRIOR manifest that this sync no
+            // longer intends to emit (a dormant FileEmitter, a de-selected agent's
+            // guidance file). Manifest-GATED: the delete predicate consults the
+            // prior manifest's ownership, NOT raw gitignore membership. Runs after
+            // all non-destructive writes + cleanup succeeded, before the new
+            // manifest is written. The reap's targets are absent from the
             // ownedGuidancePaths / live-emitter sets, so the new manifest below
             // never re-records them.
             $reap = OrphanReaper::reapManifestOrphans(
@@ -871,11 +893,13 @@ final readonly class SyncEngine
                 $preservedEmitterFqcns,
                 $guidanceResult['ownedGuidancePaths'],
                 $wrapperEmits['paths'],
+                $checkOnly,
             );
             $writes = [...$writes, ...$reap['writes']];
 
             // A failed orphan delete keeps its ownership: surface it and carry
-            // the entry forward so the next sync retries.
+            // the entry forward so the next sync retries. (retained is always
+            // empty under --check, so this loop is a no-op in check mode.)
             foreach ($reap['retained'] as $retainedPath) {
                 $reapDiagnostics[] = Diagnostic::warning(
                     null,
@@ -886,21 +910,33 @@ final readonly class SyncEngine
                 );
             }
 
-            $this->manifestWriter->write(
-                $projectRoot,
-                $guidanceResult['ownedGuidancePaths'],
-                $wrapperEmits['paths'],
-                $emitterResults,
-                $priorManifest,
-                $reap['retained'],
-                $ownableEmitterPaths,
-                $inConfigDir,
-                // The engine owns gitignore/cleanup enumeration; hand the writer the
-                // current on-disk managed files (the just-written block — this is the
-                // success path, so updateGitignore already ran) so it records skill/
-                // command emission targets without calling back into the engine.
-                $this->staleFileCleaner->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)),
-            );
+            // Persisted ownership manifest: NEVER on a check run.
+            if (! $checkOnly) {
+                $this->manifestWriter->write(
+                    $projectRoot,
+                    $guidanceResult['ownedGuidancePaths'],
+                    $wrapperEmits['paths'],
+                    $emitterResults,
+                    $priorManifest,
+                    $reap['retained'],
+                    $ownableEmitterPaths,
+                    $inConfigDir,
+                    // The engine owns gitignore/cleanup enumeration; hand the writer the
+                    // current on-disk managed files (the just-written block — this is the
+                    // success path, so updateGitignore already ran) so it records skill/
+                    // command emission targets without calling back into the engine.
+                    // Claimable only: the enumeration is a raw directory walk, so it
+                    // also sees files another tool wrote into the managed dirs.
+                    // Recording one would adopt it — and the next sync, finding it in
+                    // the prior manifest, would delete it.
+                    ManagedFileOps::claimableManagedFiles(
+                        $this->staleFileCleaner->enumerateManagedFiles($projectRoot, $this->readPriorGitignorePatterns($projectRoot)),
+                        $writes,
+                        $priorManifest,
+                        $wrapperEmits['paths'],
+                    ),
+                );
+            }
         }
 
         // Diagnostic surface for the render-fail-then-write safety gate:
@@ -926,6 +962,16 @@ final readonly class SyncEngine
             $skipWarnings,
         );
 
+        // Dependency rescue observability: every pull is surfaced (INFO) so a
+        // rescued skill never looks like tag filtering being broken; every
+        // unsatisfiable demand and malformed `boost-requires` warns, naming
+        // the dependents so the consumer knows what ships degraded.
+        $dependencyDiagnostics = SkillDependencyDiagnostics::syncDiagnostics(
+            $skillResolution['dependencyPulls'],
+            $skillResolution['dependencyWarnings'],
+            $skillResolution['malformedRequires'],
+        );
+
         // Conventions keep-reason observability (#87): when the `## Project
         // Conventions` block is KEPT, surface WHY — the artifact (skill / guidance
         // file) and the legacy ref / token / pointer pinning it open. INFO-level so
@@ -934,6 +980,12 @@ final readonly class SyncEngine
         $keepReasonDiagnostics = array_map(
             static fn (KeepReason $reason): Diagnostic => Diagnostic::info(null, 'Project Conventions block kept — ' . $reason->describe()),
             $guidanceResult['conventionsKeepReasons'],
+        );
+
+        // Advisory by design — see fanOut() for why these never join errors[].
+        $commandWarningDiagnostics = array_map(
+            static fn (string $warning): Diagnostic => Diagnostic::warning(null, $warning),
+            $fanOutCommandWarnings,
         );
 
         return new SyncResult(
@@ -953,10 +1005,13 @@ final readonly class SyncEngine
                 ...$wrapperEmits['diagnostics'],
                 ...$renderFailDiagnostics,
                 ...$unrenderableDiagnostics,
+                ...$dependencyDiagnostics,
                 ...$emitterDiagnostics,
                 ...$reapDiagnostics,
                 ...$keepReasonDiagnostics,
                 ...$staleManifestDiagnostics,
+                ...$preservedForeignDiagnostics,
+                ...$commandWarningDiagnostics,
             ],
             conventionsBlockKept: $guidanceResult['conventionsBlockKept'],
             conventionsKeepReasons: $guidanceResult['conventionsKeepReasons'],
@@ -1401,7 +1456,7 @@ final readonly class SyncEngine
      * @param  list<DiscoveredVendor>  $allowedVendors
      * @param  array<string, list<Skill>>  $injectedVendorSkills  Caller-supplied pre-built skills keyed by source vendor. Tag-filtered before merging into the vendor map. Mirrors the remote-ingest path; see `sync()` docblock.
      * @param  list<string>  $skipWarnings  Out-param: SKILL.* files skipped for lack of a registered renderer (surfaced as advisory warnings).
-     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int, remoteErrors: list<string>, hostShadows: list<array{skill: string, shadowedVendor: string}>}  `remoteErrors` carries both per-source remote ingest failures (lenient mode) and per-file render failures. `hostShadows` records host `.ai/skills/<name>` shadowing an allowlisted-vendor skill of the same name.
+     * @return array{skills: list<Skill>, droppedNames: list<string>, tagFilteredCount: int, remoteErrors: list<string>, hostShadows: list<array{skill: string, shadowedVendor: string}>, dependencyPulls: list<array{name: string, requiredBy: string, vendor: string}>, dependencyWarnings: list<array{name: string, dependents: list<string>, reason: 'excluded'|'missing'}>, malformedRequires: list<string>}  `remoteErrors` carries both per-source remote ingest failures (lenient mode) and per-file render failures. `hostShadows` records host `.ai/skills/<name>` shadowing an allowlisted-vendor skill of the same name. The three dependency keys mirror {@see SkillDependencyResolver::resolve()} post-fixup.
      */
     private function resolveSkills(string $projectRoot, BoostConfig $config, array $allowedVendors, bool $force, array $injectedVendorSkills = [], bool $checkOnly = false, array &$skipWarnings = []): array
     {
@@ -1425,6 +1480,8 @@ final readonly class SyncEngine
         /** @var list<string> $droppedNames */
         $droppedNames = [];
         $tagFilteredCount = 0;
+        /** @var array<string, array{tagMismatch: list<Skill>, excluded: list<Skill>}> $retainedDrops */
+        $retainedDrops = [];
         foreach ($allowedVendors as $vendor) {
             if ($vendor->skillsPath === null) {
                 continue;
@@ -1453,9 +1510,16 @@ final readonly class SyncEngine
             // tag-filtered skill named `code-review` are two real hidden
             // skills, not one.
             $tagFilteredCount += $filtered['droppedByTag'];
+
+            if ($filtered['tagMismatchDrops'] !== [] || $filtered['excludedDrops'] !== []) {
+                $retainedDrops[$vendor->name] = [
+                    'tagMismatch' => $filtered['tagMismatchDrops'],
+                    'excluded' => $filtered['excludedDrops'],
+                ];
+            }
         }
 
-        $this->injectedVendorMerger->mergeSkills($injectedVendorSkills, $vendorSkills, $droppedNames, $tagFilteredCount, $config);
+        $this->injectedVendorMerger->mergeSkills($injectedVendorSkills, $vendorSkills, $droppedNames, $tagFilteredCount, $config, $retainedDrops);
 
         $remote = $this->remoteCoordinator->ingestIntoVendorMap(
             $config,
@@ -1464,11 +1528,27 @@ final readonly class SyncEngine
             $tagFilteredCount,
             $dispatcher,
             $checkOnly,
+            $retainedDrops,
         );
 
         /** @var list<array{skill: string, shadowedVendor: string}> $hostShadows */
         $hostShadows = [];
         $resolvedSkillList = $this->skillResolver->resolve($hostSkills, $vendorSkills, $force, $hostShadows);
+
+        // Ship-closure: every shipped skill's `boost-requires` must ship too,
+        // rescuing tag-dropped candidates where needed. Runs identically under
+        // --check — the candidate pool is whatever this run could see (uncached
+        // remote sources are already would-fetch advisories in check mode).
+        $dependencies = $this->skillDependencyResolver->resolve($resolvedSkillList, $retainedDrops, $force);
+        $resolvedSkillList = $dependencies['skills'];
+
+        $rescuedNames = array_column($dependencies['pulls'], 'name');
+        if ($rescuedNames !== []) {
+            // A rescued name shipped after all: the pruner must leave its emit
+            // dirs alone, and the silent-filter nudge must not count it.
+            $droppedNames = array_values(array_diff($droppedNames, $rescuedNames));
+            $tagFilteredCount = max(0, $tagFilteredCount - count($rescuedNames));
+        }
 
         return [
             'skills' => $resolvedSkillList,
@@ -1482,6 +1562,9 @@ final readonly class SyncEngine
             // surfaced for SyncCommand to log so consumers can audit which
             // version actually shipped.
             'hostShadows' => $hostShadows,
+            'dependencyPulls' => $dependencies['pulls'],
+            'dependencyWarnings' => $dependencies['warnings'],
+            'malformedRequires' => $dependencies['malformedRequires'],
         ];
     }
 
@@ -1801,17 +1884,47 @@ final readonly class SyncEngine
     }
 
     /**
-     * @param  list<Skill>  $skills
-     * @param  list<Guideline>  $guidelines
-     * @param  list<Command>  $commands
-     * @param  list<string>  $droppedSkillNames  Names dropped by SkillTagFilter — candidates for pruning.
-     * @return array{0: list<WrittenFile>, 1: list<string>}
+     * Preview (check) or prune (real) DEAD (broken) symlinks across ALL agent
+     * dirs — configured or not — so a de-configured agent's dir (e.g. `.cursor/`
+     * after dropping CURSOR) also sheds its symlink-era orphans. A broken link
+     * points nowhere, so removal is always safe; live symlinks are never touched
+     * (see {@see AgentDirSymlinkScanner}). The FULL target set is used, not
+     * `$this->agentTargets`: a subset-constructed engine (a wrapper, or a test)
+     * would otherwise leave stale links under agents outside its fan-out
+     * untouched, while `boost doctor` (which scans `allAgentTargets()`) still
+     * reports them. Each removal is a DELETED write so it flows into the
+     * `deleted=N` summary + delete-attribution (#147); under `--check` the
+     * read-only `scan()` previews the same dead set as WOULD_DELETE, so
+     * `sync --check` predicts the prune a real sync performs.
+     *
+     * Known residual (narrow): when a dead link sits at a path this sync also
+     * emits, a real sync prunes it FIRST then writes the file (DELETED + WROTE),
+     * but `--check` leaves the link on disk, so the later FileWriter reports
+     * SKIPPED_SYMLINK instead of WOULD_WRITE — the delete is previewed, the
+     * replacement write is not. Closing this needs the pruned-dead set threaded
+     * into the fan-out's write path; deferred with the SyncEngine decomposition.
+     *
+     * @return list<WrittenFile>
      */
+    private function deadSymlinkWrites(string $projectRoot, bool $checkOnly): array
+    {
+        $scanner = new AgentDirSymlinkScanner();
+        $dead = $checkOnly
+            ? $scanner->scan($projectRoot, self::allAgentTargets())['dead']
+            : $scanner->pruneDead($projectRoot, self::allAgentTargets());
+        $action = $checkOnly ? WriteAction::WOULD_DELETE : WriteAction::DELETED;
+
+        return array_map(
+            static fn (string $link): WrittenFile => new WrittenFile($link, $projectRoot . '/' . $link, $action),
+            $dead,
+        );
+    }
+
     /**
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
      * @param  list<Command>  $commands
-     * @param  list<string>  $droppedSkillNames
+     * @param  list<string>  $droppedSkillNames  Names dropped by SkillTagFilter — candidates for pruning.
      * @param  list<string>  $guidelineRenderErrors  Render failures captured
      *         by `resolveGuidelines()`. When non-empty, the per-target
      *         guideline-file PendingWrite is skipped — preserves the prior
@@ -1820,7 +1933,9 @@ final readonly class SyncEngine
      *         concatenation that overwrites operator-visible content
      *         (CLAUDE.md guideline body). Matches the safety contract the
      *         clean-slate pass already gets via `$hasAnyError`.
-     * @return array{0: list<WrittenFile>, 1: list<string>}
+     * @return array{0: list<WrittenFile>, 1: list<string>, 2: list<string>} Element 2 is
+     *         command-transpile advisory warnings, deliberately kept out of element 1
+     *         (fatal errors) — see the routing note at the loop that collects them.
      */
     private function fanOut(
         string $projectRoot,
@@ -1836,27 +1951,15 @@ final readonly class SyncEngine
         $writes = [];
         /** @var list<string> $errors */
         $errors = [];
+        /** @var list<string> $commandWarnings */
+        $commandWarnings = [];
 
         $toPrune = $this->filteredSkillPruner->candidates($skills, $droppedSkillNames);
         $skipGuidelineWrites = $guidelineRenderErrors !== [];
 
-        // Prune DEAD (broken) symlinks across ALL agent dirs — configured or not —
-        // so a de-configured agent's dir (e.g. .cursor/ after dropping CURSOR) also
-        // sheds its symlink-era orphans. A broken link points nowhere, so removal is
-        // always safe; live symlinks are never touched (see AgentDirSymlinkScanner).
-        // Use the FULL target set, not $this->agentTargets: a subset-constructed
-        // engine (a wrapper, or a test) would otherwise leave stale links under the
-        // agents outside its fan-out untouched, while `boost doctor` (which scans
-        // allAgentTargets()) still reports them — prune what doctor promises to.
-        // Record each pruned dead symlink as a DELETED write so it flows into the
-        // `deleted=N` summary + the delete-attribution (#147) — the prune was a real
-        // removal boost made and was previously invisible in the count.
-        if (! $checkOnly) {
-            $writes = [...$writes, ...array_map(
-                static fn (string $link): WrittenFile => new WrittenFile($link, $projectRoot . '/' . $link, WriteAction::DELETED),
-                (new AgentDirSymlinkScanner())->pruneDead($projectRoot, self::allAgentTargets()),
-            )];
-        }
+        // Prune (real) or preview (check) DEAD symlinks across all agent dirs —
+        // see deadSymlinkWrites().
+        $writes = [...$writes, ...$this->deadSymlinkWrites($projectRoot, $checkOnly)];
 
         foreach ($this->agentTargets as $target) {
             if (! $config->hasAgent($target->agent())) {
@@ -1892,12 +1995,17 @@ final readonly class SyncEngine
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
 
+            // Advisory, not fatal: a lossy transpile still writes the command
+            // body verbatim. Parking these in $errors made a normal sync report
+            // errors — a non-zero exit that broke `composer install` through
+            // `project-boost:sync`'s post-install-cmd wiring, and a $hasAnyError
+            // that skipped the clean-slate pass, the reap and the manifest write.
             foreach ($planned['warnings'] as $warning) {
-                $errors[] = $warning;
+                $commandWarnings[] = $warning;
             }
         }
 
-        return [$writes, $errors];
+        return [$writes, $errors, $commandWarnings];
     }
 
     /**
@@ -1918,7 +2026,7 @@ final readonly class SyncEngine
         try {
             $writes[] = $this->writer->write($baseDir, $pending, $checkOnly);
             if (! $checkOnly) {
-                $this->pruneLegacyFlatSibling($baseDir, $pending->relativePath);
+                $this->pruneLegacyFlatSibling($baseDir, $pending);
             }
         } catch (Throwable $throwable) {
             $errors[] = sprintf(
@@ -1931,20 +2039,21 @@ final readonly class SyncEngine
     }
 
     /**
-     * For a path ending in `/SKILL.md`, delete the obsolete flat sibling at
-     * `<same-stem>.md` left behind by older boost-core runs. The structural
-     * guard (`str_ends_with /SKILL.md`) is what limits scope — a guideline
-     * file or non-skill output never matches, so unrelated `.md` siblings
-     * are never touched.
+     * For a skill's ENTRY write (`<name>/SKILL.md`), delete the obsolete flat
+     * sibling at `<name>.md` left behind by older boost-core runs. Scope is
+     * limited by the plan-time `pruneLegacyFlatSibling` flag, NOT a path-shape
+     * heuristic — an ASSET write can also end in `/SKILL.md` (e.g.
+     * `examples/SKILL.md`), and pruning from it would delete the skill's own
+     * just-written `examples.md` sibling asset.
      */
-    private function pruneLegacyFlatSibling(string $baseDir, string $relativePath): void
+    private function pruneLegacyFlatSibling(string $baseDir, PendingWrite $pending): void
     {
-        $suffix = '/' . AgentTarget::SKILL_FILE;
-        if (! str_ends_with($relativePath, $suffix)) {
+        if (! $pending->pruneLegacyFlatSibling) {
             return;
         }
 
-        $legacyRelative = substr($relativePath, 0, -strlen($suffix)) . '.md';
+        $suffix = '/' . AgentTarget::SKILL_FILE;
+        $legacyRelative = substr($pending->relativePath, 0, -strlen($suffix)) . '.md';
         @unlink($baseDir . '/' . $legacyRelative);
     }
 }

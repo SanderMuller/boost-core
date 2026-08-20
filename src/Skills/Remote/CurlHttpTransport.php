@@ -25,6 +25,13 @@ final class CurlHttpTransport implements HttpTransport
 
     public function get(string $url, array $headers, ?string $destinationPath = null): HttpResponse
     {
+        if ($url === '') {
+            throw new RemoteFetchException(
+                'Cannot fetch an empty URL.',
+                RemoteFetchException::NETWORK_UNREACHABLE,
+            );
+        }
+
         $ch = curl_init();
         $responseHeaders = [];
 

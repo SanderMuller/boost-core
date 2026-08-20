@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
+use Override;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;
@@ -39,6 +40,7 @@ final class OpenCodeTarget extends AgentTarget
      * documented examples). Passthrough; named placeholders convert
      * to uppercase to match the convention.
      */
+    #[Override]
     public function transpileCommandBody(Command $command): CommandTranspileResult
     {
         $tokens = (new ArgumentParser())->parse($command->body);

@@ -91,6 +91,169 @@ final readonly class RemoteSkillCache
         return $this->isSlotFresh($this->slotPath($source->source, $resolved), $source);
     }
 
+    /**
+     * An empty directory for a discovery run to unpack into.
+     *
+     * Deliberately under the cache root rather than the system temp dir:
+     * {@see promoteDiscovery()} promotes by renaming, and `rename()` cannot
+     * cross a filesystem boundary. With `/tmp` on its own mount — the norm on
+     * Linux — a system-temp workspace would make every promotion fail, and the
+     * caller would quietly re-download on the next sync. Same reason
+     * {@see populateSlot()} stages inside the cache root.
+     *
+     * The caller owns the directory and its removal.
+     *
+     * @throws RemoteExtractException
+     */
+    public function createWorkspace(): string
+    {
+        $workspace = $this->cacheRoot . '/.tmp/' . bin2hex(random_bytes(8));
+
+        if (! @mkdir($workspace, 0o755, recursive: true) && ! is_dir($workspace)) {
+            throw new RemoteExtractException(
+                sprintf('Cannot create a workspace at `%s`.', $workspace),
+                RemoteExtractException::DISK_FULL,
+            );
+        }
+
+        return $workspace;
+    }
+
+    /**
+     * Adopt a completed discovery run as this source's cache slot.
+     *
+     * `boost remote` has already fetched and unpacked the repo to answer "what
+     * does this publish?". Throwing that away would make the sync it offers to
+     * run immediately re-download everything it just read, so the directory is
+     * pruned to the operator's selection and promoted into the canonical slot
+     * instead.
+     *
+     * `$tempDir` must be laid out as `<tempDir>/<skill-name>/…` (what
+     * {@see RemoteSkillDiscoverer::discover()} produces). It is consumed:
+     * on success it becomes the slot, on failure it is left for the caller
+     * to clean up.
+     *
+     * The recorded `asset` / `path` per skill MUST match what lands in
+     * `withRemoteSkills(...)`, or {@see isSlotFresh()} rejects the slot on the
+     * next sync and the saving is lost.
+     *
+     * @param  list<DiscoveredSkill>  $selected  the skills that will be declared — never empty
+     *
+     * @throws RemoteExtractException
+     */
+    public function promoteDiscovery(
+        string $source,
+        ResolvedRef $resolved,
+        string $mode,
+        string $tempDir,
+        array $selected,
+    ): CachedSource {
+        if ($selected === []) {
+            throw new RemoteExtractException(
+                sprintf('Refusing to promote an empty selection for `%s`.', $source),
+                RemoteExtractException::MALFORMED,
+            );
+        }
+
+        $this->pruneToSelection($tempDir, $selected);
+        $this->writeDiscoveryMeta($tempDir, $source, $resolved, $mode, $selected);
+
+        $slotDir = $this->slotPath($source, $resolved->resolved);
+        $parent = dirname($slotDir);
+        if (! is_dir($parent) && ! @mkdir($parent, 0o755, recursive: true) && ! is_dir($parent)) {
+            throw new RemoteExtractException(
+                sprintf('Cannot create slot parent `%s`.', $parent),
+                RemoteExtractException::DISK_FULL,
+            );
+        }
+
+        BundleExtractor::recursivelyRemove($slotDir);
+
+        if (! @rename($tempDir, $slotDir)) {
+            throw new RemoteExtractException(
+                sprintf('Atomic rename failed from `%s` to `%s`.', $tempDir, $slotDir),
+                RemoteExtractException::DISK_FULL,
+            );
+        }
+
+        // Discovery resolved the ref through the fetcher directly, bypassing the
+        // TTL'd resolution cache. Record it, or a moving ref would still cost a
+        // resolve call on the very next sync — with the content already on disk.
+        if (! self::isPinnedVersion($resolved->requested, $mode)) {
+            $cached = $this->readResolutionCache($source);
+            $cached[$resolved->requested . ':' . $mode] = [
+                'resolved' => $resolved->resolved,
+                'resolved_at' => time(),
+            ];
+            $this->writeResolutionCache($source, $cached);
+        }
+
+        return new CachedSource(slotDir: $slotDir, resolvedRef: $resolved->resolved);
+    }
+
+    /**
+     * Drop everything the operator didn't pick — unselected skills plus
+     * discovery's own scratch directories (`.repo`, `.stage-*`). The slot then
+     * holds exactly what `boost.php` declares.
+     *
+     * @param  list<DiscoveredSkill>  $selected
+     */
+    private function pruneToSelection(string $tempDir, array $selected): void
+    {
+        $keep = [];
+        foreach ($selected as $skill) {
+            $keep[$skill->name] = true;
+        }
+
+        $entries = @scandir($tempDir);
+        if ($entries === false) {
+            return;
+        }
+
+        foreach ($entries as $entry) {
+            if ($entry === '.') {
+                continue;
+            }
+
+            if ($entry === '..') {
+                continue;
+            }
+
+            if (isset($keep[$entry])) {
+                continue;
+            }
+
+            BundleExtractor::recursivelyRemove($tempDir . '/' . $entry);
+        }
+    }
+
+    /**
+     * {@see writeMeta()} for a discovery-built slot: same on-disk shape, keyed
+     * off {@see DiscoveredSkill}s rather than a declared source.
+     *
+     * @param  list<DiscoveredSkill>  $selected
+     *
+     * @throws RemoteExtractException
+     */
+    private function writeDiscoveryMeta(
+        string $slotDir,
+        string $source,
+        ResolvedRef $resolved,
+        string $mode,
+        array $selected,
+    ): void {
+        $refs = array_map(
+            static fn (DiscoveredSkill $skill): RemoteSkillRef => new RemoteSkillRef(
+                name: $skill->name,
+                asset: $skill->asset,
+                path: $skill->path,
+            ),
+            $selected,
+        );
+
+        $this->writeMetaFile($slotDir, $source, $resolved->requested, $resolved->resolved, $mode, $refs);
+    }
+
     private function resolveWithCaching(RemoteSkillSource $source): ResolvedRef
     {
         if (self::isPinnedVersion($source->version, $source->mode())) {
@@ -268,10 +431,46 @@ final readonly class RemoteSkillCache
 
     private function writeMeta(string $slotDir, RemoteSkillSource $source, ResolvedRef $resolved): void
     {
+        $this->writeMetaFile(
+            $slotDir,
+            $source->source,
+            $source->version,
+            $resolved->resolved,
+            $source->mode(),
+            $source->skills,
+        );
+    }
+
+    /**
+     * Write a slot's `.meta.json`: provenance plus a per-skill SHA-256 tree
+     * hash and the `asset` / `path` mapping it was built for.
+     *
+     * {@see isSlotFresh()} reads all three back, so a slot built here is only
+     * reusable by a config declaring the same mapping.
+     *
+     * @param  list<RemoteSkillRef>  $refs
+     *
+     * @throws RemoteExtractException
+     */
+    private function writeMetaFile(
+        string $slotDir,
+        string $source,
+        string $version,
+        string $resolved,
+        string $mode,
+        array $refs,
+    ): void {
         /** @var array<string,array<string,mixed>> $skills */
         $skills = [];
-        foreach ($source->skills as $ref) {
+        foreach ($refs as $ref) {
             $skillDir = $slotDir . '/' . $ref->name;
+            if (! is_dir($skillDir)) {
+                throw new RemoteExtractException(
+                    sprintf('No directory for skill `%s` at `%s`.', $ref->name, $skillDir),
+                    RemoteExtractException::MALFORMED,
+                );
+            }
+
             $entry = ['sha256' => RemoteSkillCacheFilesystem::treeHash($skillDir)];
             if ($ref->asset !== null) {
                 $entry['asset'] = $ref->asset;
@@ -284,21 +483,17 @@ final readonly class RemoteSkillCache
             $skills[$ref->name] = $entry;
         }
 
-        $meta = [
-            'source' => $source->source,
-            'version' => $source->version,
-            'resolved' => $resolved->resolved,
-            'mode' => $source->mode(),
+        $json = json_encode([
+            'source' => $source,
+            'version' => $version,
+            'resolved' => $resolved,
+            'mode' => $mode,
             'fetched_at' => gmdate('c'),
             'skills' => $skills,
-        ];
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
-        $json = json_encode($meta, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
         if ($json === false) {
-            throw new RemoteExtractException(
-                'Failed to encode .meta.json.',
-                RemoteExtractException::MALFORMED,
-            );
+            throw new RemoteExtractException('Failed to encode .meta.json.', RemoteExtractException::MALFORMED);
         }
 
         if (@file_put_contents($slotDir . '/.meta.json', $json) === false) {

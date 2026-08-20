@@ -1,8 +1,12 @@
 <?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Skills\Remote\BundleExtractor;
+use SanderMuller\BoostCore\Skills\Remote\DiscoveredSkill;
+use SanderMuller\BoostCore\Skills\Remote\RemoteExtractException;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillCache;
+use SanderMuller\BoostCore\Skills\Remote\RemoteSkillDiscoverer;
 use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
+use SanderMuller\BoostCore\Skills\Remote\ResolvedRef;
 use SanderMuller\BoostCore\Tests\Doubles\Remote\FakeRemoteFetcher;
 
 function cacheTempRoot(): string
@@ -223,5 +227,199 @@ it('resolveCacheRoot falls back to XDG_CACHE_HOME, then HOME/.cache, then sys_ge
     } finally {
         putenv('XDG_CACHE_HOME');
         putenv('HOME');
+    }
+});
+
+// ---------- promoteDiscovery: adopting a discovery run as the slot ----------
+
+/**
+ * Run a real discovery against a canned repo and promote a subset of it,
+ * the way `boost remote` does.
+ *
+ * @param  array<string, string>  $repoSkills  repo-relative path => SKILL.md frontmatter
+ * @param  list<string>  $keep  frontmatter names to promote
+ * @return array{0: RemoteSkillCache, 1: FakeRemoteFetcher, 2: string}  cache, fetcher, cache root
+ */
+function promoteDiscoveredPathSource(array $repoSkills, array $keep, string $version = 'main'): array
+{
+    $root = cacheTempRoot();
+    $fetcher = (new FakeRemoteFetcher())
+        ->withResolvedRef('acme/skills', $version, RemoteSkillSource::MODE_PATH, 'abc123')
+        ->withTarball('acme/skills', 'abc123', discoveryTarballBytes('acme-skills-abc123', $repoSkills));
+
+    $work = sys_get_temp_dir() . '/boost-promote-' . bin2hex(random_bytes(6));
+    mkdir($work, 0o755, recursive: true);
+
+    $discoverer = new RemoteSkillDiscoverer($fetcher);
+    $plan = $discoverer->plan('acme/skills', $version);
+    $discovered = $discoverer->discover('acme/skills', $plan, $work);
+
+    $selected = array_values(array_filter(
+        $discovered,
+        static fn (DiscoveredSkill $skill): bool => in_array($skill->name, $keep, true),
+    ));
+
+    $cache = new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $root);
+    $cache->promoteDiscovery('acme/skills', $plan->ref, $plan->mode, $work, $selected);
+
+    return [$cache, $fetcher, $root];
+}
+
+it('promoteDiscovery: the promoted slot satisfies isReadyOffline for exactly what was declared', function (): void {
+    [$cache, , $root] = promoteDiscoveredPathSource(
+        ['skills/alpha' => 'name: alpha', 'skills/beta' => 'name: beta'],
+        ['alpha'],
+    );
+
+    try {
+        $declared = RemoteSkillSource::githubPath('acme/skills', 'main', ['alpha' => 'skills/alpha']);
+
+        // The whole point of promotion: the sync `boost remote` offers to run
+        // finds the content already there and touches no network.
+        expect($cache->isReadyOffline($declared))->toBeTrue();
+    } finally {
+        BundleExtractor::recursivelyRemove($root);
+    }
+});
+
+it('promoteDiscovery: unselected skills and discovery scratch dirs are gone from the slot', function (): void {
+    [$cache, , $root] = promoteDiscoveredPathSource(
+        ['skills/alpha' => 'name: alpha', 'skills/beta' => 'name: beta'],
+        ['alpha'],
+    );
+
+    try {
+        $slot = $root . '/acme__skills/abc123';
+
+        expect($slot . '/alpha/SKILL.md')->toBeFile()
+            ->and($slot . '/beta')->not->toBeDirectory()
+            ->and($slot . '/.repo')->not->toBeDirectory()
+            ->and($slot . '/.meta.json')->toBeFile();
+
+        /** @var array{mode: string, resolved: string, skills: array<string, array{path: string}>} $meta */
+        $meta = json_decode((string) file_get_contents($slot . '/.meta.json'), true, flags: JSON_THROW_ON_ERROR);
+
+        expect(array_keys($meta['skills']))->toBe(['alpha'])
+            ->and($meta['skills']['alpha']['path'])->toBe('skills/alpha')
+            ->and($meta['mode'])->toBe('path')
+            ->and($meta['resolved'])->toBe('abc123');
+
+        // Unused so `$cache` isn't flagged; the assertion above is the subject.
+        expect($cache)->toBeInstanceOf(RemoteSkillCache::class);
+    } finally {
+        BundleExtractor::recursivelyRemove($root);
+    }
+});
+
+it('promoteDiscovery: a declared path that differs from the promoted one makes the slot stale', function (): void {
+    [$cache, , $root] = promoteDiscoveredPathSource(['skills/alpha' => 'name: alpha'], ['alpha']);
+
+    try {
+        // Same skill name, different in-repo path — the cached content was built
+        // for the other mapping, so it must not be served.
+        $moved = RemoteSkillSource::githubPath('acme/skills', 'main', ['alpha' => 'other/place']);
+
+        expect($cache->isReadyOffline($moved))->toBeFalse();
+    } finally {
+        BundleExtractor::recursivelyRemove($root);
+    }
+});
+
+it('promoteDiscovery: a bundle slot is offline-ready for the asset name githubBundle derives', function (): void {
+    $root = cacheTempRoot();
+    $fetcher = (new FakeRemoteFetcher())
+        ->withResolvedRef('acme/skills', 'v1.2.0', RemoteSkillSource::MODE_BUNDLE, 'v1.2.0')
+        ->withReleaseAssets('acme/skills', 'v1.2.0', ['alpha.skill'])
+        ->withAsset('acme/skills', 'v1.2.0', 'alpha.skill', cacheMakeBundleBytes('alpha'));
+
+    $work = sys_get_temp_dir() . '/boost-promote-bundle-' . bin2hex(random_bytes(6));
+    mkdir($work, 0o755, recursive: true);
+
+    try {
+        $discoverer = new RemoteSkillDiscoverer($fetcher);
+        $plan = $discoverer->plan('acme/skills', 'v1.2.0');
+        $discovered = $discoverer->discover('acme/skills', $plan, $work);
+
+        $cache = new RemoteSkillCache(fetcher: $fetcher, cacheRoot: $root);
+        $cache->promoteDiscovery('acme/skills', $plan->ref, $plan->mode, $work, $discovered);
+
+        expect($cache->isReadyOffline(RemoteSkillSource::githubBundle('acme/skills', 'v1.2.0', ['alpha'])))->toBeTrue();
+    } finally {
+        BundleExtractor::recursivelyRemove($work);
+        BundleExtractor::recursivelyRemove($root);
+    }
+});
+
+it('promoteDiscovery: records a moving ref so the next sync does not re-resolve it', function (): void {
+    [$cache, , $root] = promoteDiscoveredPathSource(['skills/alpha' => 'name: alpha'], ['alpha'], 'main');
+
+    try {
+        /** @var array<string, array{resolved: string}> $resolution */
+        $resolution = json_decode((string) file_get_contents($root . '/acme__skills/.resolution-cache.json'), true, flags: JSON_THROW_ON_ERROR);
+
+        expect($resolution['main:path']['resolved'])->toBe('abc123')
+            ->and($cache->isReadyOffline(RemoteSkillSource::githubPath('acme/skills', 'main', ['alpha' => 'skills/alpha'])))->toBeTrue();
+    } finally {
+        BundleExtractor::recursivelyRemove($root);
+    }
+});
+
+it('promoteDiscovery: refuses an empty selection rather than writing an empty slot', function (): void {
+    $root = cacheTempRoot();
+    $work = sys_get_temp_dir() . '/boost-promote-empty-' . bin2hex(random_bytes(6));
+    mkdir($work, 0o755, recursive: true);
+
+    try {
+        $cache = new RemoteSkillCache(fetcher: new FakeRemoteFetcher(), cacheRoot: $root);
+
+        expect(fn () => $cache->promoteDiscovery(
+            'acme/skills',
+            new ResolvedRef(requested: 'main', resolved: 'abc123'),
+            RemoteSkillSource::MODE_PATH,
+            $work,
+            [],
+        ))->toThrow(RemoteExtractException::class, 'empty selection');
+    } finally {
+        BundleExtractor::recursivelyRemove($work);
+        BundleExtractor::recursivelyRemove($root);
+    }
+});
+
+it('createWorkspace: hands out a directory on the same filesystem as the slots', function (): void {
+    $root = cacheTempRoot();
+
+    try {
+        $workspace = (new RemoteSkillCache(fetcher: new FakeRemoteFetcher(), cacheRoot: $root))->createWorkspace();
+
+        // promoteDiscovery() promotes by renaming, and rename() cannot cross a
+        // filesystem boundary. A workspace in the system temp dir would make
+        // every promotion fail wherever /tmp is a separate mount.
+        expect($workspace)->toStartWith($root . '/')
+            ->and(is_dir($workspace))->toBeTrue();
+    } finally {
+        BundleExtractor::recursivelyRemove($root);
+    }
+});
+
+it('createWorkspace: a workspace can be promoted straight into a slot', function (): void {
+    $root = cacheTempRoot();
+
+    try {
+        $cache = new RemoteSkillCache(fetcher: new FakeRemoteFetcher(), cacheRoot: $root);
+        $workspace = $cache->createWorkspace();
+        mkdir($workspace . '/alpha', 0o755, recursive: true);
+        file_put_contents($workspace . '/alpha/SKILL.md', "---\nname: alpha\n---\nBody.");
+
+        $cache->promoteDiscovery(
+            'acme/skills',
+            new ResolvedRef(requested: 'main', resolved: 'abc123'),
+            RemoteSkillSource::MODE_PATH,
+            $workspace,
+            [new DiscoveredSkill(name: 'alpha', description: null, tags: [], requires: [], path: 'skills/alpha')],
+        );
+
+        expect($root . '/acme__skills/abc123/alpha/SKILL.md')->toBeFile();
+    } finally {
+        BundleExtractor::recursivelyRemove($root);
     }
 });

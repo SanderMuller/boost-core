@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
+use Override;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;
@@ -46,6 +47,7 @@ final class JunieTarget extends AgentTarget
      *  - `$name`       → `$name` passthrough; declared names should
      *                    be in `arguments:`.
      */
+    #[Override]
     public function transpileCommandBody(Command $command): CommandTranspileResult
     {
         $tokens = (new ArgumentParser())->parse($command->body);

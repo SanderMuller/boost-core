@@ -85,6 +85,49 @@ final class ManagedFileOps
     }
 
     /**
+     * Narrow the on-disk managed files to the ones boost may CLAIM in the manifest.
+     *
+     * The enumeration behind `$managedFilesOnDisk` is a raw directory walk of the
+     * boost-managed gitignore patterns, so it also picks up files another tool wrote
+     * into those directories (laravel/boost installs its bundled skills there). Left
+     * unfiltered, the manifest would adopt such a file as boost's own — and the very
+     * next sync, seeing it in the prior manifest, would delete it. That turned the
+     * stale sweep's preservation into a one-sync reprieve.
+     *
+     * A path is claimable when this sync touched it (any {@see WrittenFile} action,
+     * including UNCHANGED and SKIPPED_SYMLINK), when boost already owned it, or when
+     * a wrapper claims it. Everything else belongs to another writer: not recorded,
+     * so it is never reaped. The failure direction is a leak, never a delete.
+     *
+     * @param  list<string>  $managedFilesOnDisk
+     * @param  list<WrittenFile>  $writes
+     * @param  array<string, string>  $wrapperPaths
+     * @return list<string>
+     */
+    public static function claimableManagedFiles(array $managedFilesOnDisk, array $writes, SyncManifest $priorManifest, array $wrapperPaths): array
+    {
+        $written = [];
+        foreach ($writes as $write) {
+            $written[$write->relativePath] = true;
+        }
+
+        $claimable = [];
+        foreach ($managedFilesOnDisk as $relativePath) {
+            if (isset($written[$relativePath]) || $priorManifest->has($relativePath)) {
+                $claimable[] = $relativePath;
+
+                continue;
+            }
+
+            if (self::isUnderWrapperClaim(self::canonicalizeWrapperPath($relativePath), $wrapperPaths)) {
+                $claimable[] = $relativePath;
+            }
+        }
+
+        return $claimable;
+    }
+
+    /**
      * sha256 of a file's current content, or null when it is absent/unreadable.
      */
     public static function fileSha(string $projectRoot, string $relativePath): ?string

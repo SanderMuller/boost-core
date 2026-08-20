@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# Composer resolves the root package as dev-<branch> off main, which skips the
+# extra.branch-alias entry and makes the self-referential boost-skills dev
+# dependency unresolvable. Pin the root version so every ref resolves like main.
+env:
+  COMPOSER_ROOT_VERSION: dev-main
+
 concurrency:
   group: pint-check-${{ github.ref }}
   cancel-in-progress: true
@@ -21,7 +27,9 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -33,7 +41,7 @@ jobs:
         uses: ramsey/composer-install@v4
 
       - name: Cache Pint results
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: .cache/pint/
           key: pint-cache-${{ hashFiles('pint.json') }}

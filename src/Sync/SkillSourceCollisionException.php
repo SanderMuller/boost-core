@@ -3,8 +3,6 @@
 namespace SanderMuller\BoostCore\Sync;
 
 use RuntimeException;
-use SanderMuller\BoostCore\Skills\CollidingSkillsException;
-use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSyncCoordinator;
 
 /**
  * Thrown by {@see InjectedVendorMerger} and

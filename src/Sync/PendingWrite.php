@@ -20,9 +20,13 @@ use SanderMuller\BoostCore\Conventions\ManagedRegion;
  */
 final readonly class PendingWrite
 {
+    /**
+     * @param  bool  $pruneLegacyFlatSibling  True only for a skill's ENTRY write (`<name>/SKILL.md`), where an older boost-core run may have left an obsolete flat `<name>.md` to delete. Asset and command writes must never set this — an asset path can also end in `/SKILL.md` (e.g. `examples/SKILL.md`), and pruning from it would delete a sibling asset.
+     */
     public function __construct(
         public string $relativePath,
         public string $content,
         public ?ManagedRegion $managedRegion = null,
+        public bool $pruneLegacyFlatSibling = false,
     ) {}
 }

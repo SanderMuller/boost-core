@@ -26,6 +26,9 @@ final class FakeRemoteFetcher implements RemoteFetcher
     /** @var array<string, string> */
     private array $tarballs = [];
 
+    /** @var array<string, list<string>> */
+    private array $releaseAssets = [];
+
     public function withResolvedRef(string $source, string $version, string $mode, string $resolved): self
     {
         $this->refs[$this->refKey($source, $version, $mode)] = new ResolvedRef(requested: $version, resolved: $resolved);
@@ -45,6 +48,42 @@ final class FakeRemoteFetcher implements RemoteFetcher
         $this->tarballs[$this->tarballKey($source, $resolved)] = $bodyBytes;
 
         return $this;
+    }
+
+    /**
+     * Register the `.skill` assets a release publishes. Registering an empty
+     * list is meaningful: it models a release that exists but ships no skills,
+     * which is what makes discovery fall back to path mode.
+     *
+     * @param  list<string>  $assetNames  full asset names, e.g. `code-review.skill`
+     */
+    public function withReleaseAssets(string $source, string $resolved, array $assetNames): self
+    {
+        $this->releaseAssets[$this->tarballKey($source, $resolved)] = $assetNames;
+
+        return $this;
+    }
+
+    public function listReleaseAssets(string $source, ResolvedRef $ref): array
+    {
+        $key = $this->tarballKey($source, $ref->resolved);
+        if (! isset($this->releaseAssets[$key])) {
+            throw new RemoteFetchException(
+                sprintf('FakeRemoteFetcher: no canned release asset list for `%s`.', $key),
+                RemoteFetchException::NOT_FOUND,
+            );
+        }
+
+        $found = [];
+        foreach ($this->releaseAssets[$key] as $assetName) {
+            if (! str_ends_with($assetName, '.skill')) {
+                continue;
+            }
+
+            $found[] = ['name' => substr($assetName, 0, -6), 'asset' => $assetName];
+        }
+
+        return $found;
     }
 
     public function resolveRef(string $source, string $version, string $mode): ResolvedRef

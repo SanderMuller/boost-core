@@ -33,7 +33,7 @@ use SanderMuller\BoostCore\Config\BoostConfig;
  * file lingers stale. Safely auto-deleting it needs an ownership signal
  * boost-core lacks (a generated-file marker, or a sync manifest) — a
  * hand-authored `CLAUDE.md` must never be deleted. Known limitation: the
- * file is gitignored and `rm`-able; see `internal/TODO.md`.
+ * file is gitignored and `rm`-able.
  *
  * @internal
  */

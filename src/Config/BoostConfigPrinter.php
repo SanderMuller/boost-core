@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Config;
 
+use Override;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\PrettyPrinter\Standard;
 
@@ -24,6 +25,7 @@ use PhpParser\PrettyPrinter\Standard;
  */
 final class BoostConfigPrinter extends Standard
 {
+    #[Override]
     protected function pExpr_Array(Array_ $node): string
     {
         if ($node->items === []) {

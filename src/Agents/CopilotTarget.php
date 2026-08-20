@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Agents;
 
+use Override;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\ArgumentParser;
 use SanderMuller\BoostCore\Skills\ArgumentToken;
@@ -55,6 +56,7 @@ final class CopilotTarget extends AgentTarget
         return '.github/prompts';
     }
 
+    #[Override]
     public function commandFileExtension(): string
     {
         return 'prompt.md';
@@ -66,6 +68,7 @@ final class CopilotTarget extends AgentTarget
      * `$ARGUMENTS` → `${input:args}`, `$N` → `${input:argN}`, named
      * `$name` → `${input:name}`. Not lossy.
      */
+    #[Override]
     public function transpileCommandBody(Command $command): CommandTranspileResult
     {
         $tokens = (new ArgumentParser())->parse($command->body);

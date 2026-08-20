@@ -127,6 +127,39 @@ final readonly class SyncManifest
     }
 
     /**
+     * Does a manifest FILE exist for this project (either layout), regardless of
+     * whether it holds any entries?
+     *
+     * An existing but entry-less manifest is meaningful: it says boost owns nothing
+     * right now — which is different from "boost has never recorded ownership here".
+     * Callers that gate destructive behaviour on ownership knowledge must use this,
+     * not {@see isEmpty()}, or they fall back to the ownership-blind path exactly
+     * when the project has legitimately emptied out.
+     */
+    public static function existsForProjectRoot(string $projectRoot, bool $inConfigDir = false): bool
+    {
+        foreach (self::candidatePaths($projectRoot, $inConfigDir) as $candidate) {
+            if (is_file($candidate)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function candidatePaths(string $projectRoot, bool $inConfigDir): array
+    {
+        $root = rtrim($projectRoot, '/');
+
+        return $inConfigDir
+            ? [$root . '/' . self::relativePathFor(true), $root . '/' . self::RELATIVE_PATH]
+            : [$root . '/' . self::RELATIVE_PATH, $root . '/' . self::relativePathFor(true)];
+    }
+
+    /**
      * Load the prior manifest from a project root. Absent or corrupt → empty
      * (backward-safe: no ownership asserted).
      *
@@ -140,13 +173,8 @@ final readonly class SyncManifest
      */
     public static function fromProjectRoot(string $projectRoot, bool $inConfigDir = false): self
     {
-        $root = rtrim($projectRoot, '/');
-        $candidates = $inConfigDir
-            ? [$root . '/' . self::relativePathFor(true), $root . '/' . self::RELATIVE_PATH]
-            : [$root . '/' . self::RELATIVE_PATH, $root . '/' . self::relativePathFor(true)];
-
         $raw = false;
-        foreach ($candidates as $candidate) {
+        foreach (self::candidatePaths($projectRoot, $inConfigDir) as $candidate) {
             if (is_file($candidate)) {
                 $raw = @file_get_contents($candidate);
                 break;
@@ -207,6 +235,23 @@ final readonly class SyncManifest
     public function has(string $relativePath): bool
     {
         return isset($this->entries[$relativePath]);
+    }
+
+    /**
+     * Is any listed path inside this directory? Answers "does boost own
+     * anything under `<agent skills dir>/<name>`", which classifies a whole
+     * emitted directory as boost's or another writer's.
+     */
+    public function hasUnder(string $relativeDirectory): bool
+    {
+        $prefix = rtrim($relativeDirectory, '/') . '/';
+        foreach (array_keys($this->entries) as $path) {
+            if (str_starts_with($path, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -152,7 +152,7 @@ final readonly class SyncReporter
         $this->renderConventionsDiagnostics($io, $result);
 
         if ($result->hasErrors()) {
-            $this->renderErrors($io, $result);
+            $this->renderErrors($io, $result, $checkOnly);
 
             return new SyncReportOutcome(true, false, false, false, Command::FAILURE);
         }
@@ -328,26 +328,44 @@ final readonly class SyncReporter
     }
 
     /**
-     * Both error channels. `hasErrors()` is true for a non-empty errors list OR
-     * any ERRORED emitter, and the two live in different places on the result —
-     * rendering only the list meant an emitter failure on an otherwise clean run
-     * exited 1 having printed nothing at all.
+     * Both error channels, as ONE block.
+     *
+     * `hasErrors()` is true for a non-empty errors list OR any ERRORED emitter,
+     * and the two live in different places on the result — rendering only the
+     * list meant an emitter failure on an otherwise clean run exited 1 having
+     * printed nothing at all.
+     *
+     * One header plus a compact list, rather than `SymfonyStyle::error()` per
+     * entry. The common failure is not one error but several: a project with
+     * Blade-shipping vendors produces one render failure PER SOURCE, and a
+     * stack of full-width red blocks pushes the summary off a short terminal
+     * while reading as several separate catastrophes instead of one list.
      */
-    private function renderErrors(SymfonyStyle $io, SyncResult $result): void
+    private function renderErrors(SymfonyStyle $io, SyncResult $result, bool $checkOnly): void
     {
-        foreach ($result->errors as $error) {
-            $io->error($error);
-        }
+        $messages = $result->errors;
 
         foreach ($result->emitters as $emitter) {
             if ($emitter->action === EmitterAction::ERRORED) {
-                $io->error(sprintf(
+                $messages[] = sprintf(
                     'emitter %s (%s): %s',
                     $emitter->fqcn,
                     $emitter->vendor,
                     $emitter->reason ?? 'no reason recorded',
-                ));
+                );
             }
+        }
+
+        if ($messages === []) {
+            return;
+        }
+
+        // Name the MODE: an operator needs to know whether the run that failed
+        // was the one that writes.
+        $io->error($checkOnly ? 'Errors during --check:' : 'Errors during sync:');
+
+        foreach ($messages as $message) {
+            $io->writeln('  - ' . $message);
         }
     }
 

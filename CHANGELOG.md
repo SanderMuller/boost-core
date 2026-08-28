@@ -54,6 +54,12 @@ them could describe the same `SyncResult` differently from the bare binary.
 `SyncReporter::report()` is now `@api` and returns the exit code the bare run
 would use. Its exit-code decisions are contractual; the wording is not.
 
+Several errors now render as ONE block with a compact list, not one full-width
+red block each. The common failure is not a single error — a project with
+Blade-shipping vendors produces one render failure per source — and a stack of
+blocks pushed the summary off a short terminal while reading as several
+separate catastrophes.
+
 `boost sync` also stops exiting silently on an errored emitter. `hasErrors()`
 is true for a non-empty errors list OR any `ERRORED` emitter, but only the list
 was rendered — so an emitter failure on an otherwise clean run exited 1 having

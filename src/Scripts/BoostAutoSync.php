@@ -7,6 +7,7 @@ use Composer\Script\Event;
 use OutOfBoundsException;
 use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Sync\SyncEngine;
+use SanderMuller\BoostCore\Sync\SyncSummary;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -112,8 +113,16 @@ final class BoostAutoSync
      * delete count (`wrote=<n>` or `deleted=<n>`, n > 0) — the signal that
      * lets {@see run()} stay silent on a true no-op install yet still
      * surface the summary when files were written or pruned. Couples to
-     * the binary's `wrote=%d, …, deleted=%d` summary phrasing; kept in
-     * lockstep with `SyncCommand`'s report output.
+     * the binary's `wrote=%d, …, deleted=%d` summary phrasing, which
+     * {@see SyncSummary::line()} now owns.
+     *
+     * ASSUMES A PLAIN SYNC. `SyncSummary`'s CHECK-mode line reads
+     * `would-write=… would-delete=…` and does not match this pattern —
+     * deliberately, since a check run writes nothing and there is no change to
+     * announce. The hook only ever spawns `sync` with no flags, so the two
+     * never meet. If that ever changes, note the failure mode: the parse
+     * returns false rather than erroring, so the hook would go SILENT on a run
+     * that changed files. Point this at the check line, or leave it alone.
      */
     private static function summaryReportsChange(string $summary): bool
     {

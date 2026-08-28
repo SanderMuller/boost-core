@@ -188,3 +188,26 @@ it('still frames drift as a failure by default', function (): void {
     expect($outcome->exitCode)->toBe(1)
         ->and($output->fetch())->toContain('Drift detected');
 });
+
+it('renders several errors as one block rather than one block each', function (): void {
+    // The common failure is not one error. A project with Blade-shipping vendors
+    // produces one render failure PER SOURCE — hihaho saw four in a single run.
+    // A stack of full-width `SymfonyStyle::error()` blocks pushes the summary off
+    // a short terminal and reads as four catastrophes instead of one list of four.
+    $result = new SyncResult(
+        writes: [],
+        emitters: [],
+        errors: ['skill render failed (a.blade.php)', 'skill render failed (b.blade.php)'],
+        check: true,
+    );
+
+    $output = new BufferedOutput();
+    (new SyncReporter())->render(new SymfonyStyle(new ArrayInput([]), $output), $result, true, sys_get_temp_dir());
+    $display = $output->fetch();
+
+    expect($display)->toContain('Errors during --check:')
+        ->and($display)->toContain('  - skill render failed (a.blade.php)')
+        ->and($display)->toContain('  - skill render failed (b.blade.php)')
+        // One header for the pair, not one per message.
+        ->and(substr_count($display, 'Errors during'))->toBe(1);
+});

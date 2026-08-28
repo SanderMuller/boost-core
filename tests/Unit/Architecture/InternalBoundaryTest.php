@@ -32,7 +32,9 @@ use SanderMuller\BoostCore\Sync\EmitterResult;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
 use SanderMuller\BoostCore\Sync\SyncContext;
+use SanderMuller\BoostCore\Sync\SyncReporter;
 use SanderMuller\BoostCore\Sync\SyncResult;
+use SanderMuller\BoostCore\Sync\SyncSummary;
 use SanderMuller\BoostCore\Sync\WriteAction;
 use SanderMuller\BoostCore\Sync\WrittenFile;
 
@@ -80,6 +82,14 @@ const ENGINE_PUBLIC_API = [
     // (already @api) BoostWrapperContract is implementable on frozen surface.
     BoostSync::class,
     SyncResult::class,
+    // Command-level reuse (1.4). A wrapper drives the sync through BoostSync and
+    // then has to REPORT it; without these the only implementation was private to
+    // boost-core's SyncCommand, so every wrapper reimplemented the drift list,
+    // diagnostics, shadow notes and summary — and could describe one result
+    // differently from the bare binary. SyncSummary additionally names a line
+    // BoostAutoSync already regex-parses, so the coupling stops being implicit.
+    SyncReporter::class,
+    SyncSummary::class,
     WrittenFile::class,
     EmitterResult::class,
     Diagnostic::class,

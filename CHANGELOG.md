@@ -43,6 +43,26 @@ for all of 1.x, because `PUBLIC_API.md` puts CLI exit codes inside the SemVer
 promise and a previously-passing command cannot start failing in a minor. It
 becomes the default in the next major.
 
+### `SyncReporter` and `SyncSummary` are public — one renderer behind both entry points
+
+A wrapper package drives a sync through the `@api` `BoostSync` and then has to
+report it. The only implementation lived in private methods on boost-core's
+`SyncCommand`, so a wrapper reimplemented the drift list, the diagnostics
+block, the shadow notes, the tag-filter nudge and the summary line — and any of
+them could describe the same `SyncResult` differently from the bare binary.
+
+`SyncReporter::report()` is now `@api` and returns the exit code the bare run
+would use. Its exit-code decisions are contractual; the wording is not.
+
+`SyncSummary` names something that was already a contract without one:
+`BoostAutoSync::summaryReportsChange()` regex-parses `wrote=<n>, unchanged=<n>,
+deleted=<n>` to decide whether a `post-install-cmd` stays silent, and a test
+existed solely to pin the private producer. A wrapper can now emit the same
+line, so the Composer hook parses either entry point.
+
+Additive: no behaviour change to `bin/boost`, which now delegates to the same
+class.
+
 ### `boost scan` no longer rewrites `boost.php` with nobody watching (behavior change)
 
 The picker guard checked Symfony's `--no-interaction` FLAG, which is the only

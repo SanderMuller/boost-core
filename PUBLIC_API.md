@@ -42,6 +42,11 @@ For wrapper packages that drive a sync with INJECTED vendor skills/guidelines an
 - `SanderMuller\BoostCore\Scripts\BoostAutoSync::run` / `runWithSummary` — the `post-install-cmd` / `post-update-cmd` targets.
 - `BoostAutoSync::syncUserScope` / `syncUserScopeOnce` — in-process self-sync for globally-installed CLI tools.
 
+### Reporting a sync (1.4)
+
+- `SanderMuller\BoostCore\Sync\SyncReporter::report(SymfonyStyle, SyncResult, bool $checkOnly, string $projectRoot, ?string $configFile): int` — render a completed sync exactly as `bin/boost sync` does and return its exit code. A wrapper package drives the sync through `BoostSync` and reports it with this, so both entry points describe one result identically. The EXIT-CODE decisions are contractual (top-level errors → failure in any mode; under `--check`, an error-level conventions diagnostic, a leaked conventions token, or drift → failure; otherwise success). The human wording is not.
+- `SanderMuller\BoostCore\Sync\SyncSummary::from(SyncResult)` + `line(bool $checkOnly)` — the one-line outcome and its counts (`wrote`, `unchanged`, `deleted`, `skippedSymlink`, `emittersWrote`, `emittersSkipped`). The `wrote=<n>, unchanged=<n>, deleted=<n>` fragment is FROZEN: `BoostAutoSync::summaryReportsChange()` parses it to decide whether a `post-install-cmd` stays silent.
+
 New parameters on any stable method are always optional-with-default; their absence-vs-presence is not a breaking change.
 
 ### CLI (`bin/boost`)

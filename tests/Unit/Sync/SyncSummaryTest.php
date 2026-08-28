@@ -227,3 +227,25 @@ it('does not claim "no drift" when an emitter is the only thing that would chang
     expect($emitterOnly->hasDrift())->toBeTrue()
         ->and(SyncSummary::from($emitterOnly)->line(checkOnly: true))->not->toContain('No drift');
 });
+
+it('lists the emitter path when an emitter is the only pending change', function (): void {
+    // Counting emitters in the SUMMARY while the drift block above it still
+    // counted and listed file writes only just moved the contradiction: "0
+    // file(s) would change", no path, then "would-write=1". The same partial
+    // read, one line further down.
+    $emitterOnly = new SyncResult(
+        writes: [new WrittenFile('a.md', '/tmp/a.md', WriteAction::UNCHANGED)],
+        emitters: [new EmitterResult('Acme\\Emitter', 'acme/pkg', EmitterAction::WOULD_WRITE, '.mcp.json', null)],
+        errors: [],
+        check: true,
+    );
+
+    $output = new BufferedOutput();
+    (new SyncReporter())->render(new SymfonyStyle(new ArrayInput([]), $output), $emitterOnly, true, sys_get_temp_dir());
+    $display = $output->fetch();
+
+    expect($display)->toContain('1 file(s) would change')
+        ->and($display)->toContain('.mcp.json')
+        ->and($display)->toContain('would-write=1')
+        ->and($display)->not->toContain('0 file(s) would change');
+});

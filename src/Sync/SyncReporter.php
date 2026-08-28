@@ -385,7 +385,11 @@ final readonly class SyncReporter
      */
     private function renderDrift(SymfonyStyle $io, SyncResult $result): void
     {
-        $count = $result->countWouldChange();
+        // Emitter outputs are part of the change set. `countWouldChange()` is
+        // frozen to FILE writes, so add the emitter side here rather than
+        // widening a documented `@api` method — and list those paths too, or
+        // the count names changes the operator cannot see.
+        $count = $result->countWouldChange() + $result->countEmittersByAction(EmitterAction::WOULD_WRITE);
 
         if ($this->driftIsFailure) {
             $io->warning(sprintf('Drift detected: %d file(s) would change.', $count));
@@ -400,6 +404,12 @@ final readonly class SyncReporter
 
             if ($write->action === WriteAction::WOULD_DELETE) {
                 $io->writeln('  - ' . $write->relativePath);
+            }
+        }
+
+        foreach ($result->emitters as $emitter) {
+            if ($emitter->action === EmitterAction::WOULD_WRITE && $emitter->relativePath !== null) {
+                $io->writeln('  ~ ' . $emitter->relativePath);
             }
         }
 

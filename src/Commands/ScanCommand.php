@@ -25,12 +25,16 @@ use function Laravel\Prompts\multiselect;
  *
  * @internal
  */
-final class ScanCommand extends BoostBaseCommand
+final class ScanCommand extends BoostBaseCommand implements TouchesResolutionPipeline
 {
     public function __construct(
         private readonly BoostConfigLoader $loader = new BoostConfigLoader(),
         private readonly BoostConfigWriter $writer = new BoostConfigWriter(),
         private readonly FirstPartyPrefixes $firstParty = new FirstPartyPrefixes(),
+        // Injection seam for tests — null means "read the real Composer
+        // runtime via InstalledPackages::fromComposer()". Mirrors
+        // DoctorCommand's `$injectedPackages`.
+        private readonly ?InstalledPackages $injectedPackages = null,
     ) {
         parent::__construct();
     }
@@ -63,14 +67,33 @@ final class ScanCommand extends BoostBaseCommand
         // ambiguous/missing config already errored above.
         $configPath = BoostConfigPath::resolve($projectRoot, $configOverride)->path;
 
-        $packages = InstalledPackages::fromComposer();
+        $packages = $this->injectedPackages ?? InstalledPackages::fromComposer();
         $scanner = new VendorScanner($packages);
         $availableVendors = [];
         foreach ($scanner->discover() as $discovered) {
             $availableVendors[] = $discovered->name;
         }
 
-        if ($availableVendors === []) {
+        // Union in vendors the config ALREADY allows that the scanner cannot
+        // see. Without this the picker can only offer what `discover()` found,
+        // and `BoostConfigWriter` replaces `withAllowedVendors()` wholesale with
+        // the picked subset — so an allowed-but-undiscovered entry was not
+        // merely deselected by default, it was impossible to keep, and scan
+        // silently narrowed a hand-authored config.
+        //
+        // A vendor is legitimately allowed-but-undiscovered when its content
+        // only exists at a later stage than a bare scan can observe (a wrapper
+        // package injects it) or when the package was removed but the entry
+        // was left behind. Both are the operator's call to make, so both stay
+        // visible and preselected. Scan never drops an entry on its own.
+        $undiscoverableAllowed = [];
+        foreach ($config->allowedVendors as $allowedVendor) {
+            if (! in_array($allowedVendor, $availableVendors, strict: true)) {
+                $undiscoverableAllowed[] = $allowedVendor;
+            }
+        }
+
+        if ($availableVendors === [] && $undiscoverableAllowed === []) {
             $io->note('No installed packages publish skills/guidelines yet. Install some, then re-run.');
 
             return self::SUCCESS;
@@ -78,7 +101,7 @@ final class ScanCommand extends BoostBaseCommand
 
         // The vendor picker needs a TTY — fail fast with guidance rather than
         // hanging on a prompt under CI / --no-interaction.
-        if (! $this->isInteractiveOrExplain($input, $io, "`boost scan`'s vendor picker needs an interactive terminal. Edit ->withAllowedVendors([...]) in boost.php directly, or run scan without --no-interaction.")) {
+        if (! $this->isInteractiveOrExplain($input, $io, "`boost scan`'s vendor picker needs an interactive terminal (an attached TTY, and no --no-interaction). CI jobs, git hooks, Composer scripts and agent shells have no terminal to prompt in. Edit ->withAllowedVendors([...]) in boost.php directly instead.")) {
             return self::FAILURE;
         }
 
@@ -89,6 +112,13 @@ final class ScanCommand extends BoostBaseCommand
             if ($config->isVendorAllowed($vendorName) || $this->firstParty->matches($vendorName)) {
                 $defaults[] = $vendorName;
             }
+        }
+
+        foreach ($undiscoverableAllowed as $vendorName) {
+            // Labelled so the operator can tell why it is on the list, and
+            // preselected so pressing enter keeps the config as authored.
+            $options[$vendorName] = $vendorName . ' (already allowlisted — publishes nothing this scan can see)';
+            $defaults[] = $vendorName;
         }
 
         /** @var list<string> $picked */

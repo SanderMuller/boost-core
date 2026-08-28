@@ -2,12 +2,20 @@
 
 use Composer\Console\Application as ComposerApplication;
 use SanderMuller\BoostCore\Commands\DoctorCommand;
+use SanderMuller\BoostCore\Commands\SyncCommand;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
 use SanderMuller\BoostCore\Skills\Remote\HttpResponse;
+use SanderMuller\BoostCore\Sync\EmitterAction;
+use SanderMuller\BoostCore\Sync\EmitterResult;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
+use SanderMuller\BoostCore\Sync\SyncReporter;
+use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Tests\Doubles\Remote\FakeHttpTransport;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Console\Tester\CommandTester;
 
 function doctorTempProject(string $boostBody): string
@@ -1428,6 +1436,125 @@ it('doctor: on wrapper 1.2 still tells the operator to remove boost.json themsel
 
         expect($display)->toContain('DELETE `boost.json`')
             ->and($display)->not->toContain('--keep-boost-json');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: refuses to report a clean drift verdict when the sync result carries render errors', function (): void {
+    // The engine EXCLUDES a source whose renderer throws (SkillLoader: `continue`
+    // past the failure) and records the message in SyncResult::errors. hasDrift()
+    // then compares a TRUNCATED source set against disk and finds no difference —
+    // so doctor used to print "No drift detected. Generated files match sources."
+    // over a run where a source silently dropped out. `boost sync --check` reads
+    // hasErrors() on the same result and exits 1; doctor never asked.
+    $dir = doctorTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withSkillRenderers([new class implements \\SanderMuller\\BoostCore\\Contracts\\SkillRenderer {\n"
+        . "    public function extensions(): array { return ['blade.php']; }\n"
+        . "    public function render(string \$raw, \\SanderMuller\\BoostCore\\Skills\\Rendering\\RenderContext \$ctx): string { throw new RuntimeException('renderer is not booted'); }\n"
+        . '}])',
+    );
+    mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+    file_put_contents($dir . '/.ai/skills/broken.blade.php', "---\nname: broken\n---\nbody\n");
+
+    try {
+        // Sync once so the emitted files match — that removes ordinary drift and
+        // leaves ONLY the truncated-source-set case behind.
+        $sync = new CommandTester(new SyncCommand());
+        $sync->execute(['--working-dir' => $dir]);
+
+        $result = runDoctor($dir);
+
+        expect($result['display'])->toContain('skill render failed')
+            ->and($result['display'])->not->toContain('No drift detected');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: lists declared wrapper entry points and warns about a reserved claim', function (): void {
+    // Doctor is the ONLY surface for a rejected claim — a wrapper author's
+    // mistake must not become per-run noise for operators who cannot fix it.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $packageDir = $dir . '/vendor/acme/wrapper';
+    mkdir($packageDir, 0o755, recursive: true);
+    file_put_contents($packageDir . '/composer.json', json_encode([
+        'name' => 'acme/wrapper',
+        'extra' => ['boost' => ['entry-point' => [
+            'sync' => 'php artisan acme:sync',
+            'doctor' => 'php artisan acme:doctor',
+        ]]],
+    ], JSON_THROW_ON_ERROR));
+
+    $packages = new InstalledPackages([
+        'acme/wrapper' => new PackageInfo('acme/wrapper', '1.0.0', $packageDir),
+    ]);
+
+    try {
+        $command = new DoctorCommand(injectedPackages: $packages);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = $tester->getDisplay();
+
+        expect($display)->toContain('php artisan acme:sync')
+            ->and($display)->toContain('reserved command')
+            ->and($display)->toContain('acme/wrapper');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: names the failed emitter when that is the only reason drift is unassessable', function (): void {
+    // `hasErrors()` is true for an ERRORED emitter, but the errors LIST does not
+    // contain it. Doctor suppressed its verdict correctly and then said "fix the
+    // errors below" above an empty list — the same unread-channel defect it was
+    // fixed for, reintroduced one level down.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+
+    try {
+        $io = new SymfonyStyle(new ArrayInput([]), $output = new BufferedOutput());
+        $result = new SyncResult(
+            writes: [],
+            emitters: [new EmitterResult('Acme\Emitter', 'acme/pkg', EmitterAction::ERRORED, '.mcp.json', 'disk full')],
+            errors: [],
+            check: true,
+        );
+
+        (new SyncReporter())->renderErrors($io, $result, checkOnly: true);
+        $display = $output->fetch();
+
+        expect($display)->toContain('Acme\Emitter')
+            ->and($display)->toContain('disk full');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: reports a contested command and a package whose only claim was rejected', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $packages = [];
+    foreach ([
+        'acme/first' => ['sync' => 'php artisan first:sync'],
+        'acme/second' => ['sync' => 'php artisan second:sync'],
+        'acme/doctor-only' => ['doctor' => 'php artisan third:doctor'],
+    ] as $name => $entryPoint) {
+        $path = $dir . '/vendor/' . str_replace('/', '__', $name);
+        mkdir($path, 0o755, recursive: true);
+        file_put_contents($path . '/composer.json', json_encode(
+            ['name' => $name, 'extra' => ['boost' => ['entry-point' => $entryPoint]]],
+            JSON_THROW_ON_ERROR,
+        ));
+        $packages[$name] = new PackageInfo($name, '1.0.0', $path);
+    }
+
+    try {
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: new InstalledPackages($packages)));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = $tester->getDisplay();
+
+        expect($display)->toContain('More than one installed package claims')
+            ->and($display)->toContain('acme/second')
+            ->and($display)->toContain('reserved command');
     } finally {
         doctorCleanup($dir);
     }

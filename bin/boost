@@ -1,8 +1,8 @@
 #!/usr/bin/env php
 <?php declare(strict_types=1);
 
+use SanderMuller\BoostCore\Commands\BoostApplication;
 use SanderMuller\BoostCore\Commands\CommandRegistry;
-use Symfony\Component\Console\Application;
 
 (function (): void {
     // Order matters. In a Composer dist install (`vendor/sandermuller/boost-core/bin/boost`),
@@ -43,7 +43,10 @@ use Symfony\Component\Console\Application;
         }
     }
 
-    $app = new Application('boost', $version);
+    // BoostApplication adds the wrapper entry-point gate. `bin/boost` is the
+    // only definitionally BARE entry point, and the Composer post-install hook
+    // spawns this same binary, so gating here covers both.
+    $app = new BoostApplication('boost', $version);
 
     $commands = [];
     foreach (CommandRegistry::commands() as $command) {

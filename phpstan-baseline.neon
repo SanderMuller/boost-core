@@ -12,8 +12,14 @@ parameters:
 			identifier: complexity.classLike
 			count: 1
 			path: src/Sync/SyncEngine.php
+		# Same accepted-debt shape as SyncEngine above. 87 -> 88 with the
+		# `withDisabledEmitters` insert fix: `setOrInsert()` gained one guard
+		# (`$insertWhenAbsent`) so scan stops appending a no-op
+		# `->withDisabledEmitters([])` to hand-authored configs. Every
+		# alternative shape costs MORE decision points, not fewer — a
+		# call-site `if (... || ...)` is two.
 		-
-			rawMessage: 'Class cognitive complexity is 87, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 88, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Config/BoostConfigWriter.php

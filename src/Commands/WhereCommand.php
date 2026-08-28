@@ -13,6 +13,7 @@ use SanderMuller\BoostCore\Skills\Command as BoostCommand;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
+use SanderMuller\BoostCore\Sync\SkillShipmentIndex;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use SebastianBergmann\Diff\Differ;
@@ -39,7 +40,7 @@ use Throwable;
  *
  * @internal
  */
-final class WhereCommand extends BoostBaseCommand
+final class WhereCommand extends BoostBaseCommand implements TouchesResolutionPipeline
 {
     public function __construct(
         // Injection seam for tests — null means "read the real Composer
@@ -134,8 +135,13 @@ final class WhereCommand extends BoostBaseCommand
         $remoteKeys = array_flip($inspection['remoteSourceKeys']);
         $scannedSkillKeys = array_flip($inspection['scannedSkillVendorKeys']);
         $scannedGuidelineKeys = array_flip($inspection['scannedGuidelineVendorKeys']);
-        $shadowedBy = $this->shadowIndex($result->hostShadows);
-        $guidelineShadowedBy = $this->guidelineShadowIndex($result->hostGuidelineShadows);
+        // Both maps come from the `@api` SkillShipmentIndex so this command and
+        // a wrapper's own `where` derive shadowing from one implementation —
+        // see that class for why the derivation, not just the rendering, is the
+        // part worth sharing.
+        $shipment = SkillShipmentIndex::from($result);
+        $shadowedBy = $shipment->shadowedVendorMap();
+        $guidelineShadowedBy = $shipment->guidelineShadowedVendorMap();
 
         // Per-category label inputs — keeps each section from
         // mislabeling an origin based on a sibling pipeline:
@@ -282,37 +288,6 @@ final class WhereCommand extends BoostBaseCommand
         }
 
         return $byOrigin;
-    }
-
-    /**
-     * @param  list<array{skill: string, shadowedVendor: string}>  $shadows
-     * @return array<string, string>
-     */
-    private function shadowIndex(array $shadows): array
-    {
-        $idx = [];
-        foreach ($shadows as $shadow) {
-            $idx[$shadow['skill']] = $shadow['shadowedVendor'];
-        }
-
-        return $idx;
-    }
-
-    /**
-     * @param  list<array{guideline: string, shadowedVendor: string}>  $shadows
-     * @return array<string, string>  guideline name → ALL shadowed vendors,
-     *   comma-joined (a host guideline can shadow the same-named guideline
-     *   from MULTIPLE allowlisted vendors; don't collapse to one).
-     */
-    private function guidelineShadowIndex(array $shadows): array
-    {
-        /** @var array<string, list<string>> $byName */
-        $byName = [];
-        foreach ($shadows as $shadow) {
-            $byName[$shadow['guideline']][] = $shadow['shadowedVendor'];
-        }
-
-        return array_map(static fn (array $vendors): string => implode(', ', $vendors), $byName);
     }
 
     private function renderOrigin(string $origin, int $count, bool $isRemote, bool $isVendor, string $hostOrigin, string $itemNoun): string

@@ -16,6 +16,7 @@ use SanderMuller\BoostCore\Sync\AgentDirSymlinkScanner;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncManifest;
+use SanderMuller\BoostCore\Sync\SyncReporter;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -113,6 +114,7 @@ final class DoctorCommand extends BoostBaseCommand
         }
 
         $this->reportEntryPointMismatch($io);
+        (new WrapperEntryPointReporter())->report($io, $this->injectedPackages);
         (new CoexistenceReporter())->report(
             $io,
             $projectRoot,
@@ -395,7 +397,10 @@ final class DoctorCommand extends BoostBaseCommand
             $io->note(
                 'project-boost-laravel is installed: the `.blade.php` source(s) below have no BARE-CLI renderer, '
                 . 'but the wrapper Blade-renders them under `php artisan project-boost:sync`. '
-                . 'Only a concern if you sync via bare `vendor/bin/boost sync`.',
+                . 'Use the wrapper entry point. A bare `vendor/bin/boost sync` drops these sources — silently '
+                . 'when no renderer is registered, or with a render error when one is registered but cannot run '
+                . 'outside the framework. Either way the emitted set is short, and only the wrapper command '
+                . 'produces the complete one.',
             );
             foreach ($wrapperHandled as $skip) {
                 $io->writeln('  <comment>·</comment> ' . $skip->message);
@@ -657,6 +662,30 @@ final class DoctorCommand extends BoostBaseCommand
         return $out;
     }
 
+    /**
+     * Report a drift check that cannot produce a verdict. A source whose
+     * renderer throws is EXCLUDED by the loader, so the comparison would run
+     * against a truncated source set and find nothing to change — a clean
+     * result it has not earned. The same error list trips the engine's own
+     * `$hasAnyError` gate, which suppresses stale cleanup, so the engine
+     * already treats this run as degraded.
+     */
+    private function reportDriftUnassessable(SymfonyStyle $io, SyncResult $result): void
+    {
+        $io->warning(
+            'Drift cannot be assessed — this run failed to load or render at least one source, so the '
+            . 'comparison would run against an incomplete source set. Fix the errors below, then re-run. '
+            . '`vendor/bin/boost sync --check` reports the same errors and exits non-zero.',
+        );
+
+        // Delegate rather than re-listing `$result->errors` here. Doctor's own
+        // hand-rolled list omitted the ERRORED-emitter half of `hasErrors()`,
+        // so a failed emitter produced "fix the errors below" above nothing at
+        // all — the unread-channel defect doctor was just fixed for, one level
+        // down. One renderer, both channels, no second copy to drift.
+        (new SyncReporter())->renderErrors($io, $result, checkOnly: true);
+    }
+
     private function reportDrift(SymfonyStyle $io, string $projectRoot, ?string $configOverride): ?SyncResult
     {
         $io->section('Drift');
@@ -667,6 +696,20 @@ final class DoctorCommand extends BoostBaseCommand
             $io->warning('Could not check drift: ' . $throwable->getMessage());
 
             return null;
+        }
+
+        // Errors FIRST — a drift verdict computed over an incomplete source set
+        // is not a verdict. A source whose renderer throws is EXCLUDED by the
+        // loader (it records the message and skips the file), so `hasDrift()`
+        // compares a TRUNCATED source set against disk and correctly finds no
+        // difference. Reporting that as "Generated files match sources" is a
+        // false green: the same `$result` makes `boost sync --check` exit 1, and
+        // the same error list trips the engine's own `$hasAnyError` gate, which
+        // SUPPRESSES stale cleanup. Doctor was the only reader that ignored it.
+        if ($result->hasErrors()) {
+            $this->reportDriftUnassessable($io, $result);
+
+            return $result;
         }
 
         if ($result->hasDrift()) {

@@ -2,11 +2,25 @@
 
 use Laravel\Prompts\Key;
 use Laravel\Prompts\Prompt;
+use SanderMuller\BoostCore\Commands\BoostBaseCommand;
 use SanderMuller\BoostCore\Commands\InstallCommand;
 use SanderMuller\BoostCore\Config\BoostConfigPath;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
 use Symfony\Component\Console\Tester\CommandTester;
+
+/*
+ * These tests simulate a terminal (faked prompts / a faked Terminal), so they
+ * must declare one to the shared picker guard too — it now requires an attached
+ * TTY as well as Symfony's interactive flag. See InteractivityGuardTest.
+ */
+beforeEach(function (): void {
+    BoostBaseCommand::probeTtyUsing(fn (): bool => true);
+});
+
+afterEach(function (): void {
+    BoostBaseCommand::probeTtyUsing(null);
+});
 
 it('1.0 boost install: explains the skipped vendor + tag pickers and notes laravel/boost coexistence', function (): void {
     $dir = sys_get_temp_dir() . '/boost-install-notes-' . bin2hex(random_bytes(8));

@@ -77,7 +77,13 @@ A package declares the commands it covers in its `composer.json`:
 }
 ```
 
-`vendor/bin/boost` then prints, on stderr, what to run instead. It still runs
+`vendor/bin/boost` then prints, on stderr, which package covers the command and
+what its equivalent is. The declaration is a static string, so it names the
+equivalent rather than ordering you to paste it — adapt the prefix when PHP does
+not run on the host (`sail artisan …`, `docker compose exec app php artisan …`).
+
+The root package is scanned along with dependencies, so a wrapper package's own
+repository gets the banner from its own declaration. It still runs
 the command and still exits as before, so nothing in CI changes. Set
 `BOOST_STRICT_ENTRY_POINT=1` to refuse a covered command instead — that becomes
 the default in the next major.

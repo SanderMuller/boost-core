@@ -66,6 +66,21 @@ it('runs a covered command but names the wrapper invocation instead', function (
         ->and($tester->getDisplay())->toContain('acme/wrapper');
 });
 
+it('frames the covered banner as an identification, not a paste-ready command', function (): void {
+    // The declaration is a static string and cannot know that PHP does not run
+    // on the host. Sail and Docker Compose users need their own prefix, so the
+    // banner names the package and its equivalent rather than ordering a paste.
+    $tester = gateApp(
+        new GateProbeCommand('sync'),
+        ['sync' => ['package' => 'acme/wrapper', 'invocation' => 'php artisan acme:sync']],
+    );
+
+    $tester->run(['command' => 'sync']);
+
+    expect($tester->getDisplay())->toContain('This project uses `acme/wrapper`')
+        ->and($tester->getDisplay())->not->toContain('Run `php artisan acme:sync` instead');
+});
+
 it('refuses a covered command under strict entry-point mode', function (): void {
     putenv('BOOST_STRICT_ENTRY_POINT=1');
 

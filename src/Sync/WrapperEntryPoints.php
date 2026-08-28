@@ -33,6 +33,12 @@ use JsonException;
  * read-only flag is `--check` while `project-boost:sync`'s is `--dry-run` —
  * so a composed redirect would eventually name a flag that does not exist.
  *
+ * The ROOT package is scanned too: `InstalledVersions::getInstalledPackages()`
+ * includes it, and `getInstallPath()` resolves to the project root. So a
+ * wrapper package's OWN repository gets the banner from its own declaration —
+ * which is what you want, because a bare sync degrades there for exactly the
+ * same reason it degrades in a consumer project.
+ *
  * Third-party data, so every malformed shape is skipped rather than fatal.
  *
  * @internal

@@ -91,11 +91,19 @@ final class BoostApplication extends Application
             $invocation = (string) $map->invocationFor($name);
             $package = (string) $map->packageFor($name);
 
+            // Phrased as an IDENTIFICATION, not a paste-ready command. The
+            // declaration is a static string, so it cannot know that PHP does
+            // not run on the host — Sail, Docker Compose, and anything else
+            // fronting artisan need their own prefix. "Run X instead" sends
+            // those operators to a command-not-found; naming the package and
+            // its equivalent survives the difference without any per-project
+            // resolution.
             $stderr->writeln(sprintf(
-                '<comment>`%s` is covered by `%s` in this project. Run `%s` instead — the bare binary '
-                . 'does not run what that package adds.</comment>',
-                $name,
+                '<comment>This project uses `%s`, which covers `%s`. Its equivalent is `%s` — adapt the prefix '
+                . 'if PHP does not run on the host (Sail, Docker Compose). The bare binary does not run what '
+                . 'that package adds.</comment>',
                 $package,
+                $name,
                 $invocation,
             ));
 

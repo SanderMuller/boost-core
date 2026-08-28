@@ -211,3 +211,19 @@ it('renders several errors as one block rather than one block each', function ()
         // One header for the pair, not one per message.
         ->and(substr_count($display, 'Errors during'))->toBe(1);
 });
+
+it('does not claim "no drift" when an emitter is the only thing that would change', function (): void {
+    // `SyncResult::hasDrift()` counts an emitter that WOULD_WRITE; the summary
+    // counted file writes only. So a check run whose only pending change was an
+    // emitter output entered the reporter's drift branch — "1 file(s) would
+    // change" — and then closed with "No drift.", contradicting itself.
+    $emitterOnly = new SyncResult(
+        writes: [new WrittenFile('a.md', '/tmp/a.md', WriteAction::UNCHANGED)],
+        emitters: [new EmitterResult('Acme\Emitter', 'acme/pkg', EmitterAction::WOULD_WRITE, '.mcp.json', null)],
+        errors: [],
+        check: true,
+    );
+
+    expect($emitterOnly->hasDrift())->toBeTrue()
+        ->and(SyncSummary::from($emitterOnly)->line(checkOnly: true))->not->toContain('No drift');
+});

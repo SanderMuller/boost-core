@@ -86,9 +86,6 @@ const UNREAD_EMITTER_ACTIONS = [
     // Nothing happened to the file. A per-emitter "unchanged" line would bury
     // the cases that did change something.
     'UNCHANGED' => 'no-op outcome; the summary counts what moved',
-    // Read by SyncResult::hasDrift() itself, which IS in a rendering path, so
-    // check mode already fails on an emitter that would write.
-    'WOULD_WRITE' => 'consumed by SyncResult::hasDrift()',
     // An emitter the config switched off. Absence is the configured intent, so
     // reporting it every run would be noise; `boost doctor` is where a
     // consumer inspects emitter configuration.

@@ -35,6 +35,7 @@ final readonly class SyncSummary
         public int $skippedSymlink,
         public int $emittersWrote,
         public int $emittersSkipped,
+        public int $emittersWouldWrite,
         public bool $hasEmitters,
     ) {}
 
@@ -49,6 +50,7 @@ final readonly class SyncSummary
             skippedSymlink: $result->countByAction(WriteAction::SKIPPED_SYMLINK),
             emittersWrote: $result->countEmittersByAction(EmitterAction::WROTE),
             emittersSkipped: $result->countEmittersByAction(EmitterAction::SKIPPED),
+            emittersWouldWrite: $result->countEmittersByAction(EmitterAction::WOULD_WRITE),
             hasEmitters: $result->emitters !== [],
         );
     }
@@ -69,7 +71,10 @@ final readonly class SyncSummary
      */
     public function hasDrift(): bool
     {
-        return $this->wouldWrite > 0 || $this->wouldDelete > 0;
+        // Emitters count. `SyncResult::hasDrift()` includes an emitter that
+        // WOULD_WRITE, so leaving it out here let the summary close a drift
+        // report with "No drift." — the reporter had just listed the change.
+        return $this->wouldWrite > 0 || $this->wouldDelete > 0 || $this->emittersWouldWrite > 0;
     }
 
     private function head(bool $checkOnly): string
@@ -83,7 +88,12 @@ final readonly class SyncSummary
         // was otherwise left with a path list, no totals, and a warning that
         // read like an error.
         return $this->hasDrift()
-            ? sprintf('Checked. would-write=%d, would-delete=%d, unchanged=%d.', $this->wouldWrite, $this->wouldDelete, $this->unchanged)
+            ? sprintf(
+                'Checked. would-write=%d, would-delete=%d, unchanged=%d.',
+                $this->wouldWrite + $this->emittersWouldWrite,
+                $this->wouldDelete,
+                $this->unchanged,
+            )
             : sprintf('No drift. %d file(s) unchanged.', $this->unchanged);
     }
 

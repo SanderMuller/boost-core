@@ -27,6 +27,20 @@ use SanderMuller\BoostCore\Sync\EmitterAction;
  * So: adding a class to these lists is PART OF writing a new verdict-maker,
  * not an optional follow-up.
  *
+ * THE FAMILY IS PARTIAL READS, NOT MISSING ONES. Three granularities have
+ * been needed so far, each invisible to the one before it: does ANYBODY read
+ * the channel (doctor ignoring `hasErrors()`); does anybody read this CASE
+ * (no path reading `ERRORED`); does THIS renderer cover both channels
+ * (`reportDriftUnassessable()` listing `$result->errors` alone). A fourth
+ * sibling needs no check at all, because a type closes it: reading a
+ * `list<array{...}>` channel into `array<string, string>` — `$map[$name] =
+ * $vendor` — cannot represent the multi-value case and drops every entry but
+ * the last, silently. `SkillShipmentIndex` returns lists for exactly that
+ * reason.
+ *
+ * Partial reads are what survive review, because the code plainly DOES consult
+ * the thing. That is the property to be suspicious of, not absence.
+ *
  * SCOPE, honestly stated. These checks catch "nobody reads this at all". They
  * do NOT check that the reader is CORRECT, so they would not have caught
  * doctor's wrong verdict on their own — only its total absence. Reviewing the

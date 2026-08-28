@@ -2,6 +2,7 @@
 
 use Composer\Console\Application as ComposerApplication;
 use SanderMuller\BoostCore\Commands\DoctorCommand;
+use SanderMuller\BoostCore\Commands\SyncCommand;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
 use SanderMuller\BoostCore\Skills\Remote\HttpResponse;
@@ -1428,6 +1429,37 @@ it('doctor: on wrapper 1.2 still tells the operator to remove boost.json themsel
 
         expect($display)->toContain('DELETE `boost.json`')
             ->and($display)->not->toContain('--keep-boost-json');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: refuses to report a clean drift verdict when the sync result carries render errors', function (): void {
+    // The engine EXCLUDES a source whose renderer throws (SkillLoader: `continue`
+    // past the failure) and records the message in SyncResult::errors. hasDrift()
+    // then compares a TRUNCATED source set against disk and finds no difference —
+    // so doctor used to print "No drift detected. Generated files match sources."
+    // over a run where a source silently dropped out. `boost sync --check` reads
+    // hasErrors() on the same result and exits 1; doctor never asked.
+    $dir = doctorTempProject(
+        "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withSkillRenderers([new class implements \\SanderMuller\\BoostCore\\Contracts\\SkillRenderer {\n"
+        . "    public function extensions(): array { return ['blade.php']; }\n"
+        . "    public function render(string \$raw, \\SanderMuller\\BoostCore\\Skills\\Rendering\\RenderContext \$ctx): string { throw new RuntimeException('renderer is not booted'); }\n"
+        . '}])',
+    );
+    mkdir($dir . '/.ai/skills', 0o755, recursive: true);
+    file_put_contents($dir . '/.ai/skills/broken.blade.php', "---\nname: broken\n---\nbody\n");
+
+    try {
+        // Sync once so the emitted files match — that removes ordinary drift and
+        // leaves ONLY the truncated-source-set case behind.
+        $sync = new CommandTester(new SyncCommand());
+        $sync->execute(['--working-dir' => $dir]);
+
+        $result = runDoctor($dir);
+
+        expect($result['display'])->toContain('skill render failed')
+            ->and($result['display'])->not->toContain('No drift detected');
     } finally {
         doctorCleanup($dir);
     }

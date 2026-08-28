@@ -79,14 +79,28 @@ final readonly class SyncReporter
     }
 
     /**
-     * Render a completed sync to the console and return the process exit code
-     * — `Command::SUCCESS` or `Command::FAILURE`.
+     * Render a completed sync and return the process exit code
+     * `bin/boost sync` would use.
+     *
+     * Convenience over {@see render()} for a caller that wants boost-core's
+     * exit rule as well as its output. A caller with its own documented exit
+     * contract should call `render()` and decide from the findings.
      *
      * `$projectRoot` and `$configFile` are used only by the check-mode
      * conventions-token leak scan, which re-reads the config; pass what the
      * sync itself ran with.
      */
     public function report(SymfonyStyle $io, SyncResult $result, bool $checkOnly, string $projectRoot, ?string $configFile = null): int
+    {
+        return $this->render($io, $result, $checkOnly, $projectRoot, $configFile)->exitCode;
+    }
+
+    /**
+     * Render a completed sync and report WHAT WAS FOUND, leaving the exit
+     * decision to the caller. See {@see SyncReportOutcome} for why those two
+     * are separable.
+     */
+    public function render(SymfonyStyle $io, SyncResult $result, bool $checkOnly, string $projectRoot, ?string $configFile = null): SyncReportOutcome
     {
         // Render diagnostics BEFORE the error short-circuit. Render-fail
         // warnings and other safety-gate diagnostics carry
@@ -100,7 +114,7 @@ final readonly class SyncReporter
                 $io->error($error);
             }
 
-            return Command::FAILURE;
+            return new SyncReportOutcome(true, false, false, false, Command::FAILURE);
         }
 
         // --check gates on an error-level conventions diagnostic (e.g. a
@@ -110,7 +124,7 @@ final readonly class SyncReporter
         if ($checkOnly && $this->hasErrorDiagnostic($result)) {
             $io->error('Conventions error: a vendor\'s required schema-version is not satisfied by the host — its conventions were NOT applied (see the diagnostics above). Align the host schema-version or the vendor allowlist.');
 
-            return Command::FAILURE;
+            return new SyncReportOutcome(false, true, false, false, Command::FAILURE);
         }
 
         // --check fails on a leaked conventions token in EMITTED output — parity
@@ -121,7 +135,7 @@ final readonly class SyncReporter
         if ($checkOnly) {
             $leak = $this->conventionTokenLeakError($io, $projectRoot, $configFile);
             if ($leak !== Command::SUCCESS) {
-                return $leak;
+                return new SyncReportOutcome(false, false, true, false, Command::FAILURE);
             }
         }
 
@@ -141,7 +155,7 @@ final readonly class SyncReporter
                 }
             }
 
-            return Command::FAILURE;
+            return new SyncReportOutcome(false, false, false, true, Command::FAILURE);
         }
 
         $summary = SyncSummary::from($result);
@@ -176,13 +190,13 @@ final readonly class SyncReporter
             $io->success($summary->line(checkOnly: true));
             $this->noteTagFilterGap($io, $result);
 
-            return Command::SUCCESS;
+            return SyncReportOutcome::success();
         }
 
         $io->success($summary->line(checkOnly: false));
         $this->noteTagFilterGap($io, $result);
 
-        return Command::SUCCESS;
+        return SyncReportOutcome::success();
     }
 
     /**

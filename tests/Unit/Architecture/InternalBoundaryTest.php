@@ -35,6 +35,7 @@ use SanderMuller\BoostCore\Sync\SkillShipmentIndex;
 use SanderMuller\BoostCore\Sync\SkillShipmentStatus;
 use SanderMuller\BoostCore\Sync\SyncContext;
 use SanderMuller\BoostCore\Sync\SyncReporter;
+use SanderMuller\BoostCore\Sync\SyncReportOutcome;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Sync\SyncSummary;
 use SanderMuller\BoostCore\Sync\WriteAction;
@@ -91,6 +92,7 @@ const ENGINE_PUBLIC_API = [
     // differently from the bare binary. SyncSummary additionally names a line
     // BoostAutoSync already regex-parses, so the coupling stops being implicit.
     SyncReporter::class,
+    SyncReportOutcome::class,
     SyncSummary::class,
     // Command-level reuse, part two (1.4). A wrapper rendering its own `where`
     // had to pattern-match our emit paths to answer "did this ship?" — coupling

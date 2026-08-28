@@ -2,10 +2,14 @@
 
 use SanderMuller\BoostCore\Sync\EmitterAction;
 use SanderMuller\BoostCore\Sync\EmitterResult;
+use SanderMuller\BoostCore\Sync\SyncReporter;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Sync\SyncSummary;
 use SanderMuller\BoostCore\Sync\WriteAction;
 use SanderMuller\BoostCore\Sync\WrittenFile;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
  * @param  list<WrittenFile>  $writes
@@ -52,4 +56,41 @@ it('appends the symlink and emitter fragments only when they apply', function ()
 
     expect($summary->line(checkOnly: false))
         ->toBe('Sync done. wrote=1, unchanged=0, deleted=0. skipped-symlink=1 emitters(wrote=1, skipped=0)');
+});
+
+it('reports findings separately from the exit code it would use', function (): void {
+    // A wrapper that has already documented exit 0 for its dry-run cannot adopt
+    // a stricter code without breaking its own SemVer promise. It should not
+    // have to fork the rendering to keep its word, so render() hands back what
+    // it FOUND alongside the code boost-core would return.
+    $io = new SymfonyStyle(new ArrayInput([]), new BufferedOutput());
+
+    $drifted = new SyncResult(
+        writes: [new WrittenFile('a.md', '/tmp/a.md', WriteAction::WOULD_WRITE)],
+        emitters: [],
+        errors: [],
+        check: true,
+    );
+
+    $outcome = (new SyncReporter())->render($io, $drifted, checkOnly: true, projectRoot: sys_get_temp_dir());
+
+    expect($outcome->hasDrift)->toBeTrue()
+        ->and($outcome->hasErrors)->toBeFalse()
+        ->and($outcome->exitCode)->toBe(1);
+});
+
+it('reports a clean run as success with no findings', function (): void {
+    $io = new SymfonyStyle(new ArrayInput([]), new BufferedOutput());
+
+    $clean = new SyncResult(
+        writes: [new WrittenFile('a.md', '/tmp/a.md', WriteAction::UNCHANGED)],
+        emitters: [],
+        errors: [],
+        check: true,
+    );
+
+    $outcome = (new SyncReporter())->render($io, $clean, checkOnly: true, projectRoot: sys_get_temp_dir());
+
+    expect($outcome->hasDrift)->toBeFalse()
+        ->and($outcome->exitCode)->toBe(0);
 });

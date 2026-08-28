@@ -54,6 +54,16 @@ them could describe the same `SyncResult` differently from the bare binary.
 `SyncReporter::report()` is now `@api` and returns the exit code the bare run
 would use. Its exit-code decisions are contractual; the wording is not.
 
+`SyncReporter::render()` is the same rendering with the exit DECISION left to
+the caller: it returns a `SyncReportOutcome` carrying `hasErrors`,
+`hasConventionsError`, `hasTokenLeak`, `hasDrift` and the `exitCode` boost-core
+would use. Rendering and exiting belong to different parties — the rendering is
+boost-core's, because two entry points describing one result differently is a
+divergence bug, while the exit code is each package's own promise to its users.
+A wrapper that already documented `0` for a dry-run with pending changes can
+now adopt the rendering without breaking its own contract, instead of forking
+it.
+
 `SyncSummary` names something that was already a contract without one:
 `BoostAutoSync::summaryReportsChange()` regex-parses `wrote=<n>, unchanged=<n>,
 deleted=<n>` to decide whether a `post-install-cmd` stays silent, and a test

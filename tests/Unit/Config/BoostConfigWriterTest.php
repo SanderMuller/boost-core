@@ -359,3 +359,68 @@ PHP);
         @unlink($path);
     }
 });
+
+it('does not add withDisabledEmitters to a config that never declared it', function (): void {
+    // `boost scan` passes the loaded config's disabled-emitter list straight
+    // through, which is `[]` for the overwhelming majority of projects. The
+    // writer inserted the call anyway, so every scan appended a no-op
+    // `->withDisabledEmitters([])` to a config the operator had hand-authored.
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Agent;
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE])
+    ->withAllowedVendors([]);
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update($path, [Agent::CLAUDE_CODE], ['acme/skills'], []);
+
+        expect(file_get_contents($path))->not->toContain('withDisabledEmitters');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('still updates withDisabledEmitters when the config already declares it', function (): void {
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Agent;
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE])
+    ->withDisabledEmitters(['Acme\Old'])
+    ->withAllowedVendors([]);
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update($path, [Agent::CLAUDE_CODE], [], ['Acme\New']);
+
+        expect(file_get_contents($path))->toContain('Acme\New')
+            ->and(file_get_contents($path))->not->toContain('Acme\Old');
+    } finally {
+        @unlink($path);
+    }
+});
+
+it('adds withDisabledEmitters when there is a non-empty list to record', function (): void {
+    $path = tempConfigPath(<<<'PHP'
+<?php
+declare(strict_types=1);
+use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Enums\Agent;
+return BoostConfig::configure()
+    ->withAgents([Agent::CLAUDE_CODE]);
+PHP);
+
+    try {
+        (new BoostConfigWriter())->update($path, [Agent::CLAUDE_CODE], [], ['Acme\Emitter']);
+
+        expect(file_get_contents($path))->toContain('withDisabledEmitters');
+    } finally {
+        @unlink($path);
+    }
+});

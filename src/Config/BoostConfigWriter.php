@@ -147,7 +147,19 @@ final readonly class BoostConfigWriter
 
         $this->setOrInsert($return, 'withAgents', $this->agentsToArray($agents, $agentAlias));
         $this->setOrInsert($return, 'withAllowedVendors', $this->stringsToArray($allowedVendors));
-        $this->setOrInsert($return, 'withDisabledEmitters', $this->stringsToArray($disabledEmitters));
+        // Only touch `withDisabledEmitters` when there is something to record,
+        // or when the config already declares it. Callers pass the list they
+        // loaded straight back, which is `[]` for almost every project — an
+        // unconditional insert appended a no-op `->withDisabledEmitters([])`
+        // to a hand-authored config on every `boost scan`. `withAgents` and
+        // `withAllowedVendors` stay unconditional: those two ARE what the
+        // pickers set, so an empty result is a real value, not an absence.
+        $this->setOrInsert(
+            $return,
+            'withDisabledEmitters',
+            $this->stringsToArray($disabledEmitters),
+            insertWhenAbsent: $disabledEmitters !== [],
+        );
 
         // Tags: only touch the chain when the caller explicitly passes a
         // list (the install picker passes null when there's nothing to
@@ -372,7 +384,7 @@ final readonly class BoostConfigWriter
      * Replace the method's array arg if it exists in the chain, or insert it at the chain root.
      * `$return->expr` may be rebound when inserting — we update it via reference.
      */
-    private function setOrInsert(Return_ $return, string $methodName, Array_ $array): void
+    private function setOrInsert(Return_ $return, string $methodName, Array_ $array, bool $insertWhenAbsent = true): void
     {
         $chain = $return->expr;
         if (! $chain instanceof MethodCall) {
@@ -384,6 +396,10 @@ final readonly class BoostConfigWriter
         if ($target instanceof MethodCall) {
             $target->args = [new Arg($array)];
 
+            return;
+        }
+
+        if (! $insertWhenAbsent) {
             return;
         }
 

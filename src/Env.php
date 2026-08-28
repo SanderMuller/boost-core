@@ -43,6 +43,17 @@ final class Env
     public const string RENDER_STRICT = 'BOOST_RENDER_STRICT';
 
     /**
+     * Set truthy to REFUSE bare boost-core commands a wrapper package claims
+     * via `extra.boost.entry-point`, instead of only warning about them.
+     *
+     * Opt-in for the whole of 1.x: `PUBLIC_API.md` puts CLI exit codes inside
+     * the 1.0 promise, so making a previously-passing command exit non-zero
+     * cannot be the default before the next major. Human-readable output is
+     * explicitly not a contract, so the warning ships on by default.
+     */
+    public const string STRICT_ENTRY_POINT = 'BOOST_STRICT_ENTRY_POINT';
+
+    /**
      * Truthy-value check for boolean env flags. Returns true only when the
      * env var holds a value users genuinely treat as "on" — `1`, `true`,
      * `yes`, `on` (case-insensitive). Empty, `0`, `false`, `no`, `off`, and

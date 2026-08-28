@@ -5,6 +5,80 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Wrapper entry points — `vendor/bin/boost` says what it is not running
+
+A project that installs a wrapper package (`project-boost-laravel` and future
+siblings) has TWO entry points, and the bare binary was silent about it. Bare
+`sync` composed guidance without the wrapper's injected skills and guidelines
+and exited 0; bare `tags` listed a short set; bare `where` failed on sources the
+wrapper renders. Nothing said why.
+
+A wrapper now declares what it covers in its own `composer.json`:
+
+```json
+{ "extra": { "boost": { "entry-point": { "sync": "php artisan project-boost:sync" } } } }
+```
+
+`vendor/bin/boost` reads that declaration and prints, on **stderr**, the
+invocation to run instead. Read from `composer.json` rather than a PHP
+interface deliberately: the message has to work when the wrapper does not, and
+probing a wrapper class would autoload third-party code on the one path whose
+job is to report that the wrapper is broken. `--json` output on stdout stays
+machine-readable.
+
+- **Covered command** — banner naming the wrapper's invocation. Still runs,
+  still exits as before.
+- **Uncovered command that reads the resolution pipeline** (`scan`, `tags`) —
+  banner saying the result is incomplete. There is no equivalent to redirect to.
+- **Anything else** — silent.
+- **`doctor` is reserved.** A wrapper cannot claim it: it is what diagnoses a
+  wrapper whose own CLI will not boot. `boost doctor` lists declared entry
+  points and warns about a rejected claim — the only surface that reports one,
+  so a wrapper author's mistake never becomes per-run noise for their users.
+
+`BOOST_STRICT_ENTRY_POINT=1` turns the banner into a refusal (exit 1). Opt-in
+for all of 1.x, because `PUBLIC_API.md` puts CLI exit codes inside the SemVer
+promise and a previously-passing command cannot start failing in a minor. It
+becomes the default in the next major.
+
+### `boost scan` no longer rewrites `boost.php` with nobody watching (behavior change)
+
+The picker guard checked Symfony's `--no-interaction` FLAG, which is the only
+thing `Application::configureIO()` clears — it never probes the terminal.
+laravel/prompts probes `stream_isatty(STDIN)` itself and, with no TTY, returns
+its precomputed default silently. In the gap, any non-TTY run that did not pass
+`-n` — CI, git hooks, Composer scripts, agent shells — fell through to the
+picker and wrote the config with no operator involved.
+
+The guard now requires an attached TTY as well. **This changes an exit code**: a
+`boost scan` / `install` / `remote` run that "succeeded" unattended in CI now
+exits 1 with guidance. It is a defect fix rather than a feature removal — the
+previous success wrote a config nobody chose — but check any CI step that
+invokes those three commands without a terminal.
+
+### Fixed
+
+- **`boost doctor` no longer reports a clean drift verdict over a failed run.**
+  A source whose renderer throws is excluded by the loader, so `hasDrift()`
+  compared a truncated source set and found nothing to change. Doctor printed
+  "Generated files match sources" while `boost sync --check` exited 1 on the
+  same `SyncResult`, and while the same error list suppressed the engine's own
+  stale cleanup. Doctor now consults `SyncResult::hasErrors()` and refuses to
+  give a verdict instead of giving a wrong one. Any error-carrying result now
+  suppresses the whole drift section, including its wrapper routing note.
+- **`boost scan` keeps an allowlisted vendor it cannot discover.** The picker
+  built its options from `VendorScanner` alone while the writer replaced
+  `withAllowedVendors()` wholesale, so an allowlisted package that publishes
+  nothing a bare scan can see was impossible to keep — not merely deselected.
+  Such entries are now listed, labelled and preselected.
+- **`boost scan` no longer appends `->withDisabledEmitters([])`** to a config
+  that never declared it.
+- **Corrected doctor's unrenderable-source note.** It said a bare CLI skips
+  `.blade.php` sources. With a renderer registered that cannot run outside its
+  framework, it throws instead. Both shapes are now named.
+
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.7.0...HEAD)
 
 ## [1.7.0](https://github.com/sandermuller/boost-core/compare/1.6.1...1.7.0) - 2026-08-19

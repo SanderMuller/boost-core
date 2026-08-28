@@ -113,6 +113,7 @@ final class DoctorCommand extends BoostBaseCommand
         }
 
         $this->reportEntryPointMismatch($io);
+        (new WrapperEntryPointReporter())->report($io, $this->injectedPackages);
         (new CoexistenceReporter())->report(
             $io,
             $projectRoot,

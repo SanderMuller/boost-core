@@ -17,7 +17,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * @internal
  */
-final class TagsCommand extends BoostBaseCommand
+final class TagsCommand extends BoostBaseCommand implements TouchesResolutionPipeline
 {
     public function __construct(
         private readonly TagReporter $reporter = new TagReporter(),

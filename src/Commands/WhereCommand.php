@@ -39,7 +39,7 @@ use Throwable;
  *
  * @internal
  */
-final class WhereCommand extends BoostBaseCommand
+final class WhereCommand extends BoostBaseCommand implements TouchesResolutionPipeline
 {
     public function __construct(
         // Injection seam for tests — null means "read the real Composer

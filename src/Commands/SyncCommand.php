@@ -22,7 +22,7 @@ use Throwable;
 /**
  * @internal
  */
-final class SyncCommand extends BoostBaseCommand
+final class SyncCommand extends BoostBaseCommand implements TouchesResolutionPipeline
 {
     protected function configure(): void
     {

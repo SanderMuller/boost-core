@@ -1464,3 +1464,35 @@ it('doctor: refuses to report a clean drift verdict when the sync result carries
         doctorCleanup($dir);
     }
 });
+
+it('doctor: lists declared wrapper entry points and warns about a reserved claim', function (): void {
+    // Doctor is the ONLY surface for a rejected claim — a wrapper author's
+    // mistake must not become per-run noise for operators who cannot fix it.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $packageDir = $dir . '/vendor/acme/wrapper';
+    mkdir($packageDir, 0o755, recursive: true);
+    file_put_contents($packageDir . '/composer.json', json_encode([
+        'name' => 'acme/wrapper',
+        'extra' => ['boost' => ['entry-point' => [
+            'sync' => 'php artisan acme:sync',
+            'doctor' => 'php artisan acme:doctor',
+        ]]],
+    ], JSON_THROW_ON_ERROR));
+
+    $packages = new InstalledPackages([
+        'acme/wrapper' => new PackageInfo('acme/wrapper', '1.0.0', $packageDir),
+    ]);
+
+    try {
+        $command = new DoctorCommand(injectedPackages: $packages);
+        $tester = new CommandTester($command);
+        $tester->execute(['--working-dir' => $dir]);
+        $display = $tester->getDisplay();
+
+        expect($display)->toContain('php artisan acme:sync')
+            ->and($display)->toContain('reserved command')
+            ->and($display)->toContain('acme/wrapper');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

@@ -395,6 +395,7 @@ Every variable is opt-in; unset = default behavior.
 | `BOOST_REMOTE_STRICT=1`  | Escalate any remote-skill source failure to a sync-aborting error (default: warn-and-skip) |
 | `BOOST_RENDER_STRICT=1`  | Escalate the first skill-render failure to a sync-aborting error (default: warn-and-skip)  |
 | `BOOST_CACHE_HOME`       | Override the remote-skill cache root (defaults to `$XDG_CACHE_HOME` / `~/.cache`)          |
+| `BOOST_STRICT_ENTRY_POINT=1` | Refuse a bare command an installed wrapper declares it covers, instead of only warning (default in the next major) |
 
 ## Versioning & stability
 

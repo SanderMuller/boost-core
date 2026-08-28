@@ -25,7 +25,7 @@ use function Laravel\Prompts\multiselect;
  *
  * @internal
  */
-final class ScanCommand extends BoostBaseCommand
+final class ScanCommand extends BoostBaseCommand implements TouchesResolutionPipeline
 {
     public function __construct(
         private readonly BoostConfigLoader $loader = new BoostConfigLoader(),

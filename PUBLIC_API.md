@@ -90,6 +90,28 @@ These aren't PHP types, but they're authored or observed by consumers/publishers
 - Every class marked `@internal` — the engine: `Sync\`, `Discovery\`, `Conventions\`, `Agents\` (except `AgentTarget`), `Commands\`, the `Skills\` internals, `Env`, and the internal `Config\` loader/writer/printer/path classes. Do not import these.
 - On-disk regenerable state: the sync manifest (`.boost/manifest.json` ⁄ `.config/boost/manifest.json`), the remote-skill ledger (`remote-manifest.json`), the user-scope manifests under `~/.boost/manifests/`, the `.boost/` ⁄ `.config/boost/` runtime dir, and the cache sentinel. Their schema is not a contract.
 
+### What an `@api` guarantee does NOT pin
+
+A class being `@api` freezes its declared surface, not everything reachable
+through it. The gaps that have actually bitten integrators:
+
+- **The SHAPE of a value, as distinct from its type.** Emit paths are the live
+  example. `AgentTarget::skillsDirectoryRelative()` is frozen; the fact that
+  every implementation's value currently ends in `/skills` is not, and neither
+  is the `SKILL.md` filename behind `skillRelativePathForName()`. Code that
+  pattern-matches an emitted path — `#/skills/([^/]+)/SKILL\.md$#` and the like
+  — is coupled to something no promise covers, and it fails by matching
+  NOTHING rather than by erroring, so a wrong result looks like a clean run.
+  Use `SkillShipmentIndex` to read a skill back out of a path, and
+  `skillRelativePathForName()` to build one.
+- **Raw array key names** reached through a public property, unless this
+  document pins them (as it does for `SyncResult`'s shadow rows).
+- **Human-readable output text**, everywhere except the parseable fragment of
+  `SyncSummary::line()`.
+
+A static-analysis or import-closure check cannot catch the first of these,
+because there is no symbol to see — only a string that happens to match today.
+
 ## Deprecation policy
 
 A stable (`@api`) element is deprecated before it is removed: marked `@deprecated` in PHPDoc — and, where it has a runtime code path, emitting `E_USER_DEPRECATED` — in a MINOR release, then removed no earlier than the next MAJOR. Deprecations are listed under `### Deprecated` in `CHANGELOG.md` so they surface in release notes.

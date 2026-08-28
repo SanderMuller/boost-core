@@ -91,6 +91,10 @@ the default in the next major.
 A command the wrapper does not cover, such as `scan` or `tags`, still runs and
 says its result is incomplete. There is no equivalent to send you to.
 
+If two installed packages claim the same command, the first one Composer
+discovers wins and `boost doctor` reports the clash — the winner is arbitrary,
+so the loser is named rather than silently dropped.
+
 `doctor` is reserved: a wrapper cannot claim it, because it is what diagnoses a
 wrapper whose own CLI will not boot. `boost doctor` lists every declared entry
 point and warns about a claim it rejected.

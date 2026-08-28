@@ -134,3 +134,51 @@ it('survives a package with no composer.json or unreadable JSON', function (): v
         cleanupTestDir($dir);
     }
 });
+
+it('does not call a package a wrapper on the strength of a rejected claim', function (): void {
+    // A package declaring ONLY the reserved `doctor` has had its one claim
+    // dropped, so nothing is known about whether it extends the resolution
+    // pipeline. Treating it as a wrapper made the gate assert that uncovered
+    // pipeline commands "return an incomplete result" — a confident statement
+    // resting on a claim boost-core refused to honour.
+    $dir = entryPointTempDir();
+
+    try {
+        $package = entryPointPackage($dir, 'acme/doctor-only', ['extra' => ['boost' => ['entry-point' => [
+            'doctor' => 'php artisan acme:doctor',
+        ]]]]);
+
+        $discovered = (new WrapperEntryPoints(new InstalledPackages(['acme/doctor-only' => $package])))->discover();
+
+        expect($discovered->hasWrapper())->toBeFalse()
+            ->and($discovered->reservedClaims())->toBe(['acme/doctor-only' => ['doctor']]);
+    } finally {
+        cleanupTestDir($dir);
+    }
+});
+
+it('records a claim two wrappers make on the same command', function (): void {
+    // First declaration wins, which is the only defensible resolution — but it
+    // was silent, so the advisory named one wrapper's invocation arbitrarily
+    // and the project looked correctly configured. The conflict is recorded so
+    // `boost doctor` can say which command is contested.
+    $dir = entryPointTempDir();
+
+    try {
+        $packages = [
+            'acme/first' => entryPointPackage($dir, 'acme/first', ['extra' => ['boost' => ['entry-point' => [
+                'sync' => 'php artisan first:sync',
+            ]]]]),
+            'acme/second' => entryPointPackage($dir, 'acme/second', ['extra' => ['boost' => ['entry-point' => [
+                'sync' => 'php artisan second:sync',
+            ]]]]),
+        ];
+
+        $discovered = (new WrapperEntryPoints(new InstalledPackages($packages)))->discover();
+
+        expect($discovered->invocationFor('sync'))->toBe('php artisan first:sync')
+            ->and($discovered->conflictingClaims())->toBe(['sync' => ['acme/second']]);
+    } finally {
+        cleanupTestDir($dir);
+    }
+});

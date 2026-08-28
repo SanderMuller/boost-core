@@ -70,6 +70,8 @@ final readonly class WrapperEntryPoints
         $claims = [];
         /** @var array<string, list<string>> $reserved */
         $reserved = [];
+        /** @var array<string, list<string>> $conflicts */
+        $conflicts = [];
 
         foreach ($this->packages->all() as $package) {
             foreach ($this->readDeclaration($package->installPath) as $command => $invocation) {
@@ -79,14 +81,22 @@ final readonly class WrapperEntryPoints
                     continue;
                 }
 
-                // First declaration wins. Two wrappers claiming one command is
-                // a project-level misconfiguration, not something to resolve
-                // silently by preferring the later package.
-                $claims[$command] ??= ['package' => $package->name, 'invocation' => $invocation];
+                // First declaration wins — preferring the later package would
+                // be equally arbitrary. But RECORD the loser: resolving the
+                // clash silently is what made a misconfigured project look
+                // correctly configured while the advisory named one of two
+                // wrappers at random.
+                if (isset($claims[$command])) {
+                    $conflicts[$command][] = $package->name;
+
+                    continue;
+                }
+
+                $claims[$command] = ['package' => $package->name, 'invocation' => $invocation];
             }
         }
 
-        return new WrapperEntryPointMap($claims, $reserved);
+        return new WrapperEntryPointMap($claims, $reserved, $conflicts);
     }
 
     /**

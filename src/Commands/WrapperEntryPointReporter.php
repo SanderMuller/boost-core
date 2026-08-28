@@ -24,7 +24,10 @@ final readonly class WrapperEntryPointReporter
     {
         $map ??= (new WrapperEntryPoints($packages ?? InstalledPackages::fromComposer()))->discover();
 
-        if (! $map->hasWrapper()) {
+        // NOT hasWrapper(): that is now accepted-claims-only, and a package
+        // whose every claim was rejected is exactly the case this section
+        // exists to report.
+        if (! $map->hasWrapper() && $map->reservedClaims() === [] && $map->conflictingClaims() === []) {
             return;
         }
 
@@ -40,6 +43,18 @@ final readonly class WrapperEntryPointReporter
         if ($rows !== []) {
             $io->writeln('These bare commands are covered by an installed wrapper. Run the invocation on the right instead:');
             $io->table(['Bare command', 'Declared by', 'Run instead'], $rows);
+        }
+
+        foreach ($map->conflictingClaims() as $command => $losingPackages) {
+            $io->warning(sprintf(
+                'More than one installed package claims the bare command `%s`: `%s` won because it was '
+                . 'discovered first, and `%s` lost. The winner is arbitrary — Composer discovery order is '
+                . 'not something either package controls. To resolve: remove the entry from whichever package '
+                . 'should not own this command.',
+                $command,
+                (string) $map->packageFor($command),
+                implode('`, `', $losingPackages),
+            ));
         }
 
         foreach ($map->reservedClaims() as $package => $commands) {

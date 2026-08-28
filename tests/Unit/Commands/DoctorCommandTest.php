@@ -1529,3 +1529,33 @@ it('doctor: names the failed emitter when that is the only reason drift is unass
         doctorCleanup($dir);
     }
 });
+
+it('doctor: reports a contested command and a package whose only claim was rejected', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $packages = [];
+    foreach ([
+        'acme/first' => ['sync' => 'php artisan first:sync'],
+        'acme/second' => ['sync' => 'php artisan second:sync'],
+        'acme/doctor-only' => ['doctor' => 'php artisan third:doctor'],
+    ] as $name => $entryPoint) {
+        $path = $dir . '/vendor/' . str_replace('/', '__', $name);
+        mkdir($path, 0o755, recursive: true);
+        file_put_contents($path . '/composer.json', json_encode(
+            ['name' => $name, 'extra' => ['boost' => ['entry-point' => $entryPoint]]],
+            JSON_THROW_ON_ERROR,
+        ));
+        $packages[$name] = new PackageInfo($name, '1.0.0', $path);
+    }
+
+    try {
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: new InstalledPackages($packages)));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = $tester->getDisplay();
+
+        expect($display)->toContain('More than one installed package claims')
+            ->and($display)->toContain('acme/second')
+            ->and($display)->toContain('reserved command');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

@@ -27,10 +27,12 @@ final readonly class WrapperEntryPointMap
     /**
      * @param  array<string, array{package: string, invocation: string}>  $claims  bare command name => claim
      * @param  array<string, list<string>>  $reservedClaims  package => reserved command names it tried to claim
+     * @param  array<string, list<string>>  $conflictingClaims  command => packages whose claim lost to an earlier one
      */
     public function __construct(
         private array $claims = [],
         private array $reservedClaims = [],
+        private array $conflictingClaims = [],
     ) {}
 
     /**
@@ -40,7 +42,13 @@ final readonly class WrapperEntryPointMap
      */
     public function hasWrapper(): bool
     {
-        return $this->claims !== [] || $this->reservedClaims !== [];
+        // ACCEPTED claims only. A package whose sole declaration was a reserved
+        // command has had it dropped, so nothing is known about whether it
+        // extends the resolution pipeline — and the short-result banner is a
+        // statement that it does. Asserting that on the strength of a claim
+        // boost-core refused to honour would be a confident answer with
+        // nothing behind it.
+        return $this->claims !== [];
     }
 
     public function covers(string $command): bool
@@ -92,5 +100,22 @@ final readonly class WrapperEntryPointMap
     public function reservedClaims(): array
     {
         return $this->reservedClaims;
+    }
+
+    /**
+     * Claims that lost to an earlier package's claim on the same command.
+     *
+     * First-declaration-wins is the only defensible resolution — preferring a
+     * later package would be just as arbitrary — but resolving it SILENTLY
+     * left the advisory naming one wrapper's invocation with nothing to
+     * indicate another had asked for the same command. Reported by
+     * `boost doctor`, like reserved claims: it is a project misconfiguration
+     * the operator can act on, not per-run noise.
+     *
+     * @return array<string, list<string>>  command => the packages that lost
+     */
+    public function conflictingClaims(): array
+    {
+        return $this->conflictingClaims;
     }
 }

@@ -94,3 +94,32 @@ it('reports a clean run as success with no findings', function (): void {
     expect($outcome->hasDrift)->toBeFalse()
         ->and($outcome->exitCode)->toBe(0);
 });
+
+it('names the caller\'s own command in follow-up advice', function (): void {
+    // The report contains advice ("run X to see the filtered skills"). Hardcoding
+    // `vendor/bin/boost` would make a WRAPPER's command output point operators at
+    // the bare binary — the exact wrong entry point the entry-point banner exists
+    // to steer them away from.
+    $filtered = new SyncResult(
+        writes: [],
+        emitters: [],
+        errors: [],
+        tagFilteredSkillsCount: 3,
+        check: false,
+    );
+
+    $bare = new BufferedOutput();
+    (new SyncReporter())->render(new SymfonyStyle(new ArrayInput([]), $bare), $filtered, false, sys_get_temp_dir());
+
+    $wrapped = new BufferedOutput();
+    (new SyncReporter(['tags' => 'php artisan acme:tags']))
+        ->render(new SymfonyStyle(new ArrayInput([]), $wrapped), $filtered, false, sys_get_temp_dir());
+
+    // fetch() CLEARS the buffer, so capture once — calling it twice would make
+    // the negative assertion pass against an empty string.
+    $wrappedOutput = $wrapped->fetch();
+
+    expect($bare->fetch())->toContain('vendor/bin/boost tags')
+        ->and($wrappedOutput)->toContain('php artisan acme:tags')
+        ->and($wrappedOutput)->not->toContain('vendor/bin/boost');
+});

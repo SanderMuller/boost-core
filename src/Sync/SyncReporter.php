@@ -38,6 +38,30 @@ use Throwable;
  */
 final readonly class SyncReporter
 {
+    /**
+     * @param  array<string, string>  $commandInvocations  bare boost-core command
+     *   name => how to invoke the equivalent in THIS project. A wrapper passes
+     *   its own commands here; anything unmapped falls back to
+     *   `vendor/bin/boost <name>`.
+     */
+    public function __construct(
+        private array $commandInvocations = [],
+    ) {}
+
+    /**
+     * How to tell the operator to run a boost-core command.
+     *
+     * The report contains follow-up advice ("run X to see the filtered
+     * skills"), and hardcoding `vendor/bin/boost` would make a wrapper's own
+     * command output point at the bare binary — the exact wrong entry point
+     * this release exists to steer people away from. The advice has to name
+     * the CLI the operator is actually using.
+     */
+    private function invocation(string $bareCommand): string
+    {
+        return $this->commandInvocations[$bareCommand] ?? 'vendor/bin/boost ' . $bareCommand;
+    }
+
     private function hasErrorDiagnostic(SyncResult $result): bool
     {
         foreach ($result->diagnostics as $diagnostic) {
@@ -176,9 +200,10 @@ final readonly class SyncReporter
             // operator link). Nothing is wrong; it just won't converge to a plain copy
             // until the operator removes the link. (Dead/broken symlinks are auto-pruned.)
             $io->note(sprintf(
-                "%d file(s) skipped — a path segment is a live (resolving) symlink, preserved by design (boost does not follow or overwrite it). To switch to a plain copy, remove the link and re-sync (e.g. `find %s -type l -delete && vendor/bin/boost sync`):\n  - %s",
+                "%d file(s) skipped — a path segment is a live (resolving) symlink, preserved by design (boost does not follow or overwrite it). To switch to a plain copy, remove the link and re-sync (e.g. `find %s -type l -delete && %s`):\n  - %s",
                 $skippedSymlink,
                 AgentDirSymlinkScanner::cleanupRootsFor($skippedPaths),
+                $this->invocation('sync'),
                 implode("\n  - ", $skippedPaths),
             ));
         }
@@ -238,8 +263,9 @@ final readonly class SyncReporter
     {
         if ($result->tagFilteredSkillsCount > 0) {
             $io->note(sprintf(
-                '%d tagged skill(s) currently filtered out — your `withTags()` is empty. Run `vendor/bin/boost tags` to see them.',
+                '%d tagged skill(s) currently filtered out — your `withTags()` is empty. Run `%s` to see them.',
                 $result->tagFilteredSkillsCount,
+                $this->invocation('tags'),
             ));
         }
     }

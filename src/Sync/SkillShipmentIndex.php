@@ -23,16 +23,17 @@ use SanderMuller\BoostCore\Agents\AgentTarget;
  * which produces the paths it reads back.
  *
  * @api Stable as of 1.4. Frozen surface: {@see from()}, {@see isShipped()},
- * {@see shippedNames()}, {@see shadowedVendorFor()},
- * {@see guidelineShadowedVendorFor()}, the two map getters, and
+ * {@see shippedNames()},
+ * {@see shadowedVendorsFor()}, {@see guidelineShadowedVendorsFor()},
+ * the two map getters, and
  * {@see statusFor()}.
  */
 final readonly class SkillShipmentIndex
 {
     /**
      * @param  array<string, true>  $shipped
-     * @param  array<string, string>  $skillShadows  skill name => shadowed vendor
-     * @param  array<string, string>  $guidelineShadows  guideline name => shadowed vendor
+     * @param  array<string, list<string>>  $skillShadows  skill name => every shadowed vendor
+     * @param  array<string, list<string>>  $guidelineShadows  guideline name => every shadowed vendor
      */
     private function __construct(
         private array $shipped,
@@ -60,14 +61,18 @@ final readonly class SkillShipmentIndex
             }
         }
 
+        // APPEND, never assign. One host copy can shadow the same name across
+        // several allowlisted vendors, so the result carries one row per
+        // vendor. Keying `$map[$name] = $vendor` keeps only the last, and the
+        // output then names one vendor while reading as a complete answer.
         $skillShadows = [];
         foreach ($result->hostShadows as $shadow) {
-            $skillShadows[$shadow['skill']] = $shadow['shadowedVendor'];
+            $skillShadows[$shadow['skill']][] = $shadow['shadowedVendor'];
         }
 
         $guidelineShadows = [];
         foreach ($result->hostGuidelineShadows as $shadow) {
-            $guidelineShadows[$shadow['guideline']] = $shadow['shadowedVendor'];
+            $guidelineShadows[$shadow['guideline']][] = $shadow['shadowedVendor'];
         }
 
         return new self($shipped, $skillShadows, $guidelineShadows);
@@ -87,36 +92,50 @@ final readonly class SkillShipmentIndex
     }
 
     /**
-     * The vendor package whose skill of this name was shadowed by a host copy,
-     * or null when nothing was shadowed.
+     * Every vendor package whose skill of this name was shadowed by a host
+     * copy. Empty when nothing was shadowed.
+     *
+     * @return list<string>
      */
-    public function shadowedVendorFor(string $skillName): ?string
+    public function shadowedVendorsFor(string $skillName): array
     {
-        return $this->skillShadows[$skillName] ?? null;
+        return $this->skillShadows[$skillName] ?? [];
     }
 
-    public function guidelineShadowedVendorFor(string $guidelineName): ?string
+    /**
+     * @return list<string>
+     */
+    public function guidelineShadowedVendorsFor(string $guidelineName): array
     {
-        return $this->guidelineShadows[$guidelineName] ?? null;
+        return $this->guidelineShadows[$guidelineName] ?? [];
     }
 
     /**
      * The whole skill map, for a caller rendering a table rather than asking
-     * about one name at a time.
+     * about one name at a time. Multiple vendors are comma-joined so a single
+     * cell names all of them rather than one.
      *
-     * @return array<string, string>  skill name => shadowed vendor
+     * @return array<string, string>  skill name => shadowed vendors, comma-joined
      */
     public function shadowedVendorMap(): array
     {
-        return $this->skillShadows;
+        return array_map(self::join(...), $this->skillShadows);
     }
 
     /**
-     * @return array<string, string>  guideline name => shadowed vendor
+     * @return array<string, string>  guideline name => shadowed vendors, comma-joined
      */
     public function guidelineShadowedVendorMap(): array
     {
-        return $this->guidelineShadows;
+        return array_map(self::join(...), $this->guidelineShadows);
+    }
+
+    /**
+     * @param  list<string>  $vendors
+     */
+    private static function join(array $vendors): string
+    {
+        return implode(', ', $vendors);
     }
 
     /**
@@ -133,7 +152,7 @@ final readonly class SkillShipmentIndex
             return SkillShipmentStatus::SHIPPED;
         }
 
-        if ($this->shadowedVendorFor($skillName) !== null) {
+        if ($this->shadowedVendorsFor($skillName) !== []) {
             return SkillShipmentStatus::SHADOWED;
         }
 

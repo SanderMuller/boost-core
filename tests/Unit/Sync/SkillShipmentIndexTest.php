@@ -67,9 +67,9 @@ it('maps a skill and a guideline to the vendor copy it shadowed', function (): v
         [['guideline' => 'style', 'shadowedVendor' => 'acme/rules']],
     ));
 
-    expect($index->shadowedVendorFor('alpha'))->toBe('acme/skills')
-        ->and($index->shadowedVendorFor('missing'))->toBeNull()
-        ->and($index->guidelineShadowedVendorFor('style'))->toBe('acme/rules');
+    expect($index->shadowedVendorsFor('alpha'))->toBe(['acme/skills'])
+        ->and($index->shadowedVendorsFor('missing'))->toBe([])
+        ->and($index->guidelineShadowedVendorsFor('style'))->toBe(['acme/rules']);
 });
 
 it('classifies why a skill did not ship', function (): void {
@@ -85,4 +85,27 @@ it('classifies why a skill did not ship', function (): void {
         ->and($index->statusFor('beta', ['any']))->toBe(SkillShipmentStatus::SHADOWED)
         ->and($index->statusFor('gamma', ['docs']))->toBe(SkillShipmentStatus::TAG_FILTERED)
         ->and($index->statusFor('delta', []))->toBe(SkillShipmentStatus::EXCLUDED);
+});
+
+it('keeps every vendor a host copy shadowed, not just the last', function (): void {
+    // A host guideline can shadow the SAME name across several allowlisted
+    // vendors, producing one row per vendor. Collapsing to `$map[$name] =
+    // $vendor` reports only the last one — `boost where` then names one vendor
+    // and silently omits the others, which reads as a complete answer.
+    $index = SkillShipmentIndex::from(shipmentResult(
+        [],
+        [
+            ['skill' => 'alpha', 'shadowedVendor' => 'acme/one'],
+            ['skill' => 'alpha', 'shadowedVendor' => 'acme/two'],
+        ],
+        [
+            ['guideline' => 'style', 'shadowedVendor' => 'acme/one'],
+            ['guideline' => 'style', 'shadowedVendor' => 'acme/two'],
+        ],
+    ));
+
+    expect($index->shadowedVendorsFor('alpha'))->toBe(['acme/one', 'acme/two'])
+        ->and($index->guidelineShadowedVendorsFor('style'))->toBe(['acme/one', 'acme/two'])
+        ->and($index->shadowedVendorMap()['alpha'])->toBe('acme/one, acme/two')
+        ->and($index->guidelineShadowedVendorMap()['style'])->toBe('acme/one, acme/two');
 });

@@ -11,7 +11,7 @@ namespace SanderMuller\BoostCore\Sync;
  * colours, wording and column layout stay with each CLI, because boost-core
  * has no business freezing another package's output.
  *
- * @api Stable as of 1.4. New cases may be added in a MINOR, so match
+ * @api Stable as of 1.8. New cases may be added in a MINOR, so match
  * exhaustively at your own risk — prefer a `default`.
  */
 enum SkillShipmentStatus: string

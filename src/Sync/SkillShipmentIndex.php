@@ -22,7 +22,7 @@ use SanderMuller\BoostCore\Agents\AgentTarget;
  * {@see AgentTarget::skillRelativePathForName()},
  * which produces the paths it reads back.
  *
- * @api Stable as of 1.4. Frozen surface: {@see from()}, {@see isShipped()},
+ * @api Stable as of 1.8. Frozen surface: {@see from()}, {@see isShipped()},
  * {@see shippedNames()},
  * {@see shadowedVendorsFor()}, {@see guidelineShadowedVendorsFor()},
  * the two map getters, and
@@ -119,7 +119,7 @@ final readonly class SkillShipmentIndex
      */
     public function shadowedVendorMap(): array
     {
-        return array_map(self::join(...), $this->skillShadows);
+        return array_map($this->join(...), $this->skillShadows);
     }
 
     /**
@@ -127,13 +127,13 @@ final readonly class SkillShipmentIndex
      */
     public function guidelineShadowedVendorMap(): array
     {
-        return array_map(self::join(...), $this->guidelineShadows);
+        return array_map($this->join(...), $this->guidelineShadows);
     }
 
     /**
      * @param  list<string>  $vendors
      */
-    private static function join(array $vendors): string
+    private function join(array $vendors): string
     {
         return implode(', ', $vendors);
     }

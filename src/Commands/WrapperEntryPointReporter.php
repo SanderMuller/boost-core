@@ -62,7 +62,7 @@ final readonly class WrapperEntryPointReporter
                 'Package `%s` claims the reserved command(s) `%s` in its `extra.boost.entry-point`. boost-core '
                 . 'ignores those entries. A reserved command must stay runnable bare — `doctor` is what diagnoses '
                 . 'a wrapper whose own CLI will not boot, so a wrapper cannot stand in front of it. To resolve: '
-                . 'remove the entry, and surface the richer diagnostic from the wrapper\'s own command instead.',
+                . "remove the entry, and surface the richer diagnostic from the wrapper's own command instead.",
                 $package,
                 implode('`, `', $commands),
             ));

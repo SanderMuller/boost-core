@@ -5,7 +5,7 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.7.0...HEAD)
 
 ### Wrapper entry points — `vendor/bin/boost` says what it is not running
 
@@ -134,8 +134,6 @@ invokes those three commands without a terminal.
 - **Corrected doctor's unrenderable-source note.** It said a bare CLI skips
   `.blade.php` sources. With a renderer registered that cannot run outside its
   framework, it throws instead. Both shapes are now named.
-
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.7.0...HEAD)
 
 ## [1.7.0](https://github.com/sandermuller/boost-core/compare/1.6.1...1.7.0) - 2026-08-19
 

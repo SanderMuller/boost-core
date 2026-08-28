@@ -17,9 +17,9 @@ function shipmentResult(array $writes, array $skillShadows = [], array $guidelin
         writes: $writes,
         emitters: [],
         errors: [],
+        check: false,
         hostShadows: $skillShadows,
         hostGuidelineShadows: $guidelineShadows,
-        check: false,
     );
 }
 
@@ -68,7 +68,8 @@ it('maps a skill and a guideline to the vendor copy it shadowed', function (): v
     ));
 
     expect($index->shadowedVendorsFor('alpha'))->toBe(['acme/skills'])
-        ->and($index->shadowedVendorsFor('missing'))->toBe([])
+        ->and($index->shadowedVendorsFor('missing'))
+        ->toBeEmpty()
         ->and($index->guidelineShadowedVendorsFor('style'))->toBe(['acme/rules']);
 });
 

@@ -42,7 +42,7 @@ For wrapper packages that drive a sync with INJECTED vendor skills/guidelines an
 - `SanderMuller\BoostCore\Scripts\BoostAutoSync::run` / `runWithSummary` — the `post-install-cmd` / `post-update-cmd` targets.
 - `BoostAutoSync::syncUserScope` / `syncUserScopeOnce` — in-process self-sync for globally-installed CLI tools.
 
-### Reporting a sync (1.4)
+### Reporting a sync (1.8)
 
 - `SanderMuller\BoostCore\Sync\SyncReporter::__construct(array $commandInvocations = [], bool $driftIsFailure = true)` — map bare boost-core command names to how they are invoked in THIS project (`['tags' => 'php artisan project-boost:tags']`). The report contains follow-up advice; unmapped names fall back to `vendor/bin/boost <name>`, which is wrong in a wrapper's own output. The equivalent need not be a command of the same name — only the right thing to run. `driftIsFailure: false` is for a CLI that has already documented a lenient exit code on `--check`: it makes the drift wording neutral to match, so the report never reads like a failure while the process exits 0.
 - `SanderMuller\BoostCore\Sync\SyncReporter::renderErrors(SymfonyStyle, SyncResult, bool $checkOnly): void` — render BOTH channels of `hasErrors()` (the errors list AND any `ERRORED` emitter) as one block. Use it rather than listing `$result->errors` yourself: a second copy omits the emitter half, which is how `boost doctor` came to print "fix the errors below" over an empty list.

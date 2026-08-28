@@ -33,7 +33,7 @@ use Throwable;
  * The wording of the human output is NOT contractual, with one exception:
  * the parseable fragment of {@see SyncSummary::line()}.
  *
- * @api Stable as of 1.4. Frozen surface: {@see report()} and its exit-code
+ * @api Stable as of 1.8. Frozen surface: {@see report()} and its exit-code
  * semantics.
  */
 final readonly class SyncReporter
@@ -347,7 +347,7 @@ final readonly class SyncReporter
      * empty list when only an emitter had failed. Sharing the renderer is what
      * stops that recurring; a second copy is what caused it.
      *
-     * @api Stable as of 1.4.
+     * @api Stable as of 1.8.
      */
     public function renderErrors(SymfonyStyle $io, SyncResult $result, bool $checkOnly): void
     {

@@ -21,7 +21,7 @@ namespace SanderMuller\BoostCore\Sync;
  * The `wrote=`/`unchanged=`/`deleted=` fragment of {@see line()} is frozen —
  * a tool parses it. The surrounding prose is not.
  *
- * @api Stable as of 1.4. Frozen surface: the readonly counts, {@see from()},
+ * @api Stable as of 1.8. Frozen surface: the readonly counts, {@see from()},
  * and {@see line()}'s parseable fragment.
  */
 final readonly class SyncSummary

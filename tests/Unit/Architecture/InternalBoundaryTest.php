@@ -85,7 +85,7 @@ const ENGINE_PUBLIC_API = [
     // (already @api) BoostWrapperContract is implementable on frozen surface.
     BoostSync::class,
     SyncResult::class,
-    // Command-level reuse (1.4). A wrapper drives the sync through BoostSync and
+    // Command-level reuse (1.8). A wrapper drives the sync through BoostSync and
     // then has to REPORT it; without these the only implementation was private to
     // boost-core's SyncCommand, so every wrapper reimplemented the drift list,
     // diagnostics, shadow notes and summary — and could describe one result
@@ -94,7 +94,7 @@ const ENGINE_PUBLIC_API = [
     SyncReporter::class,
     SyncReportOutcome::class,
     SyncSummary::class,
-    // Command-level reuse, part two (1.4). A wrapper rendering its own `where`
+    // Command-level reuse, part two (1.8). A wrapper rendering its own `where`
     // had to pattern-match our emit paths to answer "did this ship?" — coupling
     // it to a layout only `AgentTarget::skillsDirectoryRelative()` actually
     // freezes. The index owns that inverse mapping, and the enum shares the

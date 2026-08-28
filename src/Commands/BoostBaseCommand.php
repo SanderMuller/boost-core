@@ -99,7 +99,7 @@ abstract class BoostBaseCommand extends Command
      *
      * @var (callable(): bool)|null
      */
-    private static $ttyProbe = null;
+    private static $ttyProbe;
 
     /**
      * Override the TTY probe used by {@see isInteractiveOrExplain()}. Pass

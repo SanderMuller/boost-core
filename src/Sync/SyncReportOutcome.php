@@ -20,7 +20,7 @@ use Symfony\Component\Console\Command\Command;
  * {@see $exitCode} to follow boost-core, or the individual findings to apply
  * its own rule.
  *
- * @api Stable as of 1.4.
+ * @api Stable as of 1.8.
  */
 final readonly class SyncReportOutcome
 {

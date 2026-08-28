@@ -44,8 +44,6 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class BoostApplication extends Application
 {
-    private ?WrapperEntryPointMap $entryPoints;
-
     /**
      * Commands that describe the CLI rather than act on a project. Gating
      * them would put a banner in front of `--help`, which is the one place an
@@ -53,11 +51,9 @@ final class BoostApplication extends Application
      */
     private const array UNGATED_COMMANDS = ['help', 'list', 'completion', '_complete'];
 
-    public function __construct(string $name, string $version, ?WrapperEntryPointMap $entryPoints = null)
+    public function __construct(string $name, string $version, private ?WrapperEntryPointMap $entryPoints = null)
     {
         parent::__construct($name, $version);
-
-        $this->entryPoints = $entryPoints;
     }
 
     protected function doRunCommand(Command $command, InputInterface $input, OutputInterface $output): int
@@ -121,7 +117,7 @@ final class BoostApplication extends Application
 
         if ($command instanceof TouchesResolutionPipeline) {
             $stderr->writeln(sprintf(
-                '<comment>`%s` reads boost-core\'s own sources only. %s extends the set in this project, '
+                "<comment>`%s` reads boost-core's own sources only. %s extends the set in this project, "
                 . 'so this result is incomplete. There is no %s equivalent to run instead — read the output '
                 . 'with that in mind.</comment>',
                 $name,

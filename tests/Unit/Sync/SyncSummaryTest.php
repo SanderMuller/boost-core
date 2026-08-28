@@ -95,7 +95,7 @@ it('reports a clean run as success with no findings', function (): void {
         ->and($outcome->exitCode)->toBe(0);
 });
 
-it('names the caller\'s own command in follow-up advice', function (): void {
+it("names the caller's own command in follow-up advice", function (): void {
     // The report contains advice ("run X to see the filtered skills"). Hardcoding
     // `vendor/bin/boost` would make a WRAPPER's command output point operators at
     // the bare binary — the exact wrong entry point the entry-point banner exists
@@ -104,8 +104,8 @@ it('names the caller\'s own command in follow-up advice', function (): void {
         writes: [],
         emitters: [],
         errors: [],
-        tagFilteredSkillsCount: 3,
         check: false,
+        tagFilteredSkillsCount: 3,
     );
 
     $bare = new BufferedOutput();

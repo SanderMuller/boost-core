@@ -19,6 +19,14 @@ use SanderMuller\BoostCore\Sync\EmitterAction;
  * asserts what IS printed, never what is populated-but-unread. There is no
  * natural place for that assertion to live — so it lives here.
  *
+ * MAINTENANCE NOTE. `VERDICT_RENDERERS` and `ERROR_LISTERS` are hand-kept
+ * lists, which is the weak part: a verdict-maker added later is uncovered
+ * until someone remembers to list it. The enum check avoids that by
+ * enumerating cases, but "renders a verdict" is not mechanically detectable
+ * and a heuristic ("takes a SyncResult, returns an exit code") over-matches.
+ * So: adding a class to these lists is PART OF writing a new verdict-maker,
+ * not an optional follow-up.
+ *
  * SCOPE, honestly stated. These checks catch "nobody reads this at all". They
  * do NOT check that the reader is CORRECT, so they would not have caught
  * doctor's wrong verdict on their own — only its total absence. Reviewing the
@@ -52,6 +60,14 @@ const RENDERING_PATHS = [
  * deliberate. An entry here is a claim that operators do not need to be told,
  * NOT a parking space for an unrendered failure.
  */
+const ERROR_LISTERS = [
+    // Files that tell an operator a run failed. Each must cover BOTH channels
+    // of `hasErrors()` — the errors list AND ERRORED emitters — or delegate to
+    // the one renderer that does.
+    'src/Sync/SyncReporter.php',
+    'src/Commands/DoctorCommand.php',
+];
+
 const UNREAD_EMITTER_ACTIONS = [
     // Nothing happened to the file. A per-emitter "unchanged" line would bury
     // the cases that did change something.
@@ -124,5 +140,34 @@ it('makes every emitter outcome reachable by an operator', function (): void {
         "No rendering path reads these emitter outcomes, so an operator can never see them:\n- %s\n"
         . 'Render them, or add them to UNREAD_EMITTER_ACTIONS with the reason they are silent.',
         implode("\n- ", $unread),
+    ));
+});
+
+it('makes every error list cover both channels of hasErrors()', function (): void {
+    // Codex caught the instance this check exists for, in code written to fix
+    // the very same shape: `reportDriftUnassessable()` warned "fix the errors
+    // below", then listed `$result->errors` only — so an ERRORED emitter with an
+    // empty errors list produced a heading above nothing at all.
+    //
+    // Check 1 could not see it (doctor references hasErrors()), and check 2
+    // could not either (some path referenced ERRORED). Listing errors WITHOUT
+    // covering emitters is the condition that was actually wrong.
+    $offenders = [];
+    foreach (ERROR_LISTERS as $path) {
+        $source = sourceOf($path);
+
+        $listsErrors = str_contains($source, '$result->errors');
+        $coversEmitters = str_contains($source, 'EmitterAction::ERRORED')
+            || str_contains($source, 'renderErrors(');
+
+        if ($listsErrors && ! $coversEmitters) {
+            $offenders[] = $path;
+        }
+    }
+
+    expect($offenders)->toBe([], sprintf(
+        "These render an error list without the ERRORED-emitter half of hasErrors():\n- %s\n"
+        . 'Call SyncReporter::renderErrors() rather than keeping a second copy that can drift.',
+        implode("\n- ", $offenders),
     ));
 });

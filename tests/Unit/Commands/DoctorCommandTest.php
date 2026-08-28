@@ -6,9 +6,16 @@ use SanderMuller\BoostCore\Commands\SyncCommand;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
 use SanderMuller\BoostCore\Skills\Remote\HttpResponse;
+use SanderMuller\BoostCore\Sync\EmitterAction;
+use SanderMuller\BoostCore\Sync\EmitterResult;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
+use SanderMuller\BoostCore\Sync\SyncReporter;
+use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Tests\Doubles\Remote\FakeHttpTransport;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Console\Tester\CommandTester;
 
 function doctorTempProject(string $boostBody): string
@@ -1492,6 +1499,32 @@ it('doctor: lists declared wrapper entry points and warns about a reserved claim
         expect($display)->toContain('php artisan acme:sync')
             ->and($display)->toContain('reserved command')
             ->and($display)->toContain('acme/wrapper');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: names the failed emitter when that is the only reason drift is unassessable', function (): void {
+    // `hasErrors()` is true for an ERRORED emitter, but the errors LIST does not
+    // contain it. Doctor suppressed its verdict correctly and then said "fix the
+    // errors below" above an empty list — the same unread-channel defect it was
+    // fixed for, reintroduced one level down.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+
+    try {
+        $io = new SymfonyStyle(new ArrayInput([]), $output = new BufferedOutput());
+        $result = new SyncResult(
+            writes: [],
+            emitters: [new EmitterResult('Acme\Emitter', 'acme/pkg', EmitterAction::ERRORED, '.mcp.json', 'disk full')],
+            errors: [],
+            check: true,
+        );
+
+        (new SyncReporter())->renderErrors($io, $result, checkOnly: true);
+        $display = $output->fetch();
+
+        expect($display)->toContain('Acme\Emitter')
+            ->and($display)->toContain('disk full');
     } finally {
         doctorCleanup($dir);
     }

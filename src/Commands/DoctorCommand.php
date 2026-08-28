@@ -16,6 +16,7 @@ use SanderMuller\BoostCore\Sync\AgentDirSymlinkScanner;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncManifest;
+use SanderMuller\BoostCore\Sync\SyncReporter;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -674,12 +675,15 @@ final class DoctorCommand extends BoostBaseCommand
         $io->warning(
             'Drift cannot be assessed — this run failed to load or render at least one source, so the '
             . 'comparison would run against an incomplete source set. Fix the errors below, then re-run. '
-            . '`vendor/bin/boost sync --check` reports the same errors, plus any failed emitters, and exits non-zero.',
+            . '`vendor/bin/boost sync --check` reports the same errors and exits non-zero.',
         );
 
-        foreach ($result->errors as $error) {
-            $io->writeln('  <comment>·</comment> ' . $error);
-        }
+        // Delegate rather than re-listing `$result->errors` here. Doctor's own
+        // hand-rolled list omitted the ERRORED-emitter half of `hasErrors()`,
+        // so a failed emitter produced "fix the errors below" above nothing at
+        // all — the unread-channel defect doctor was just fixed for, one level
+        // down. One renderer, both channels, no second copy to drift.
+        (new SyncReporter())->renderErrors($io, $result, checkOnly: true);
     }
 
     private function reportDrift(SymfonyStyle $io, string $projectRoot, ?string $configOverride): ?SyncResult

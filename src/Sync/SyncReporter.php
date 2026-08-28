@@ -340,8 +340,16 @@ final readonly class SyncReporter
      * Blade-shipping vendors produces one render failure PER SOURCE, and a
      * stack of full-width red blocks pushes the summary off a short terminal
      * while reading as several separate catastrophes instead of one list.
+     *
+     * PUBLIC so every place that tells an operator a run failed uses this one
+     * implementation. `boost doctor` reintroduced the exact bug above by
+     * hand-rolling its own list — it printed "fix the errors below" over an
+     * empty list when only an emitter had failed. Sharing the renderer is what
+     * stops that recurring; a second copy is what caused it.
+     *
+     * @api Stable as of 1.4.
      */
-    private function renderErrors(SymfonyStyle $io, SyncResult $result, bool $checkOnly): void
+    public function renderErrors(SymfonyStyle $io, SyncResult $result, bool $checkOnly): void
     {
         $messages = $result->errors;
 

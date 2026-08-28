@@ -1,5 +1,6 @@
 <?php declare(strict_types=1);
 
+use SanderMuller\BoostCore\Commands\BoostBaseCommand;
 use SanderMuller\BoostCore\Commands\RemoteCommand;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Skills\Remote\BundleExtractor;
@@ -12,6 +13,19 @@ use SanderMuller\BoostCore\Skills\Remote\RemoteSkillSource;
 use SanderMuller\BoostCore\Tests\Doubles\Remote\FakeRemoteFetcher;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+
+/*
+ * These tests simulate a terminal (faked prompts / a faked Terminal), so they
+ * must declare one to the shared picker guard too — it now requires an attached
+ * TTY as well as Symfony's interactive flag. See InteractivityGuardTest.
+ */
+beforeEach(function (): void {
+    BoostBaseCommand::probeTtyUsing(fn (): bool => true);
+});
+
+afterEach(function (): void {
+    BoostBaseCommand::probeTtyUsing(null);
+});
 
 /**
  * A project with a config the command can load, plus a cleanup callback.

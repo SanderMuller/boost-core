@@ -119,7 +119,7 @@ final class RemoteCommand extends BoostBaseCommand
 
         // Everything below prompts. Fail fast (after any scaffold above) rather
         // than hanging on a picker under CI / --no-interaction.
-        if (! $this->isInteractiveOrExplain($input, $io, "`boost remote`'s skill picker needs an interactive terminal. Declare the source by hand in boost.php (->withRemoteSkills([RemoteSkillSource::githubPath(...)])) and run `boost sync`, or run remote without --no-interaction.")) {
+        if (! $this->isInteractiveOrExplain($input, $io, "`boost remote`'s skill picker needs an interactive terminal (an attached TTY, and no --no-interaction). CI jobs, git hooks, Composer scripts and agent shells have no terminal to prompt in. Declare the source by hand in boost.php (->withRemoteSkills([RemoteSkillSource::githubPath(...)])) and run `boost sync` instead.")) {
             return self::FAILURE;
         }
 

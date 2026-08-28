@@ -94,22 +94,82 @@ abstract class BoostBaseCommand extends Command
     }
 
     /**
+     * Test seam for the TTY probe. `null` (the default) probes the real
+     * `STDIN`. Not part of the frozen family-CLI surface.
+     *
+     * @var (callable(): bool)|null
+     */
+    private static $ttyProbe = null;
+
+    /**
+     * Override the TTY probe used by {@see isInteractiveOrExplain()}. Pass
+     * `null` to restore the real `STDIN` probe.
+     *
+     * Testing seam ONLY — deliberately outside the frozen `@api` surface
+     * named in the class docblock, and free to change without a major bump.
+     *
+     * @param  (callable(): bool)|null  $probe
+     */
+    public static function probeTtyUsing(?callable $probe): void
+    {
+        self::$ttyProbe = $probe;
+    }
+
+    /**
      * Guard for commands whose flow needs an interactive terminal (the
      * `multiselect` pickers). Returns true when interactive; otherwise prints
      * `$guidance` and returns false so the caller can fail fast with a clear
-     * message instead of hanging on a prompt in CI / under `--no-interaction`.
+     * message instead of prompting.
+     *
+     * TWO conditions, because Symfony and laravel/prompts mean different
+     * things by "interactive" and the gap between them was a silent write.
+     * Symfony only clears `$input->isInteractive()` for the `--no-interaction`
+     * / `-n` FLAG (`Application::configureIO()`) — it never probes the
+     * terminal. laravel/prompts probes the terminal
+     * (`Prompt::prompt()`: `static::$interactive ??= stream_isatty(STDIN)`)
+     * and, when there is no TTY, silently RETURNS THE PRECOMPUTED DEFAULT
+     * instead of prompting — no output, no exception, no non-zero exit.
+     *
+     * So a flag-only guard let `boost scan` fall through to its picker in any
+     * non-TTY context that did not pass `-n` (CI, git hooks, Composer
+     * scripts, agent shells), where `multiselect()` handed back the defaults
+     * and the run wrote `boost.php` with nobody having chosen anything.
+     * Requiring an attached TTY as well closes that gap for all three picker
+     * call sites at once.
      *
      * @internal Not part of the frozen family-CLI surface.
      */
     protected function isInteractiveOrExplain(InputInterface $input, SymfonyStyle $io, string $guidance): bool
     {
-        if ($input->isInteractive()) {
+        if ($input->isInteractive() && $this->hasAttachedTty()) {
             return true;
         }
 
         $io->error($guidance);
 
         return false;
+    }
+
+    /**
+     * Ask the same question laravel/prompts will ask before it decides to
+     * prompt or to fall back to defaults. Mirrors its probe exactly so the
+     * guard and the prompt cannot disagree.
+     *
+     * `STDIN` is undefined under some SAPIs — treat that as "no terminal",
+     * the conservative answer.
+     */
+    private function hasAttachedTty(): bool
+    {
+        $probe = self::$ttyProbe;
+        if ($probe !== null) {
+            return $probe();
+        }
+
+        if (! defined('STDIN')) {
+            return false;
+        }
+
+        return stream_isatty(STDIN);
     }
 
     /**

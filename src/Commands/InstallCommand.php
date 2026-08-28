@@ -91,7 +91,7 @@ final class InstallCommand extends BoostBaseCommand
 
         // The pickers below need a TTY. Fail fast (after any scaffold above) with
         // guidance rather than hanging on a prompt under CI / --no-interaction.
-        if (! $this->isInteractiveOrExplain($input, $io, "`boost install`'s agent/vendor/tag pickers need an interactive terminal. Pin them in boost.php (->withAgents([...])->withAllowedVendors([...])) and run `boost sync`, or run install without --no-interaction.")) {
+        if (! $this->isInteractiveOrExplain($input, $io, "`boost install`'s agent/vendor/tag pickers need an interactive terminal (an attached TTY, and no --no-interaction). CI jobs, git hooks, Composer scripts and agent shells have no terminal to prompt in. Pin them in boost.php (->withAgents([...])->withAllowedVendors([...])) and run `boost sync` instead.")) {
             return self::FAILURE;
         }
 

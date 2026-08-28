@@ -78,7 +78,7 @@ final class ScanCommand extends BoostBaseCommand
 
         // The vendor picker needs a TTY — fail fast with guidance rather than
         // hanging on a prompt under CI / --no-interaction.
-        if (! $this->isInteractiveOrExplain($input, $io, "`boost scan`'s vendor picker needs an interactive terminal. Edit ->withAllowedVendors([...]) in boost.php directly, or run scan without --no-interaction.")) {
+        if (! $this->isInteractiveOrExplain($input, $io, "`boost scan`'s vendor picker needs an interactive terminal (an attached TTY, and no --no-interaction). CI jobs, git hooks, Composer scripts and agent shells have no terminal to prompt in. Edit ->withAllowedVendors([...]) in boost.php directly instead.")) {
             return self::FAILURE;
         }
 

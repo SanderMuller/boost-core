@@ -395,7 +395,10 @@ final class DoctorCommand extends BoostBaseCommand
             $io->note(
                 'project-boost-laravel is installed: the `.blade.php` source(s) below have no BARE-CLI renderer, '
                 . 'but the wrapper Blade-renders them under `php artisan project-boost:sync`. '
-                . 'Only a concern if you sync via bare `vendor/bin/boost sync`.',
+                . 'Use the wrapper entry point. A bare `vendor/bin/boost sync` drops these sources — silently '
+                . 'when no renderer is registered, or with a render error when one is registered but cannot run '
+                . 'outside the framework. Either way the emitted set is short, and only the wrapper command '
+                . 'produces the complete one.',
             );
             foreach ($wrapperHandled as $skip) {
                 $io->writeln('  <comment>·</comment> ' . $skip->message);

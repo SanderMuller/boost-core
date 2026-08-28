@@ -30,6 +30,8 @@ final readonly class SyncSummary
         public int $wrote,
         public int $unchanged,
         public int $deleted,
+        public int $wouldWrite,
+        public int $wouldDelete,
         public int $skippedSymlink,
         public int $emittersWrote,
         public int $emittersSkipped,
@@ -42,6 +44,8 @@ final readonly class SyncSummary
             wrote: $result->countByAction(WriteAction::WROTE),
             unchanged: $result->countByAction(WriteAction::UNCHANGED),
             deleted: $result->countByAction(WriteAction::DELETED),
+            wouldWrite: $result->countByAction(WriteAction::WOULD_WRITE),
+            wouldDelete: $result->countByAction(WriteAction::WOULD_DELETE),
             skippedSymlink: $result->countByAction(WriteAction::SKIPPED_SYMLINK),
             emittersWrote: $result->countEmittersByAction(EmitterAction::WROTE),
             emittersSkipped: $result->countEmittersByAction(EmitterAction::SKIPPED),
@@ -55,11 +59,32 @@ final readonly class SyncSummary
      */
     public function line(bool $checkOnly): string
     {
-        $head = $checkOnly
-            ? sprintf('No drift. %d file(s) unchanged.', $this->unchanged)
-            : sprintf('Sync done. wrote=%d, unchanged=%d, deleted=%d.', $this->wrote, $this->unchanged, $this->deleted);
+        return $this->head($checkOnly) . $this->symlinkFragment() . $this->emitterFragment();
+    }
 
-        return $head . $this->symlinkFragment() . $this->emitterFragment();
+    /**
+     * Whether this run found anything that would change on disk. Distinct from
+     * a VERDICT about that: whether drift is a failure belongs to the caller's
+     * own exit contract, not to a summary line.
+     */
+    public function hasDrift(): bool
+    {
+        return $this->wouldWrite > 0 || $this->wouldDelete > 0;
+    }
+
+    private function head(bool $checkOnly): string
+    {
+        if (! $checkOnly) {
+            return sprintf('Sync done. wrote=%d, unchanged=%d, deleted=%d.', $this->wrote, $this->unchanged, $this->deleted);
+        }
+
+        // Neutral wording on purpose. A check run WITH drift still needs a
+        // countable summary — a caller that does not treat drift as a failure
+        // was otherwise left with a path list, no totals, and a warning that
+        // read like an error.
+        return $this->hasDrift()
+            ? sprintf('Checked. would-write=%d, would-delete=%d, unchanged=%d.', $this->wouldWrite, $this->wouldDelete, $this->unchanged)
+            : sprintf('No drift. %d file(s) unchanged.', $this->unchanged);
     }
 
     /**

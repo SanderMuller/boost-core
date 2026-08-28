@@ -123,3 +123,68 @@ it('names the caller\'s own command in follow-up advice', function (): void {
         ->and($wrappedOutput)->toContain('php artisan acme:tags')
         ->and($wrappedOutput)->not->toContain('vendor/bin/boost');
 });
+
+it('explains an errored emitter instead of exiting silently', function (): void {
+    // `hasErrors()` is true for a non-empty errors list OR any ERRORED emitter,
+    // but only the errors list was rendered. An emitter failure with an empty
+    // errors list therefore produced a red exit with nothing on screen — a
+    // silent failure, the mirror of doctor's silent success.
+    $result = new SyncResult(
+        writes: [],
+        emitters: [new EmitterResult('Acme\Emitter', 'acme/pkg', EmitterAction::ERRORED, '.mcp.json', 'disk full')],
+        errors: [],
+        check: false,
+    );
+
+    $output = new BufferedOutput();
+    $outcome = (new SyncReporter())->render(new SymfonyStyle(new ArrayInput([]), $output), $result, false, sys_get_temp_dir());
+    $display = $output->fetch();
+
+    expect($outcome->hasErrors)->toBeTrue()
+        ->and($outcome->exitCode)->toBe(1)
+        ->and($display)->toContain('Acme\Emitter')
+        ->and($display)->toContain('disk full');
+});
+
+it('describes drift neutrally for a caller that does not treat it as a failure', function (): void {
+    // The exit-code split let a caller keep its own code but not its own REPORT:
+    // the drift branch returned early with a "Drift detected" warning and no
+    // summary, so a lenient caller printed something that reads like a failure
+    // and then exited 0. Worse for an operator than either consistent story.
+    $drifted = new SyncResult(
+        writes: [
+            new WrittenFile('a.md', '/tmp/a.md', WriteAction::WOULD_WRITE),
+            new WrittenFile('b.md', '/tmp/b.md', WriteAction::WOULD_DELETE),
+        ],
+        emitters: [],
+        errors: [],
+        check: true,
+    );
+
+    $lenient = new BufferedOutput();
+    $outcome = (new SyncReporter(driftIsFailure: false))
+        ->render(new SymfonyStyle(new ArrayInput([]), $lenient), $drifted, true, sys_get_temp_dir());
+    $display = $lenient->fetch();
+
+    expect($outcome->hasDrift)->toBeTrue()
+        ->and($outcome->exitCode)->toBe(0)
+        ->and($display)->toContain('would-write=1')
+        ->and($display)->toContain('would-delete=1')
+        ->and($display)->toContain('a.md')
+        ->and($display)->not->toContain('Drift detected');
+});
+
+it('still frames drift as a failure by default', function (): void {
+    $drifted = new SyncResult(
+        writes: [new WrittenFile('a.md', '/tmp/a.md', WriteAction::WOULD_WRITE)],
+        emitters: [],
+        errors: [],
+        check: true,
+    );
+
+    $output = new BufferedOutput();
+    $outcome = (new SyncReporter())->render(new SymfonyStyle(new ArrayInput([]), $output), $drifted, true, sys_get_temp_dir());
+
+    expect($outcome->exitCode)->toBe(1)
+        ->and($output->fetch())->toContain('Drift detected');
+});

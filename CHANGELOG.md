@@ -54,6 +54,11 @@ them could describe the same `SyncResult` differently from the bare binary.
 `SyncReporter::report()` is now `@api` and returns the exit code the bare run
 would use. Its exit-code decisions are contractual; the wording is not.
 
+`boost sync` also stops exiting silently on an errored emitter. `hasErrors()`
+is true for a non-empty errors list OR any `ERRORED` emitter, but only the list
+was rendered — so an emitter failure on an otherwise clean run exited 1 having
+printed nothing at all. Both channels are now reported.
+
 `SyncReporter::render()` is the same rendering with the exit DECISION left to
 the caller: it returns a `SyncReportOutcome` carrying `hasErrors`,
 `hasConventionsError`, `hasTokenLeak`, `hasDrift` and the `exitCode` boost-core

@@ -43,9 +43,27 @@ final readonly class SyncReporter
      *   name => how to invoke the equivalent in THIS project. A wrapper passes
      *   its own commands here; anything unmapped falls back to
      *   `vendor/bin/boost <name>`.
+     *
+     *   The equivalent need NOT be a command of the same name, or a
+     *   reimplementation of ours — only the right thing to run instead. A
+     *   package with no `tags` command of its own but a richer `where` maps
+     *   `['tags' => 'php artisan project-boost:where']`. Leaving it unmapped is
+     *   the wrong answer: the fallback names a bare command that, in a wrapper
+     *   project, reports a materially incomplete set.
      */
     public function __construct(
         private array $commandInvocations = [],
+        /**
+         * Whether `--check` drift is a failure. True is boost-core's own rule
+         * and the right default: a check run that stays green while files
+         * would change teaches a CI step nothing.
+         *
+         * A caller whose CLI has already DOCUMENTED a lenient exit code sets
+         * this false, and gets neutral drift wording to match — otherwise the
+         * report reads like a failure while the process exits 0, which is
+         * worse for an operator than either consistent story.
+         */
+        private bool $driftIsFailure = true,
     ) {}
 
     /**
@@ -134,9 +152,7 @@ final readonly class SyncReporter
         $this->renderConventionsDiagnostics($io, $result);
 
         if ($result->hasErrors()) {
-            foreach ($result->errors as $error) {
-                $io->error($error);
-            }
+            $this->renderErrors($io, $result);
 
             return new SyncReportOutcome(true, false, false, false, Command::FAILURE);
         }
@@ -164,22 +180,15 @@ final readonly class SyncReporter
         }
 
         if ($checkOnly && $result->hasDrift()) {
-            $io->warning(sprintf(
-                'Drift detected: %d file(s) would change.',
-                $result->countWouldChange(),
-            ));
+            $this->renderDrift($io, $result);
 
-            foreach ($result->writes as $write) {
-                if ($write->action === WriteAction::WOULD_WRITE) {
-                    $io->writeln('  ~ ' . $write->relativePath);
-                }
-
-                if ($write->action === WriteAction::WOULD_DELETE) {
-                    $io->writeln('  - ' . $write->relativePath);
-                }
-            }
-
-            return new SyncReportOutcome(false, false, false, true, Command::FAILURE);
+            return new SyncReportOutcome(
+                false,
+                false,
+                false,
+                true,
+                $this->driftIsFailure ? Command::FAILURE : Command::SUCCESS,
+            );
         }
 
         $summary = SyncSummary::from($result);
@@ -316,6 +325,59 @@ final readonly class SyncReporter
         if ($attribution !== null) {
             $io->warning($attribution);
         }
+    }
+
+    /**
+     * Both error channels. `hasErrors()` is true for a non-empty errors list OR
+     * any ERRORED emitter, and the two live in different places on the result —
+     * rendering only the list meant an emitter failure on an otherwise clean run
+     * exited 1 having printed nothing at all.
+     */
+    private function renderErrors(SymfonyStyle $io, SyncResult $result): void
+    {
+        foreach ($result->errors as $error) {
+            $io->error($error);
+        }
+
+        foreach ($result->emitters as $emitter) {
+            if ($emitter->action === EmitterAction::ERRORED) {
+                $io->error(sprintf(
+                    'emitter %s (%s): %s',
+                    $emitter->fqcn,
+                    $emitter->vendor,
+                    $emitter->reason ?? 'no reason recorded',
+                ));
+            }
+        }
+    }
+
+    /**
+     * The changed-path list plus a countable summary. The FRAMING follows
+     * `$driftIsFailure`, because whoever owns the exit code owns whether this
+     * is bad news — a warning above an exit 0 is worse than either consistent
+     * story.
+     */
+    private function renderDrift(SymfonyStyle $io, SyncResult $result): void
+    {
+        $count = $result->countWouldChange();
+
+        if ($this->driftIsFailure) {
+            $io->warning(sprintf('Drift detected: %d file(s) would change.', $count));
+        } else {
+            $io->note(sprintf('%d file(s) would change.', $count));
+        }
+
+        foreach ($result->writes as $write) {
+            if ($write->action === WriteAction::WOULD_WRITE) {
+                $io->writeln('  ~ ' . $write->relativePath);
+            }
+
+            if ($write->action === WriteAction::WOULD_DELETE) {
+                $io->writeln('  - ' . $write->relativePath);
+            }
+        }
+
+        $io->writeln(SyncSummary::from($result)->line(checkOnly: true));
     }
 
     /**

@@ -63,6 +63,21 @@ line, so the Composer hook parses either entry point.
 Additive: no behaviour change to `bin/boost`, which now delegates to the same
 class.
 
+### `SkillShipmentIndex` is public — stop pattern-matching emit paths
+
+A wrapper rendering its own `where` has to answer "did this skill ship?" from
+a `SyncResult`, and the only route was a regex over boost-core's emit paths.
+Every agent directory ends in `/skills` today, so that works — but the frozen
+contract is `AgentTarget::skillsDirectoryRelative()`, not the word its value
+ends with. A layout change would have left such a caller reporting every skill
+as not-shipped, silently.
+
+`SkillShipmentIndex` owns the inverse of `skillRelativePathForName()` and the
+host-vs-vendor shadow maps. `SkillShipmentStatus` shares the vocabulary
+(`SHIPPED`, `SHADOWED`, `TAG_FILTERED`, `EXCLUDED`) without freezing anyone's
+colours or columns. `boost where` now derives its shadow maps through it, so
+the public path is the one boost-core itself runs.
+
 ### `boost scan` no longer rewrites `boost.php` with nobody watching (behavior change)
 
 The picker guard checked Symfony's `--no-interaction` FLAG, which is the only

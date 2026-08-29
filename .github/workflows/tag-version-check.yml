@@ -10,6 +10,11 @@ name: tag-version-check
 # (see RELEASING.md). So it has to be bumped per release, and this turns a
 # forgotten bump into a red run on the tag instead of a release nobody can
 # install.
+#
+# `extra.branch-alias.dev-main` is the same shape and is checked here too: it
+# was found at `1.4.x-dev` four minors after 1.4, which makes dev-main resolve
+# as an old minor for anyone pinning `^<current minor>@dev`. Two hardcoded
+# version constants, both bumped by hand, both silently stale — one guard.
 
 on:
   push:
@@ -26,6 +31,28 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+
+      - name: branch-alias must match the tag's minor line
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          ALIAS=$(php -r 'echo json_decode(file_get_contents("composer.json"), true)["extra"]["branch-alias"]["dev-main"] ?? "";')
+
+          if [ -z "$ALIAS" ]; then
+            echo "No extra.branch-alias.dev-main — nothing to keep in step. OK."
+            exit 0
+          fi
+
+          EXPECTED="$(echo "$TAG" | cut -d. -f1,2).x-dev"
+
+          if [ "$ALIAS" != "$EXPECTED" ]; then
+            echo "::error::extra.branch-alias.dev-main is '$ALIAS' but tag '$TAG' wants '$EXPECTED'."
+            echo "A stale alias makes dev-main resolve as an old minor, so a consumer pinning"
+            echo "^<this minor>@dev cannot satisfy its own constraint. See RELEASING.md."
+            exit 1
+          fi
+
+          echo "branch-alias '$ALIAS' matches tag '$TAG'."
 
       - name: composer.json version must match the tag
         env:

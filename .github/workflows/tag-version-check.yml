@@ -1,0 +1,48 @@
+name: tag-version-check
+
+# Packagist SKIPS a tag whose `composer.json` `version` field disagrees with the
+# tag name, and it does so SILENTLY — the tag and the GitHub release look fine,
+# and only the Packagist update log records `Skipped tag X, tag (X) does not
+# match version (Y) in composer.json`. That is how 1.8.0 shipped to GitHub and
+# never reached Packagist.
+#
+# The field cannot simply be dropped: Dependabot needs a resolvable root version
+# (see RELEASING.md). So it has to be bumped per release, and this turns a
+# forgotten bump into a red run on the tag instead of a release nobody can
+# install.
+
+on:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: composer.json version must match the tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          DECLARED=$(php -r 'echo json_decode(file_get_contents("composer.json"), true)["version"] ?? "";')
+
+          if [ -z "$DECLARED" ]; then
+            echo "No version field in composer.json — Packagist will derive it from the tag. OK."
+            exit 0
+          fi
+
+          if [ "$DECLARED" != "$TAG" ]; then
+            echo "::error::composer.json declares version '$DECLARED' but the tag is '$TAG'."
+            echo "Packagist will SKIP this tag rather than fail loudly, so the release would"
+            echo "exist on GitHub and be uninstallable. Bump the field, re-tag, and see RELEASING.md."
+            exit 1
+          fi
+
+          echo "composer.json version '$DECLARED' matches tag '$TAG'."

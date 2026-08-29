@@ -1562,7 +1562,7 @@ it('doctor: reports a contested command and a package whose only claim was rejec
     }
 });
 
-it('doctor: explains why the root package\'s own entry-point claim is ignored', function (): void {
+it("doctor: explains why the root package's own entry-point claim is ignored", function (): void {
     // Never silently dropped — a declaration that does nothing and says nothing
     // is the unread-channel shape this engine spent the release fixing.
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');

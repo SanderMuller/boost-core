@@ -91,7 +91,7 @@ final readonly class WrapperEntryPoints
         /** @var array<string, list<string>> $selfClaims */
         $selfClaims = [];
 
-        $root = $this->rootPackage ?? self::rootPackageName();
+        $root = $this->rootPackage ?? $this->rootPackageName();
 
         foreach ($this->packages->all() as $package) {
             foreach ($this->readDeclaration($package->installPath) as $command => $invocation) {
@@ -129,7 +129,7 @@ final readonly class WrapperEntryPoints
      * The root package's Composer name, or null when the runtime cannot name
      * it (an exotic checkout with no registered root).
      */
-    private static function rootPackageName(): ?string
+    private function rootPackageName(): ?string
     {
         $name = InstalledVersions::getRootPackage()['name'];
 

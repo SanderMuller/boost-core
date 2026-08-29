@@ -48,8 +48,8 @@ final readonly class WrapperEntryPointReporter
         foreach ($map->selfClaims() as $package => $commands) {
             $io->note(sprintf(
                 'This repository IS `%s`, which declares `%s` in its own `extra.boost.entry-point`. boost-core '
-                . 'ignores a package\'s claim on itself: the map describes projects that INSTALL the package, and '
-                . 'the invocation it names is a consumer\'s, not one that runs here. Bare `vendor/bin/boost` is the '
+                . "ignores a package's claim on itself: the map describes projects that INSTALL the package, and "
+                . "the invocation it names is a consumer's, not one that runs here. Bare `vendor/bin/boost` is the "
                 . 'right tool at this root. Consumers still get the redirect.',
                 $package,
                 implode('`, `', $commands),

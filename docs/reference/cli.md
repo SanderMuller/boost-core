@@ -48,58 +48,37 @@ php artisan project-boost:sync
 php artisan project-boost:reconcile
 ```
 
-In a project that installs a wrapper, gate CI on the wrapper's command rather
-than the bare binary — the bare one reads boost-core's own sources only:
+Gate CI on the wrapper's command too. The bare one reads boost-core's own
+sources only, and the flags differ: `--check` here, `--dry-run` there.
 
 ```yaml
 - name: Check agent config is in sync
   run: php artisan project-boost:sync --dry-run
 ```
 
-The two CLIs do not share flag names: boost-core's read-only flag is `--check`,
-`project-boost:sync`'s is `--dry-run`.
-
 ### The entry-point banner
 
-A package declares the commands it covers in its `composer.json`:
+A wrapper declares what it covers in its `composer.json`:
 
 ```json
 {
     "extra": {
         "boost": {
             "entry-point": {
-                "sync": "php artisan project-boost:sync",
-                "where": "php artisan project-boost:where",
-                "install": "php artisan project-boost:install"
+                "sync": "php artisan project-boost:sync"
             }
         }
     }
 }
 ```
 
-`vendor/bin/boost` then prints, on stderr, which package covers the command and
-what its equivalent is. The declaration is a static string, so it names the
-equivalent rather than ordering you to paste it — adapt the prefix when PHP does
-not run on the host (`sail artisan …`, `docker compose exec app php artisan …`).
+`vendor/bin/boost sync` then names that command on stderr and runs anyway.
+Set `BOOST_STRICT_ENTRY_POINT=1` to refuse instead; that becomes the default in
+the next major. Commands with no wrapper equivalent, such as `scan` and `tags`,
+run and warn that the result is incomplete.
 
-A package's declaration describes projects that INSTALL it, so boost-core
-ignores a claim by the root package — at the root of a package that ships a
-wrapper there is no application to run the named invocation in, and the bare
-binary is the right tool there. `boost doctor` reports the ignored claim rather
-than dropping it silently. It still runs
-the command and still exits as before, so nothing in CI changes. Set
-`BOOST_STRICT_ENTRY_POINT=1` to refuse a covered command instead — that becomes
-the default in the next major.
-
-A command the wrapper does not cover, such as `scan` or `tags`, still runs and
-says its result is incomplete. There is no equivalent to send you to.
-
-If two installed packages claim the same command, the first one Composer
-discovers wins and `boost doctor` reports the clash — the winner is arbitrary,
-so the loser is named rather than silently dropped.
-
-`doctor` is reserved: a wrapper cannot claim it, because it is what diagnoses a
-wrapper whose own CLI will not boot. `boost doctor` lists every declared entry
-point and warns about a claim it rejected.
+`boost doctor` lists the declared entry points and reports any it rejected.
+`doctor` itself cannot be claimed, and when two packages claim one command the
+first one Composer discovers wins.
 
 See [Coexistence with `laravel/boost`](/guide/laravel-coexistence).

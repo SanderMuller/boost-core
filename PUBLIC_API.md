@@ -44,15 +44,15 @@ For wrapper packages that drive a sync with INJECTED vendor skills/guidelines an
 
 ### Reporting a sync (1.8)
 
-- `SanderMuller\BoostCore\Sync\SyncReporter::__construct(array $commandInvocations = [], bool $driftIsFailure = true)` — map bare boost-core command names to how they are invoked in THIS project (`['tags' => 'php artisan project-boost:tags']`). The report contains follow-up advice; unmapped names fall back to `vendor/bin/boost <name>`, which is wrong in a wrapper's own output. The equivalent need not be a command of the same name — only the right thing to run. `driftIsFailure: false` is for a CLI that has already documented a lenient exit code on `--check`: it makes the drift wording neutral to match, so the report never reads like a failure while the process exits 0.
-- `SanderMuller\BoostCore\Sync\SyncReporter::renderErrors(SymfonyStyle, SyncResult, bool $checkOnly): void` — render BOTH channels of `hasErrors()` (the errors list AND any `ERRORED` emitter) as one block. Use it rather than listing `$result->errors` yourself: a second copy omits the emitter half, which is how `boost doctor` came to print "fix the errors below" over an empty list.
-- `SanderMuller\BoostCore\Sync\SyncReporter::render(...): SyncReportOutcome` — render the sync and report WHAT WAS FOUND (`hasErrors`, `hasConventionsError`, `hasTokenLeak`, `hasDrift`) alongside `exitCode`, the code boost-core's CLI would use. A package with its own documented exit contract renders identically and decides for itself. `SyncReportOutcome` is `@api`.
-- `SanderMuller\BoostCore\Sync\SyncReporter::report(SymfonyStyle, SyncResult, bool $checkOnly, string $projectRoot, ?string $configFile): int` — render a completed sync exactly as `bin/boost sync` does and return its exit code. A wrapper package drives the sync through `BoostSync` and reports it with this, so both entry points describe one result identically. The EXIT-CODE decisions are contractual (top-level errors → failure in any mode; under `--check`, an error-level conventions diagnostic, a leaked conventions token, or drift → failure; otherwise success). The human wording is not.
-- `SanderMuller\BoostCore\Sync\SkillShipmentIndex::from(SyncResult)` — which skills a sync put on disk, plus the host-vs-vendor shadow maps. The `*VendorsFor()` accessors return a LIST: one host copy can shadow the same name across several vendors, and the map getters comma-join them so a cell names all of them rather than the last. `isShipped()`, `shippedNames()`, `shadowedVendorsFor()`, `guidelineShadowedVendorsFor()`, `shadowedVendorMap()`, `guidelineShadowedVendorMap()`, `statusFor(string $skillName, list<string> $tags)`. It owns the INVERSE of `AgentTarget::skillRelativePathForName()`, so a wrapper never pattern-matches emit paths itself — only `skillsDirectoryRelative()` is frozen, not the fact that its value ends in `/skills`.
-- `SanderMuller\BoostCore\Sync\SkillShipmentStatus` — the shared classification (`SHIPPED`, `SHADOWED`, `TAG_FILTERED`, `EXCLUDED`) so two entry points cannot describe one skill differently. Presentation stays with each CLI. New cases may be added in a MINOR; do not match exhaustively.
-- `SanderMuller\BoostCore\Sync\SyncSummary::from(SyncResult)` + `line(bool $checkOnly)` — the one-line outcome and its counts (`wrote`, `unchanged`, `deleted`, `wouldWrite`, `wouldDelete`, `skippedSymlink`, `emittersWrote`, `emittersSkipped`, `emittersWouldWrite`). The `wrote=<n>, unchanged=<n>, deleted=<n>` fragment is FROZEN: `BoostAutoSync::summaryReportsChange()` parses it to decide whether a `post-install-cmd` stays silent.
+For a wrapper package that drives a sync through `BoostSync` and then reports it, so both entry points describe one result the same way.
 
-New parameters on any stable method are always optional-with-default; their absence-vs-presence is not a breaking change.
+- `SanderMuller\BoostCore\Sync\SyncReporter::report(SymfonyStyle, SyncResult, bool $checkOnly, string $projectRoot, ?string $configFile): int` — render a sync as `bin/boost sync` does and return its exit code. The exit-code decisions are contractual: top-level errors fail in any mode; under `--check`, an error-level conventions diagnostic, a leaked conventions token, or drift fail. The wording is not.
+- `SanderMuller\BoostCore\Sync\SyncReporter::render(...): SyncReportOutcome` — the same rendering, with the exit decision left to the caller. `SyncReportOutcome` carries `hasErrors`, `hasConventionsError`, `hasTokenLeak`, `hasDrift` and the `exitCode` boost-core would use.
+- `SanderMuller\BoostCore\Sync\SyncReporter::__construct(array $commandInvocations = [], bool $driftIsFailure = true)` — map bare command names to how they are invoked here (`['tags' => 'php artisan project-boost:where']`); unmapped names fall back to `vendor/bin/boost <name>`. `driftIsFailure: false` for a CLI that documents a lenient `--check` exit code.
+- `SanderMuller\BoostCore\Sync\SyncReporter::renderErrors(SymfonyStyle, SyncResult, bool $checkOnly): void` — render both channels of `hasErrors()`, the errors list and any `ERRORED` emitter. Use it rather than listing `$result->errors` yourself.
+- `SanderMuller\BoostCore\Sync\SyncSummary::from(SyncResult)` + `line(bool $checkOnly)` — the one-line outcome and its counts. The `wrote=<n>, unchanged=<n>, deleted=<n>` fragment is frozen: `BoostAutoSync` parses it.
+- `SanderMuller\BoostCore\Sync\SkillShipmentIndex::from(SyncResult)` — which skills a sync put on disk, plus the shadow maps: `isShipped()`, `shippedNames()`, `shadowedVendorsFor()`, `guidelineShadowedVendorsFor()`, `shadowedVendorMap()`, `guidelineShadowedVendorMap()`, `statusFor(string $name, list<string> $tags)`. Read a skill name out of an emit path with this rather than matching the path yourself — only `skillsDirectoryRelative()` is frozen, not its value's shape.
+- `SanderMuller\BoostCore\Sync\SkillShipmentStatus` — `SHIPPED`, `SHADOWED`, `TAG_FILTERED`, `EXCLUDED`. New cases may be added in a MINOR; do not match exhaustively.
 
 ### CLI (`bin/boost`)
 
@@ -94,25 +94,11 @@ These aren't PHP types, but they're authored or observed by consumers/publishers
 
 ### What an `@api` guarantee does NOT pin
 
-A class being `@api` freezes its declared surface, not everything reachable
-through it. The gaps that have actually bitten integrators:
+A class being `@api` freezes its declared surface, not everything reachable through it:
 
-- **The SHAPE of a value, as distinct from its type.** Emit paths are the live
-  example. `AgentTarget::skillsDirectoryRelative()` is frozen; the fact that
-  every implementation's value currently ends in `/skills` is not, and neither
-  is the `SKILL.md` filename behind `skillRelativePathForName()`. Code that
-  pattern-matches an emitted path — `#/skills/([^/]+)/SKILL\.md$#` and the like
-  — is coupled to something no promise covers, and it fails by matching
-  NOTHING rather than by erroring, so a wrong result looks like a clean run.
-  Use `SkillShipmentIndex` to read a skill back out of a path, and
-  `skillRelativePathForName()` to build one.
-- **Raw array key names** reached through a public property, unless this
-  document pins them (as it does for `SyncResult`'s shadow rows).
-- **Human-readable output text**, everywhere except the parseable fragment of
-  `SyncSummary::line()`.
-
-A static-analysis or import-closure check cannot catch the first of these,
-because there is no symbol to see — only a string that happens to match today.
+- The shape of a value, as distinct from its type. `AgentTarget::skillsDirectoryRelative()` is frozen; the fact that its value ends in `/skills` is not, nor is the `SKILL.md` filename. Matching an emit path yourself fails by matching nothing rather than erroring, so use `SkillShipmentIndex` to read one and `skillRelativePathForName()` to build one.
+- Raw array key names reached through a public property, unless pinned above.
+- Human-readable output, except the parseable fragment of `SyncSummary::line()`.
 
 ## Deprecation policy
 

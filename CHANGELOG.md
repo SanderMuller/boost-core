@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.8.0...HEAD)
 
+### Fixed
+
+- **1.8.0 never reached Packagist.** `composer.json` carries a static `version` field for Dependabot, introduced after 1.7.0 and left at `1.4.0` on the belief that Packagist ignores the field for tagged releases. It does not — it compares the field to the tag and skips the tag on a mismatch, silently: `Skipped tag 1.8.0, tag (1.8.0.0) does not match version (1.4.0.0) in composer.json`. The tag and GitHub release exist; `composer require` could never resolve them. The field now tracks the release, `RELEASING.md` records that it must be bumped per release, and a tag-push workflow fails loudly when the two disagree.
+- `extra.branch-alias.dev-main` was `1.4.x-dev` four minors after 1.4, so `dev-main` resolved as an old minor and a consumer pinning `^1.8@dev` could not satisfy its own constraint. Bumped to `1.8.x-dev`, and the same tag-push workflow checks it — two hand-bumped version constants, both found stale, one guard.
+- The entry-point banner no longer fires at the root of the package that DECLARES it. 1.8.0 honoured a claim from any installed package including the root, which looked like self-protection until it met a package that ships a wrapper: at that root there is no application, so the named `php artisan …` invocation cannot run, while bare `vendor/bin/boost` is the correct command. A package's map describes projects that INSTALL it; `boost doctor` reports the ignored self-claim rather than dropping it silently.
+
 ## [1.8.0](https://github.com/sandermuller/boost-core/compare/1.7.0...1.8.0) - 2026-08-29
 
 <!-- verified-sha: 0a7b4a84720afdcbf2bdb1f82cc42829fbb5cb96 -->

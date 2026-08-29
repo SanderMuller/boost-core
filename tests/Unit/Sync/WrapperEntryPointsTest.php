@@ -182,3 +182,50 @@ it('records a claim two wrappers make on the same command', function (): void {
         cleanupTestDir($dir);
     }
 });
+
+it('ignores a package\'s entry-point claim on itself', function (): void {
+    // The map describes projects that INSTALL the declaring package. A package
+    // that SHIPS a wrapper is not such a project: at its own root there is no
+    // application, so `php artisan project-boost:sync` cannot run, while bare
+    // `boost sync` is the correct command. Honouring the claim there told a
+    // maintainer to stop using the command that works and run one that does
+    // not exist — worse than the silence it replaced.
+    $dir = entryPointTempDir();
+
+    try {
+        $package = entryPointPackage($dir, 'acme/wrapper', ['extra' => ['boost' => ['entry-point' => [
+            'sync' => 'php artisan acme:sync',
+        ]]]]);
+
+        $discovered = (new WrapperEntryPoints(
+            new InstalledPackages(['acme/wrapper' => $package]),
+            rootPackage: 'acme/wrapper',
+        ))->discover();
+
+        expect($discovered->covers('sync'))->toBeFalse()
+            ->and($discovered->hasWrapper())->toBeFalse()
+            ->and($discovered->selfClaims())->toBe(['acme/wrapper' => ['sync']]);
+    } finally {
+        cleanupTestDir($dir);
+    }
+});
+
+it('still honours the same claim in a project that installs the package', function (): void {
+    $dir = entryPointTempDir();
+
+    try {
+        $package = entryPointPackage($dir, 'acme/wrapper', ['extra' => ['boost' => ['entry-point' => [
+            'sync' => 'php artisan acme:sync',
+        ]]]]);
+
+        $discovered = (new WrapperEntryPoints(
+            new InstalledPackages(['acme/wrapper' => $package]),
+            rootPackage: 'acme/consuming-app',
+        ))->discover();
+
+        expect($discovered->covers('sync'))->toBeTrue()
+            ->and($discovered->selfClaims())->toBe([]);
+    } finally {
+        cleanupTestDir($dir);
+    }
+});

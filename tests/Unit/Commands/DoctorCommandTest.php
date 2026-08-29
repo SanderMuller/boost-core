@@ -3,6 +3,7 @@
 use Composer\Console\Application as ComposerApplication;
 use SanderMuller\BoostCore\Commands\DoctorCommand;
 use SanderMuller\BoostCore\Commands\SyncCommand;
+use SanderMuller\BoostCore\Commands\WrapperEntryPointReporter;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Discovery\PackagistVersionLookup;
 use SanderMuller\BoostCore\Skills\Remote\HttpResponse;
@@ -12,6 +13,7 @@ use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
 use SanderMuller\BoostCore\Sync\SyncReporter;
 use SanderMuller\BoostCore\Sync\SyncResult;
+use SanderMuller\BoostCore\Sync\WrapperEntryPoints;
 use SanderMuller\BoostCore\Tests\Doubles\Remote\FakeHttpTransport;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -1555,6 +1557,38 @@ it('doctor: reports a contested command and a package whose only claim was rejec
         expect($display)->toContain('More than one installed package claims')
             ->and($display)->toContain('acme/second')
             ->and($display)->toContain('reserved command');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('doctor: explains why the root package\'s own entry-point claim is ignored', function (): void {
+    // Never silently dropped — a declaration that does nothing and says nothing
+    // is the unread-channel shape this engine spent the release fixing.
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $packageDir = $dir . '/vendor/acme__wrapper';
+    mkdir($packageDir, 0o755, recursive: true);
+    file_put_contents($packageDir . '/composer.json', json_encode([
+        'name' => 'acme/wrapper',
+        'extra' => ['boost' => ['entry-point' => ['sync' => 'php artisan acme:sync']]],
+    ], JSON_THROW_ON_ERROR));
+
+    try {
+        $reporter = new WrapperEntryPointReporter();
+        $io = new SymfonyStyle(new ArrayInput([]), $output = new BufferedOutput());
+        $map = (new WrapperEntryPoints(
+            new InstalledPackages(['acme/wrapper' => new PackageInfo('acme/wrapper', '1.0.0', $packageDir)]),
+            rootPackage: 'acme/wrapper',
+        ))->discover();
+        $reporter->report($io, null, $map);
+
+        // SymfonyStyle hard-wraps the note and gutters each line with `!`, so
+        // assert on fragments short enough to survive a wrap.
+        $display = (string) preg_replace('/\s+/', ' ', $output->fetch());
+
+        expect($display)->toContain('acme/wrapper')
+            ->and($display)->toContain('ignores a package')
+            ->and($display)->toContain('projects that INSTALL the package');
     } finally {
         doctorCleanup($dir);
     }

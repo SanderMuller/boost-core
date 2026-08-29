@@ -28,11 +28,13 @@ final readonly class WrapperEntryPointMap
      * @param  array<string, array{package: string, invocation: string}>  $claims  bare command name => claim
      * @param  array<string, list<string>>  $reservedClaims  package => reserved command names it tried to claim
      * @param  array<string, list<string>>  $conflictingClaims  command => packages whose claim lost to an earlier one
+     * @param  array<string, list<string>>  $selfClaims  root package => commands it claimed for itself
      */
     public function __construct(
         private array $claims = [],
         private array $reservedClaims = [],
         private array $conflictingClaims = [],
+        private array $selfClaims = [],
     ) {}
 
     /**
@@ -117,5 +119,18 @@ final readonly class WrapperEntryPointMap
     public function conflictingClaims(): array
     {
         return $this->conflictingClaims;
+    }
+
+    /**
+     * Commands the ROOT package claimed for its own repository. Ignored — the
+     * map describes projects that install a package, not the package itself —
+     * and reported by `boost doctor` so the declaration is never silently
+     * dropped.
+     *
+     * @return array<string, list<string>>  root package => the commands it claimed
+     */
+    public function selfClaims(): array
+    {
+        return $this->selfClaims;
     }
 }

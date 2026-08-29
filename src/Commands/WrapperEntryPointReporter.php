@@ -27,7 +27,7 @@ final readonly class WrapperEntryPointReporter
         // NOT hasWrapper(): that is now accepted-claims-only, and a package
         // whose every claim was rejected is exactly the case this section
         // exists to report.
-        if (! $map->hasWrapper() && $map->reservedClaims() === [] && $map->conflictingClaims() === []) {
+        if (! $map->hasWrapper() && $map->reservedClaims() === [] && $map->conflictingClaims() === [] && $map->selfClaims() === []) {
             return;
         }
 
@@ -43,6 +43,17 @@ final readonly class WrapperEntryPointReporter
         if ($rows !== []) {
             $io->writeln('These bare commands are covered by an installed wrapper. Run the invocation on the right instead:');
             $io->table(['Bare command', 'Declared by', 'Run instead'], $rows);
+        }
+
+        foreach ($map->selfClaims() as $package => $commands) {
+            $io->note(sprintf(
+                'This repository IS `%s`, which declares `%s` in its own `extra.boost.entry-point`. boost-core '
+                . 'ignores a package\'s claim on itself: the map describes projects that INSTALL the package, and '
+                . 'the invocation it names is a consumer\'s, not one that runs here. Bare `vendor/bin/boost` is the '
+                . 'right tool at this root. Consumers still get the redirect.',
+                $package,
+                implode('`, `', $commands),
+            ));
         }
 
         foreach ($map->conflictingClaims() as $command => $losingPackages) {

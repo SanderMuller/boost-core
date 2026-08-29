@@ -82,8 +82,11 @@ what its equivalent is. The declaration is a static string, so it names the
 equivalent rather than ordering you to paste it — adapt the prefix when PHP does
 not run on the host (`sail artisan …`, `docker compose exec app php artisan …`).
 
-The root package is scanned along with dependencies, so a wrapper package's own
-repository gets the banner from its own declaration. It still runs
+A package's declaration describes projects that INSTALL it, so boost-core
+ignores a claim by the root package — at the root of a package that ships a
+wrapper there is no application to run the named invocation in, and the bare
+binary is the right tool there. `boost doctor` reports the ignored claim rather
+than dropping it silently. It still runs
 the command and still exits as before, so nothing in CI changes. Set
 `BOOST_STRICT_ENTRY_POINT=1` to refuse a covered command instead — that becomes
 the default in the next major.

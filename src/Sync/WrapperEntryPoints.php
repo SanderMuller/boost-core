@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
+use Composer\InstalledVersions;
 use JsonException;
 
 /**
@@ -33,11 +34,20 @@ use JsonException;
  * read-only flag is `--check` while `project-boost:sync`'s is `--dry-run` —
  * so a composed redirect would eventually name a flag that does not exist.
  *
- * The ROOT package is scanned too: `InstalledVersions::getInstalledPackages()`
- * includes it, and `getInstallPath()` resolves to the project root. So a
- * wrapper package's OWN repository gets the banner from its own declaration —
- * which is what you want, because a bare sync degrades there for exactly the
- * same reason it degrades in a consumer project.
+ * A package's map describes projects that INSTALL it — it does not describe
+ * the package's own repository, so a claim by the ROOT package is ignored.
+ * `InstalledVersions::getInstalledPackages()` does include the root, and
+ * honouring its claim looked like useful self-protection until a wrapper
+ * package pointed out what it does there: at the root of a package that SHIPS
+ * a wrapper there is no application, so `php artisan <wrapper>:sync` cannot
+ * run at all, while bare `boost sync` is the correct command. The banner told
+ * a maintainer to stop using the command that works and run one that does not
+ * exist — worse than the silence it replaced, and aimed at the person least in
+ * need of the warning.
+ *
+ * The ignore is REPORTED by `boost doctor`, never silent: a declaration that
+ * does nothing and says nothing is the same unread-channel shape this engine
+ * has been fixing all release.
  *
  * Third-party data, so every malformed shape is skipped rather than fatal.
  *
@@ -59,6 +69,12 @@ final readonly class WrapperEntryPoints
 
     public function __construct(
         private InstalledPackages $packages,
+        /**
+         * The root package's Composer name, or null to read it from the
+         * runtime. A claim by this package is ignored — see the class
+         * docblock.
+         */
+        private ?string $rootPackage = null,
     ) {}
 
     /**
@@ -72,9 +88,19 @@ final readonly class WrapperEntryPoints
         $reserved = [];
         /** @var array<string, list<string>> $conflicts */
         $conflicts = [];
+        /** @var array<string, list<string>> $selfClaims */
+        $selfClaims = [];
+
+        $root = $this->rootPackage ?? self::rootPackageName();
 
         foreach ($this->packages->all() as $package) {
             foreach ($this->readDeclaration($package->installPath) as $command => $invocation) {
+                if ($root !== null && $package->name === $root) {
+                    $selfClaims[$package->name][] = $command;
+
+                    continue;
+                }
+
                 if (in_array($command, self::RESERVED_COMMANDS, strict: true)) {
                     $reserved[$package->name][] = $command;
 
@@ -96,7 +122,18 @@ final readonly class WrapperEntryPoints
             }
         }
 
-        return new WrapperEntryPointMap($claims, $reserved, $conflicts);
+        return new WrapperEntryPointMap($claims, $reserved, $conflicts, $selfClaims);
+    }
+
+    /**
+     * The root package's Composer name, or null when the runtime cannot name
+     * it (an exotic checkout with no registered root).
+     */
+    private static function rootPackageName(): ?string
+    {
+        $name = InstalledVersions::getRootPackage()['name'];
+
+        return $name === '' ? null : $name;
     }
 
     /**

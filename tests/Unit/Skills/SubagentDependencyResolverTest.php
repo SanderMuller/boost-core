@@ -49,7 +49,8 @@ it('rescues a tag-dropped subagent a shipping skill requires', function (): void
             'requiredBy' => 'evaluate',
             'vendor' => 'acme/pack',
         ]])
-        ->and($result['warnings'])->toBe([]);
+        ->and($result['warnings'])
+        ->toBeEmpty();
 });
 
 it('reports an excluded subagent as excluded, not missing', function (): void {
@@ -109,8 +110,10 @@ it('does nothing when the demanded subagent already ships', function (): void {
     );
 
     expect($result['subagents'])->toBe([$shipping])
-        ->and($result['pulls'])->toBe([])
-        ->and($result['warnings'])->toBe([]);
+        ->and($result['pulls'])
+        ->toBeEmpty()
+        ->and($result['warnings'])
+        ->toBeEmpty();
 });
 
 it('leaves a subagent nobody requires alone — it is not an orphan', function (): void {
@@ -119,7 +122,8 @@ it('leaves a subagent nobody requires alone — it is not an orphan', function (
     $result = (new SubagentDependencyResolver())->resolve([], [$shipping], []);
 
     expect($result['subagents'])->toBe([$shipping])
-        ->and($result['warnings'])->toBe([]);
+        ->and($result['warnings'])
+        ->toBeEmpty();
 });
 
 it('rescues each demanded name once even when several skills demand it', function (): void {

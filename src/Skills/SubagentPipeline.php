@@ -48,7 +48,7 @@ final readonly class SubagentPipeline
      *
      * @throws DuplicateSubagentNameException
      */
-    private static function assertNoDuplicateNames(string $vendor, array $subagents): void
+    private function assertNoDuplicateNames(string $vendor, array $subagents): void
     {
         /** @var array<string, Subagent> $seen */
         $seen = [];
@@ -93,7 +93,7 @@ final readonly class SubagentPipeline
             // BEFORE filtering: an authoring mistake must not hide behind a tag
             // the consumer happens not to declare, or behind an exclude. The
             // package ships the same bug to everyone either way.
-            self::assertNoDuplicateNames($vendor->name, $load['subagents']);
+            $this->assertNoDuplicateNames($vendor->name, $load['subagents']);
 
             $filtered = $filter->filter($load['subagents'], $config);
             $vendorSubagents[$vendor->name] = $filtered['kept'];

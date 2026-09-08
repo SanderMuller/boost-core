@@ -66,7 +66,8 @@ it('passes frontmatter through verbatim, including tool assertions', function ()
 
 it('emits nothing for a target with no subagent surface', function (AgentTarget $target): void {
     expect($target->subagentsDirectoryRelative())->toBeNull()
-        ->and($target->planSubagents([emissionSubagent()]))->toBe([]);
+        ->and($target->planSubagents([emissionSubagent()]))
+        ->toBeEmpty();
 })->with([
     'cursor' => [new CursorTarget()],
     'codex' => [new CodexTarget()],

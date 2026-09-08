@@ -92,7 +92,8 @@ it('drops a subagent whose tags are not a subset of the consumer tags', function
         subagentConfig(tags: ['php']),
     );
 
-    expect($result['kept'])->toBe([])
+    expect($result['kept'])
+        ->toBeEmpty()
         ->and($result['droppedNames'])->toBe(['laravel-only'])
         ->and($result['droppedByTag'])->toBe(1)
         ->and($result['tagMismatchDrops'])->toHaveCount(1);
@@ -108,7 +109,8 @@ it('keeps an untagged subagent and one whose tags the consumer declares', functi
     );
 
     expect($result['kept'])->toHaveCount(2)
-        ->and($result['droppedNames'])->toBe([]);
+        ->and($result['droppedNames'])
+        ->toBeEmpty();
 });
 
 it('fails a malformed-tag subagent closed, and does not make it rescue-eligible', function (): void {
@@ -117,11 +119,14 @@ it('fails a malformed-tag subagent closed, and does not make it rescue-eligible'
         subagentConfig(),
     );
 
-    expect($result['kept'])->toBe([])
+    expect($result['kept'])
+        ->toBeEmpty()
         ->and($result['droppedNames'])->toBe(['broken'])
         ->and($result['droppedByTag'])->toBe(0)
-        ->and($result['tagMismatchDrops'])->toBe([])
-        ->and($result['excludedDrops'])->toBe([]);
+        ->and($result['tagMismatchDrops'])
+        ->toBeEmpty()
+        ->and($result['excludedDrops'])
+        ->toBeEmpty();
 });
 
 it('drops a subagent named in the exclude list and groups it as excluded', function (): void {
@@ -132,7 +137,8 @@ it('drops a subagent named in the exclude list and groups it as excluded', funct
         subagentConfig(excluded: ['acme/pack:reviewer']),
     );
 
-    expect($result['kept'])->toBe([])
+    expect($result['kept'])
+        ->toBeEmpty()
         ->and($result['excludedDrops'])->toHaveCount(1)
         ->and($result['droppedByTag'])->toBe(0);
 });
@@ -183,11 +189,11 @@ it('names both source files in the one-package duplicate error', function (): vo
 
     try {
         (new SubagentResolver())->resolve([], ['acme/pack' => [$one, $two]]);
-    } catch (DuplicateSubagentNameException $exception) {
-        expect($exception->getMessage())->toContain('/pkg/a.md')
-            ->and($exception->getMessage())->toContain('/pkg/nested/b.md')
+    } catch (DuplicateSubagentNameException $duplicateSubagentNameException) {
+        expect($duplicateSubagentNameException->getMessage())->toContain('/pkg/a.md')
+            ->and($duplicateSubagentNameException->getMessage())->toContain('/pkg/nested/b.md')
             // The package is named once, not twice.
-            ->and(substr_count($exception->getMessage(), 'acme/pack'))->toBe(1);
+            ->and(substr_count($duplicateSubagentNameException->getMessage(), 'acme/pack'))->toBe(1);
 
         return;
     }

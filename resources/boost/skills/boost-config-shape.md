@@ -62,12 +62,13 @@ way, so the location is interchangeable.
   `withExcludedSkills()` — and the only filter for a vendor guideline
   shipped without `metadata.boost-tags`, since untagged guidelines always
   ship and tag-filtering cannot reach them.
-- `withSkillsPath(...)` / `withGuidelinesPath(...)` — host-authored content
-  locations. Default to `<project-root>/.ai/skills` and
-  `<project-root>/.ai/guidelines` (resolved against the project root, not the
-  config file's directory). Override only if your project uses a
-  non-conventional layout, and pass an ABSOLUTE path — avoid `__DIR__`-relative
-  values, which break if `boost.php` is moved (e.g. into `.config/`).
+- `withSkillsPath(...)` / `withGuidelinesPath(...)` / `withCommandsPath(...)` /
+  `withSubagentsPath(...)` — host-authored content locations. Default to
+  `<project-root>/.ai/skills`, `.ai/guidelines`, `.ai/commands` and
+  `.ai/subagents` (resolved against the project root, not the config file's
+  directory). Override only if your project uses a non-conventional layout, and
+  pass an ABSOLUTE path — avoid `__DIR__`-relative values, which break if
+  `boost.php` is moved (e.g. into `.config/`).
 - `withRemoteSkills([RemoteSkillSource::githubBundle(...), RemoteSkillSource::githubPath(...)])` —
   declarative non-Composer skill sources. `githubBundle()` pulls `.skill`
   ZIP release assets; `githubPath()` extracts a subdir of a repo at a

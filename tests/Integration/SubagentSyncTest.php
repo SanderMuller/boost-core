@@ -200,7 +200,8 @@ it('warns when an emitted name is also declared by a file boost does not own', f
             ->and($messages)->toContain('boost does not arbitrate')
             // Advisory only: the file is still emitted and nothing is deleted.
             ->and(file_exists($root . '/.claude/agents/boost/acme__pack/reviewer.md'))->toBeTrue()
-            ->and($result->errors)->toBe([]);
+            ->and($result->errors)
+            ->toBeEmpty();
     } finally {
         rmTreeSubagent($root);
         rmTreeSubagent($vendorDir);
@@ -354,7 +355,8 @@ it('rescues a tag-filtered subagent that a shipping skill requires, and says so'
 
         expect(file_exists($root . '/.claude/agents/boost/acme__pack/auditor.md'))->toBeTrue()
             ->and(subagentMessages($result->diagnostics))->toContain('despite tag filtering')
-            ->and($result->errors)->toBe([]);
+            ->and($result->errors)
+            ->toBeEmpty();
     } finally {
         rmTreeSubagent($root);
         rmTreeSubagent($vendorDir);
@@ -378,7 +380,8 @@ it('warns that a required subagent no package provides is missing, and still shi
         expect($messages)->toContain('subagent `nope`')
             ->and($messages)->toContain('not provided by any installed package')
             // Requires gate completeness, not scoping: never fatal.
-            ->and($result->errors)->toBe([])
+            ->and($result->errors)
+            ->toBeEmpty()
             ->and(file_exists($root . '/.claude/skills/evaluate/SKILL.md'))->toBeTrue();
     } finally {
         rmTreeSubagent($root);
@@ -427,7 +430,8 @@ it('never reports a subagent demand as a missing SKILL', function (): void {
         $result = SyncEngine::default(subagentPackages($vendorDir))->sync($root);
 
         expect(subagentMessages($result->diagnostics))->not->toContain('subagent:auditor')
-            ->and($result->errors)->toBe([]);
+            ->and($result->errors)
+            ->toBeEmpty();
     } finally {
         rmTreeSubagent($root);
         rmTreeSubagent($vendorDir);
@@ -529,7 +533,8 @@ it('warns when two host files claim one subagent name, and emits only the winner
         $result = SyncEngine::default(subagentPackages($vendorDir))->sync($root);
 
         expect(subagentMessages($result->diagnostics))->toContain('is declared by two files')
-            ->and($result->errors)->toBe([])
+            ->and($result->errors)
+            ->toBeEmpty()
             ->and(file_get_contents($root . '/.claude/agents/boost/host/auditor.md'))->toContain('First.');
     } finally {
         rmTreeSubagent($root);
@@ -632,7 +637,8 @@ it('gitignores the manifest dir for a project whose only artefact is a subagent'
 
         SyncEngine::default(subagentPackages($vendorDir))->sync($root);
 
-        expect(is_file($root . '/.boost/manifest.json'))->toBeTrue()
+        expect($root . '/.boost/manifest.json')
+            ->toBeFile()
             ->and(file_get_contents($root . '/.gitignore'))->toContain('.boost/');
     } finally {
         rmTreeSubagent($root);

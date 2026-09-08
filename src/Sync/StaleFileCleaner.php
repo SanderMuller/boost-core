@@ -183,7 +183,7 @@ final readonly class StaleFileCleaner
                 continue;
             }
 
-            if (self::isNotBoostsToDelete($relativePath, $manifestGated, $priorManifest, $exactFilePatterns)) {
+            if ($this->isNotBoostsToDelete($relativePath, $manifestGated, $priorManifest, $exactFilePatterns)) {
                 $preserved[] = $relativePath;
 
                 continue;
@@ -226,20 +226,20 @@ final readonly class StaleFileCleaner
      *
      * @param  array<string, true>  $exactFilePatterns
      */
-    private static function isNotBoostsToDelete(string $relativePath, bool $manifestGated, ?SyncManifest $priorManifest, array $exactFilePatterns): bool
+    private function isNotBoostsToDelete(string $relativePath, bool $manifestGated, ?SyncManifest $priorManifest, array $exactFilePatterns): bool
     {
         if ($manifestGated && $priorManifest instanceof SyncManifest) {
             return ! isset($exactFilePatterns[$relativePath]) && ! $priorManifest->has($relativePath);
         }
 
-        return self::isSubagentEmission($relativePath);
+        return $this->isSubagentEmission($relativePath);
     }
 
     /**
      * Whether a path sits inside a boost-owned subagent subtree
      * (`<agents dir>/boost/`).
      */
-    private static function isSubagentEmission(string $relativePath): bool
+    private function isSubagentEmission(string $relativePath): bool
     {
         foreach (SubagentNameScanner::roots() as $root) {
             if (str_starts_with($relativePath, $root . '/' . AgentTarget::SUBAGENT_BOOST_SEGMENT . '/')) {

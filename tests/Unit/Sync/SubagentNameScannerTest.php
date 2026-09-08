@@ -65,7 +65,8 @@ it('reports nothing when every name is distinct', function (): void {
         writeSubagent($dir, 'one.md', "---\nname: one\n---\n");
         writeSubagent($dir, 'nested/two.md', "---\nname: two\n---\n");
 
-        expect((new SubagentNameScanner())->scan($dir))->toBe([]);
+        expect((new SubagentNameScanner())->scan($dir))
+            ->toBeEmpty();
     } finally {
         subagentScanCleanup($dir);
     }
@@ -81,7 +82,8 @@ it('ignores a file that declares no name — Claude Code never loads it', functi
         writeSubagent($dir, 'auditor.md', "---\ndescription: no name key\n---\n");
         writeSubagent($dir, 'nested/other.md', "---\nname: auditor\n---\n");
 
-        expect((new SubagentNameScanner())->scan($dir))->toBe([]);
+        expect((new SubagentNameScanner())->scan($dir))
+            ->toBeEmpty();
     } finally {
         subagentScanCleanup($dir);
     }
@@ -115,7 +117,8 @@ it('treats a blank or non-string name as no name at all', function (): void {
         writeSubagent($dir, 'blank.md', "---\nname: '   '\n---\n");
         writeSubagent($dir, 'nested/blank.md', "---\nname: 42\n---\n");
 
-        expect((new SubagentNameScanner())->scan($dir))->toBe([]);
+        expect((new SubagentNameScanner())->scan($dir))
+            ->toBeEmpty();
     } finally {
         subagentScanCleanup($dir);
     }
@@ -128,7 +131,8 @@ it('ignores non-markdown files', function (): void {
         writeSubagent($dir, 'notes.txt', "---\nname: dup\n---\n");
         writeSubagent($dir, 'dup.md', "---\nname: dup\n---\n");
 
-        expect((new SubagentNameScanner())->scan($dir))->toBe([]);
+        expect((new SubagentNameScanner())->scan($dir))
+            ->toBeEmpty();
     } finally {
         subagentScanCleanup($dir);
     }
@@ -139,7 +143,8 @@ it('returns nothing when the subagent root does not exist', function (): void {
     mkdir($dir, 0o755, recursive: true);
 
     try {
-        expect((new SubagentNameScanner())->scan($dir))->toBe([]);
+        expect((new SubagentNameScanner())->scan($dir))
+            ->toBeEmpty();
     } finally {
         subagentScanCleanup($dir);
     }

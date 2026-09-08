@@ -60,7 +60,7 @@ final readonly class SyncManifestWriter
                 // hand-written `.claude/agents/foo.md` stays out of the
                 // manifest, and an unrelated path that merely contains
                 // `/agents/boost/` is not mislabelled.
-                self::isSubagentEmission($relativePath) => 'subagent',
+                $this->isSubagentEmission($relativePath) => 'subagent',
                 default => null,
             };
             if ($category === null) {
@@ -243,7 +243,7 @@ final readonly class SyncManifestWriter
      * Whether the path is a boost-owned subagent emission
      * (`<agents dir>/boost/…`), per the targets' own directories.
      */
-    private static function isSubagentEmission(string $relativePath): bool
+    private function isSubagentEmission(string $relativePath): bool
     {
         foreach (SubagentNameScanner::roots() as $root) {
             if (str_starts_with($relativePath, $root . '/' . AgentTarget::SUBAGENT_BOOST_SEGMENT . '/')) {

@@ -54,7 +54,8 @@ it('loads a flat subagent file with name, description, body and provenance', fun
 
         $result = subagentLoader()->load($dir, 'sandermuller/boost-skills');
 
-        expect($result['warnings'])->toBe([])
+        expect($result['warnings'])
+            ->toBeEmpty()
             ->and($result['subagents'])->toHaveCount(1);
 
         $subagent = $result['subagents'][0];
@@ -103,7 +104,8 @@ it('skips a file that declares no name and warns, instead of using the filename'
 
         $result = subagentLoader()->load($dir);
 
-        expect($result['subagents'])->toBe([])
+        expect($result['subagents'])
+            ->toBeEmpty()
             ->and($result['warnings'])->toHaveCount(1)
             ->and($result['warnings'][0])->toContain('no-name.md')
             ->and($result['warnings'][0])->toContain('declares no `name`');

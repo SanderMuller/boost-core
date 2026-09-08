@@ -71,8 +71,10 @@ it('returns subagent demands with the prefix stripped', function (): void {
 });
 
 it('returns no subagents when none are declared', function (): void {
-    expect(BoostRequires::parseSubagents(['metadata' => ['boost-requires' => 'write-spec']])[0])->toBe([]);
-    expect(BoostRequires::parseSubagents([])[0])->toBe([]);
+    expect(BoostRequires::parseSubagents(['metadata' => ['boost-requires' => 'write-spec']])[0])
+        ->toBeEmpty()
+        ->and(BoostRequires::parseSubagents([])[0])
+        ->toBeEmpty();
 });
 
 it('marks an unknown prefix invalid without dropping the valid tokens', function (): void {
@@ -92,7 +94,8 @@ it('marks a bare `subagent:` with no name invalid', function (): void {
         'metadata' => ['boost-requires' => 'subagent:'],
     ]);
 
-    expect($subagents)->toBe([])
+    expect($subagents)
+        ->toBeEmpty()
         ->and($valid)->toBeFalse();
 });
 

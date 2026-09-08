@@ -71,6 +71,27 @@ One more precedence note: a project subagent outranks your personal
 `~/.claude/agents/` file of the same name, and you get no signal from Claude Code
 when that happens.
 
+## Frontmatter passes through as written
+
+boost emits a subagent's frontmatter verbatim — `tools`, `disallowedTools`,
+`model` and everything else. It validates none of it. The engine cannot see a
+consumer's permission surface, so it is in no position to police claims about
+one.
+
+That makes the definition the only place a capability claim is made, and it is
+easy to overclaim. `tools` grants; `disallowedTools` denies **the tools it
+names, and nothing else**. A definition that grants `Bash` and denies
+`Write, Edit` has not built a read-only sandbox: a shell command writes, deletes
+and commits like any other. If the body then opens "you are read-only", the
+definition reads as fenced and is not.
+
+Keep the claim true. Where a pass genuinely needs `Bash` — to read a diff, walk
+history, run one named test — say that the `Write`/`Edit` denial is enforced,
+that `Bash` is held deliberately for reading, and that using it only to read is
+an instruction the subagent follows rather than a boundary around it. A package
+shipping a review subagent into somebody else's repository is where an
+overclaimed boundary costs the most.
+
 ## Filtering and dependencies
 
 Subagents follow the skill rules exactly:

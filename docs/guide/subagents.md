@@ -126,16 +126,33 @@ skill still ships. A subagent nothing declares is fine — an operator can dispa
 one directly, so an unreferenced subagent is not an orphan and nothing warns
 about it.
 
-> [!WARNING]
-> A package that declares a `subagent:` dependency must floor `boost-core` at the
-> release that added it. An older boost-core reads the whole token as a skill
-> name, so every consumer below that floor sees a spurious missing-dependency
-> warning. No engine change can fix that retroactively.
+### Most packages should not declare one
 
-The **files** need no floor. An older boost-core never looks for
-`resources/boost/subagents/`, so it ignores them. A package can therefore ship
-its subagents today and add the `subagent:` requires when it raises its floor —
-there is no reason to hold the whole feature back.
+A `subagent:` require earns its place in two cases, and is inert everywhere else.
+An **untagged** subagent that the project has not deny-listed always ships on its
+own, so it is already resolved by the time dependencies are considered — the
+token changes nothing:
+
+| Subagent | Without the require | With it |
+|----------|--------------------|---------|
+| Untagged | Ships | Ships. No rescue, no warning, no `doctor` line — nothing differs |
+| Tagged, consumer lacks the tag | Dropped | **Rescued**, reported as INFO |
+| Deny-listed | Dropped, silently | Dropped, and sync says a shipped skill wanted it |
+
+So declare `subagent:` when the subagent **carries tags** or is one a consumer is
+likely to deny-list. For a package whose subagents are untagged and ship with the
+skills that dispatch them, leave it out and let default resolution do the work.
+
+> [!WARNING]
+> A package that declares a `subagent:` dependency must floor `boost-core` at
+> 1.9.0. An older engine reads the whole token as a skill name, so every consumer
+> below that floor sees a spurious missing-dependency warning. No engine change
+> can fix that retroactively.
+
+Read those together before adding one: a require on an untagged subagent buys
+nothing and costs a hard floor that every consumer pays. The **files** need no
+floor at all — an older engine never looks for `resources/boost/subagents/`, so a
+package ships them whenever it likes.
 
 ## Writing a skill that dispatches one
 

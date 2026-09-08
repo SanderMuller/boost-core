@@ -224,6 +224,7 @@ final readonly class RemoteSkillIngester
 
         [$tags, $tagsValid] = BoostTags::parse($parsed->frontmatter);
         [$requires, $requiresValid] = BoostRequires::parse($parsed->frontmatter);
+        [$requiredSubagents] = BoostRequires::parseSubagents($parsed->frontmatter);
 
         return new Skill(
             name: $ref->name,
@@ -240,6 +241,7 @@ final readonly class RemoteSkillIngester
             assets: SkillAssetCollector::collect($skillPath),
             requires: $requires,
             requiresValid: $requiresValid,
+            requiredSubagents: $requiredSubagents,
         );
     }
 

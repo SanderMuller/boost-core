@@ -12,6 +12,10 @@ final readonly class DiscoveredVendor
         public string $installPath,
         public ?string $skillsPath,
         public ?string $guidelinesPath,
+        // Appended with a default: DiscoveredVendor is constructed positionally
+        // in tests and wrapper code, so a required parameter here would break
+        // them. Null = the package ships no `resources/boost/subagents/`.
+        public ?string $subagentsPath = null,
     ) {}
 
     public function publishesSkills(): bool
@@ -24,12 +28,21 @@ final readonly class DiscoveredVendor
         return $this->guidelinesPath !== null;
     }
 
+    public function publishesSubagents(): bool
+    {
+        return $this->subagentsPath !== null;
+    }
+
     public function publishesAnything(): bool
     {
         if ($this->publishesSkills()) {
             return true;
         }
 
-        return $this->publishesGuidelines();
+        if ($this->publishesGuidelines()) {
+            return true;
+        }
+
+        return $this->publishesSubagents();
     }
 }

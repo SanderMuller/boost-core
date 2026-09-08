@@ -302,8 +302,11 @@ it('freezes @api value-object + method PARAMETER NAMES — the 1.0 named-arg con
     // import-scanning closure guard can't see them — pin the names by reflection here
     // so a rename or reorder trips CI directly.
     $frozenConstructorParams = [
-        // `assets` appended-with-default in 1.3 per the Skill @api append rule.
-        Skill::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid', 'assets', 'requires', 'requiresValid'],
+        // `assets` appended-with-default in 1.3, `requiredSubagents` appended
+        // the same way for `boost-requires: "subagent:<name>"` — both per the
+        // Skill @api append rule. Appending is non-breaking for named args;
+        // reordering or renaming is not.
+        Skill::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid', 'assets', 'requires', 'requiresValid', 'requiredSubagents'],
         Guideline::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid'],
         SkillAsset::class => ['relativePath', 'contents'],
         RenderContext::class => ['sourcePath', 'sourceVendor', 'frontmatter', 'projectRoot'],

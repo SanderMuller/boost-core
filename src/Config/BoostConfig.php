@@ -59,6 +59,10 @@ final readonly class BoostConfig
         public array $remoteSkills = [],
         public array $skillRenderers = [],
         public array $conventions = [],
+        // Appended-with-default per the positional-constructor rule above. A
+        // positionally-constructed pre-feature config gets `''`, which the
+        // loader's is_dir check reads as "no host subagents".
+        public string $subagentsPath = '',
     ) {}
 
     public static function configure(): BoostConfigBuilder

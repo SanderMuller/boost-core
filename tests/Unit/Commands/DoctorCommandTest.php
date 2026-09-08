@@ -1593,3 +1593,65 @@ it("doctor: explains why the root package's own entry-point claim is ignored", f
         doctorCleanup($dir);
     }
 });
+
+it('reports subagent name overlaps under .claude/agents with every colliding path', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.claude/agents/boost/vendor__pack', 0o755, recursive: true);
+    // Claude Code resolves by `name`, not by path — so a hand-written file at
+    // the top level collides with an emitted one in a subfolder.
+    file_put_contents($dir . '/.claude/agents/tech-lead-reviewer.md', "---\nname: tech-lead-reviewer\n---\nhand-written\n");
+    file_put_contents($dir . '/.claude/agents/boost/vendor__pack/reviewer.md', "---\nname: tech-lead-reviewer\n---\nemitted\n");
+
+    try {
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: new InstalledPackages([])));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('Subagent name overlaps')
+            ->and($display)->toContain('1 subagent name(s) declared by more than one file')
+            ->and($display)->toContain('.claude/agents/tech-lead-reviewer.md')
+            ->and($display)->toContain('.claude/agents/boost/vendor__pack/reviewer.md')
+            ->and($display)->toContain('boost does not arbitrate');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('stays quiet about subagents when no two files share a name', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    mkdir($dir . '/.claude/agents', 0o755, recursive: true);
+    file_put_contents($dir . '/.claude/agents/one.md', "---\nname: one\n---\n");
+    file_put_contents($dir . '/.claude/agents/two.md', "---\nname: two\n---\n");
+
+    try {
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: new InstalledPackages([])));
+        $tester->execute(['--working-dir' => $dir]);
+
+        expect($tester->getDisplay())->not->toContain('Subagent name overlaps');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('reports a subagent resolution failure instead of staying silent', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    $vendorDir = $dir . '/vendor/acme/pack';
+    mkdir($vendorDir . '/resources/boost/subagents/nested', 0o755, recursive: true);
+    file_put_contents($vendorDir . '/composer.json', json_encode(['name' => 'acme/pack'], JSON_THROW_ON_ERROR));
+    // One package, two files, one name — the failure someone runs doctor to
+    // understand, so it must not be swallowed.
+    file_put_contents($vendorDir . '/resources/boost/subagents/a.md', "---\nname: auditor\n---\nx\n");
+    file_put_contents($vendorDir . '/resources/boost/subagents/nested/b.md', "---\nname: auditor\n---\ny\n");
+
+    try {
+        $packages = new InstalledPackages(['acme/pack' => new PackageInfo('acme/pack', '1.0.0', $vendorDir)]);
+        $tester = new CommandTester(new DoctorCommand(injectedPackages: $packages));
+        $tester->execute(['--working-dir' => $dir]);
+        $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
+
+        expect($display)->toContain('Could not resolve subagents')
+            ->and($display)->toContain('ships two subagents named');
+    } finally {
+        doctorCleanup($dir);
+    }
+});

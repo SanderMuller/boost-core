@@ -35,6 +35,17 @@ final class ClaudeCodeTarget extends AgentTarget
     }
 
     /**
+     * The directory Claude Code scans for project-scope subagents. boost emits
+     * into the `boost/` subtree of it, never the root — see
+     * {@see AgentTarget::gitignorePatterns()}.
+     */
+    #[Override]
+    public function subagentsDirectoryRelative(): string
+    {
+        return '.claude/agents';
+    }
+
+    /**
      * Claude Code as of 2026 uses zero-indexed `$N` (`$0` = first arg).
      * The canonical syntax is one-indexed (matches OpenCode, Codex,
      * Kiro, and most human intuition) — so positional placeholders

@@ -132,6 +132,11 @@ skill/command **directories** (`.claude/skills/`, `.cursor/skills/`,
 `.github/skills/`, …) and the `.boost/` runtime dir stay out of version control.
 Edit skills in `.ai/` only; the fan-out regenerates on next sync.
 
+Subagents are the one case where boost claims a **subtree** rather than a whole
+directory. `.claude/agents/boost/` is listed; `.claude/agents/` itself is not,
+because that directory holds definitions you write by hand. See
+[Subagents](/guide/subagents).
+
 The agent **guidance files** (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`,
 `.github/copilot-instructions.md`) are deliberately **not** gitignored: they're
 wholesale boost-owned but kept tracked so the output is reviewable in diffs and

@@ -1,0 +1,10 @@
+{
+    "name": "test-fixture/with-custom-subagents",
+    "description": "Fixture: publishes subagents at a non-conventional path via extra.boost.subagents.",
+    "type": "library",
+    "extra": {
+        "boost": {
+            "subagents": "ai/custom-subagents"
+        }
+    }
+}

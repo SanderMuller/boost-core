@@ -115,3 +115,29 @@ it('does NOT filter by allowlist — that is the SyncEngine concern', function (
 
     expect($found)->toHaveCount(2);
 });
+
+it('discovers subagents at the convention path', function (): void {
+    $found = discoverAll(packagesFromFixtures('with-subagents-default-path'));
+
+    expect($found)->toHaveCount(1)
+        ->and($found[0]->publishesSubagents())->toBeTrue()
+        ->and($found[0]->subagentsPath)->toEndWith('/resources/boost/subagents')
+        ->and($found[0]->publishesSkills())->toBeFalse();
+});
+
+it('discovers subagents at a custom path declared via extra.boost.subagents', function (): void {
+    $found = discoverAll(packagesFromFixtures('with-custom-subagents-path'));
+
+    expect($found)->toHaveCount(1)
+        ->and($found[0]->publishesSubagents())->toBeTrue()
+        ->and($found[0]->subagentsPath)->toEndWith('/ai/custom-subagents');
+});
+
+it('reports a package that ships only subagents as publishing something', function (): void {
+    // publishesAnything() gates discovery — a subagent-only package must not
+    // be dropped for shipping no skills or guidelines.
+    $found = discoverAll(packagesFromFixtures('with-subagents-default-path', 'no-boost-content'));
+
+    expect($found)->toHaveCount(1)
+        ->and($found[0]->name)->toBe('test-fixture/with-subagents-default-path');
+});

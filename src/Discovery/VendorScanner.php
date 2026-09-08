@@ -10,9 +10,9 @@ use SanderMuller\BoostCore\Sync\PackageInfo;
  * Walks installed Composer packages looking for boost skill/guideline publishers.
  *
  * Discovery contract:
- * - Vendor packages declare publishing paths in composer.json `extra.boost.skills`
- *   and `extra.boost.guidelines`. Both default to convention paths under
- *   `resources/boost/` if absent.
+ * - Vendor packages declare publishing paths in composer.json `extra.boost.skills`,
+ *   `extra.boost.guidelines` and `extra.boost.subagents`. All default to
+ *   convention paths under `resources/boost/` if absent.
  * - VendorScanner returns ALL packages with discoverable content. Allowlist
  *   filtering is the SyncEngine's responsibility downstream — keep concerns split.
  *
@@ -23,6 +23,8 @@ final readonly class VendorScanner
     private const DEFAULT_SKILLS_PATH = 'resources/boost/skills';
 
     private const DEFAULT_GUIDELINES_PATH = 'resources/boost/guidelines';
+
+    private const DEFAULT_SUBAGENTS_PATH = 'resources/boost/subagents';
 
     public function __construct(
         private InstalledPackages $packages,
@@ -61,12 +63,16 @@ final readonly class VendorScanner
         $guidelinesRel = is_string($extraBoost['guidelines'] ?? null)
             ? $extraBoost['guidelines']
             : self::DEFAULT_GUIDELINES_PATH;
+        $subagentsRel = is_string($extraBoost['subagents'] ?? null)
+            ? $extraBoost['subagents']
+            : self::DEFAULT_SUBAGENTS_PATH;
 
         return new DiscoveredVendor(
             name: $package->name,
             installPath: $package->installPath,
             skillsPath: $this->resolveIfDir($package->installPath, $skillsRel),
             guidelinesPath: $this->resolveIfDir($package->installPath, $guidelinesRel),
+            subagentsPath: $this->resolveIfDir($package->installPath, $subagentsRel),
         );
     }
 

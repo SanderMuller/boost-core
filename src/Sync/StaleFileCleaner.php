@@ -5,6 +5,7 @@ namespace SanderMuller\BoostCore\Sync;
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Enums\Agent;
@@ -182,13 +183,7 @@ final readonly class StaleFileCleaner
                 continue;
             }
 
-            // Manifest-gated: boost deletes only what it owns. A path inside a
-            // boost-managed directory that the prior manifest never recorded was
-            // written by somebody else (laravel/boost installs its bundled skill
-            // directories into `.claude/skills/`, and `herd link` re-runs
-            // `php artisan boost:update` to reinstate them) — deleting it here
-            // produced a silent delete/reinstall flip-flop. Preserve and report.
-            if ($manifestGated && ! isset($exactFilePatterns[$relativePath]) && ! $priorManifest->has($relativePath)) {
+            if (self::isNotBoostsToDelete($relativePath, $manifestGated, $priorManifest, $exactFilePatterns)) {
                 $preserved[] = $relativePath;
 
                 continue;
@@ -209,6 +204,50 @@ final readonly class StaleFileCleaner
         sort($preserved);
 
         return ['writes' => $writes, 'diagnostics' => $this->preservedForeignDiagnostics($preserved)];
+    }
+
+    /**
+     * Whether this path is somebody else's, so the sweep must preserve it.
+     *
+     * Two reasons, and the second is narrower than it looks:
+     *
+     *  - **Manifest-gated:** boost deletes only what it owns. A path inside a
+     *    boost-managed directory that the prior manifest never recorded was
+     *    written by somebody else (laravel/boost installs its bundled skill
+     *    directories into `.claude/skills/`, and `herd link` re-runs
+     *    `php artisan boost:update` to reinstate them) — deleting it produced a
+     *    silent delete/reinstall flip-flop.
+     *  - **Subagent emissions, even with NO manifest.** `.claude/agents/` is a
+     *    directory the operator also writes into, and organising hand-written
+     *    definitions under a `boost/` subfolder is a path the docs now name, so
+     *    the ungated clean-slate sweep could delete files boost never wrote and
+     *    cannot get back. Every other managed directory is boost's outright,
+     *    which is why they stay clean-slate.
+     *
+     * @param  array<string, true>  $exactFilePatterns
+     */
+    private static function isNotBoostsToDelete(string $relativePath, bool $manifestGated, ?SyncManifest $priorManifest, array $exactFilePatterns): bool
+    {
+        if ($manifestGated && $priorManifest instanceof SyncManifest) {
+            return ! isset($exactFilePatterns[$relativePath]) && ! $priorManifest->has($relativePath);
+        }
+
+        return self::isSubagentEmission($relativePath);
+    }
+
+    /**
+     * Whether a path sits inside a boost-owned subagent subtree
+     * (`<agents dir>/boost/`).
+     */
+    private static function isSubagentEmission(string $relativePath): bool
+    {
+        foreach (SubagentNameScanner::roots() as $root) {
+            if (str_starts_with($relativePath, $root . '/' . AgentTarget::SUBAGENT_BOOST_SEGMENT . '/')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

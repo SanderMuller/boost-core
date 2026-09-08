@@ -2,6 +2,7 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
+use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 
 /**
@@ -48,16 +49,22 @@ final readonly class SyncManifestWriter
 
         $manifest = $this->recordEmitterOutputs($manifest, $projectRoot, $emitterResults, $ownableEmitterPaths);
 
-        // Skill / command emission targets currently on disk (enumerated by the
+        // Skill / command / subagent emission targets currently on disk (enumerated by the
         // engine from the just-written managed gitignore block; `.boost/` skipped).
         foreach ($managedFilesOnDisk as $relativePath) {
             $category = match (true) {
                 str_contains($relativePath, '/skills/') => 'skill',
                 str_contains($relativePath, '/commands/') => 'command',
+                // Anchored on the target's own subagent root, not a loose
+                // substring: it must match the BOOST SUBTREE only, so a
+                // hand-written `.claude/agents/foo.md` stays out of the
+                // manifest, and an unrelated path that merely contains
+                // `/agents/boost/` is not mislabelled.
+                self::isSubagentEmission($relativePath) => 'subagent',
                 default => null,
             };
             if ($category === null) {
-                continue;   // not a skill/command emission target (e.g. a manifest file) — skip
+                continue;   // not a skill/command/subagent emission target (e.g. a manifest file) — skip
             }
 
             $sha = ManagedFileOps::fileSha($projectRoot, $relativePath);
@@ -230,5 +237,20 @@ final readonly class SyncManifestWriter
         }
 
         return array_values(array_diff($entries, ['.', '..'])) === [];
+    }
+
+    /**
+     * Whether the path is a boost-owned subagent emission
+     * (`<agents dir>/boost/…`), per the targets' own directories.
+     */
+    private static function isSubagentEmission(string $relativePath): bool
+    {
+        foreach (SubagentNameScanner::roots() as $root) {
+            if (str_starts_with($relativePath, $root . '/' . AgentTarget::SUBAGENT_BOOST_SEGMENT . '/')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

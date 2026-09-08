@@ -12,6 +12,7 @@ use SanderMuller\BoostCore\Conventions\SchemaDiscovery;
 use SanderMuller\BoostCore\Skills\Command as BoostCommand;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\Subagent;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\SkillShipmentIndex;
 use SanderMuller\BoostCore\Sync\SyncEngine;
@@ -25,11 +26,11 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Throwable;
 
 /**
- * `boost where` — list every skill, guideline, and command that would
- * land in agent dirs, grouped by origin (host `.ai/`, scanned vendor
- * package, remote skill source). Skills also surface host-vs-vendor
- * shadowing inline so consumers using `withAllowedVendors` + host
- * overrides can audit which copy actually ships.
+ * `boost where` — list every skill, guideline, command, and subagent that
+ * would land in agent dirs, grouped by origin (host `.ai/`, scanned vendor
+ * package, remote skill source). Skills and subagents also surface
+ * host-vs-vendor shadowing inline so consumers using `withAllowedVendors` +
+ * host overrides can audit which copy actually ships.
  *
  * Resolution path is the same as `boost sync --check` — tag-filtered,
  * collision-resolved. Caller-injected vendors (the wrapper-package
@@ -55,7 +56,7 @@ final class WhereCommand extends BoostBaseCommand implements TouchesResolutionPi
     {
         $this
             ->setName('boost:where')
-            ->setDescription('Show every skill, guideline, and command grouped by its origin: host `.ai/`, scanned vendor packages, remote skill sources, and host overrides.');
+            ->setDescription('Show every skill, guideline, command, and subagent grouped by its origin: host `.ai/`, scanned vendor packages, remote skill sources, and host overrides.');
         $this->addWorkingDirOption();
         $this->addConfigOption();
         $this->addOption(
@@ -126,7 +127,7 @@ final class WhereCommand extends BoostBaseCommand implements TouchesResolutionPi
             return self::FAILURE;
         }
 
-        if ($inspection['skills'] === [] && $inspection['guidelines'] === [] && $inspection['commands'] === []) {
+        if ($inspection['skills'] === [] && $inspection['guidelines'] === [] && $inspection['commands'] === [] && $inspection['subagents'] === []) {
             $io->success('Nothing resolved. (Did you run `boost install`? Is `.ai/` populated and are vendors allowlisted in `boost.php`?)');
 
             return self::SUCCESS;
@@ -150,9 +151,26 @@ final class WhereCommand extends BoostBaseCommand implements TouchesResolutionPi
         //    guideline pipeline exists today, so isRemote = false).
         //  - COMMANDS: Phase 1 host-only (vendor commands deferred to
         //    Phase 4 of agent-commands-sync), so both flags = false.
+        //  - SUBAGENTS: host + vendor, but no remote pipeline, so isRemote =
+        //    false and the scanned-key map stays empty (origins are labelled
+        //    from the vendor name itself).
         $this->renderCategory($io, 'SKILLS', '.ai/skills/ (host)', $this->groupSkillsByOrigin($inspection['skills']), $remoteKeys, $scannedSkillKeys, $shadowedBy, 'skill');
         $this->renderCategory($io, 'GUIDELINES', '.ai/guidelines/ (host)', $this->groupGuidelinesByOrigin($inspection['guidelines']), [], $scannedGuidelineKeys, $guidelineShadowedBy, 'guideline');
         $this->renderCategory($io, 'COMMANDS', '.ai/commands/ (host)', $this->groupCommandsByOrigin($inspection['commands']), [], [], [], 'command');
+
+        // renderCategory expects SkillShipmentIndex's shape: one comma-joined
+        // string per name. A list renders as "Array".
+        $subagentShadowVendors = [];
+        foreach ($inspection['subagentShadows'] as $shadow) {
+            $subagentShadowVendors[$shadow['subagent']][] = $shadow['shadowedVendor'];
+        }
+
+        $subagentShadowedBy = array_map(
+            static fn (array $vendors): string => implode(', ', array_unique($vendors)),
+            $subagentShadowVendors,
+        );
+
+        $this->renderCategory($io, 'SUBAGENTS', '.ai/subagents/ (host)', $this->groupSubagentsByOrigin($inspection['subagents']), [], [], $subagentShadowedBy, 'subagent');
 
         $shadowNotes = [];
         if ($result->hostShadows !== []) {
@@ -285,6 +303,22 @@ final class WhereCommand extends BoostBaseCommand implements TouchesResolutionPi
             $origin = $command->sourceVendor ?? '.ai/commands/ (host)';
             $byOrigin[$origin] ??= [];
             $byOrigin[$origin][] = $command->name;
+        }
+
+        return $byOrigin;
+    }
+
+    /**
+     * @param  list<Subagent>  $subagents
+     * @return array<string, list<string>>
+     */
+    private function groupSubagentsByOrigin(array $subagents): array
+    {
+        $byOrigin = [];
+        foreach ($subagents as $subagent) {
+            $origin = $subagent->sourceVendor ?? '.ai/subagents/ (host)';
+            $byOrigin[$origin] ??= [];
+            $byOrigin[$origin][] = $subagent->name;
         }
 
         return $byOrigin;

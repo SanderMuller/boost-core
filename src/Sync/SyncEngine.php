@@ -28,8 +28,10 @@ use SanderMuller\BoostCore\Discovery\VendorScanner;
 use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Skills\CollidingSkillsException;
+use SanderMuller\BoostCore\Skills\CollidingSubagentsException;
 use SanderMuller\BoostCore\Skills\Command;
 use SanderMuller\BoostCore\Skills\CommandLoader;
+use SanderMuller\BoostCore\Skills\DuplicateSubagentNameException;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\GuidelineLoader;
@@ -49,6 +51,10 @@ use SanderMuller\BoostCore\Skills\SkillDependencyResolver;
 use SanderMuller\BoostCore\Skills\SkillLoader;
 use SanderMuller\BoostCore\Skills\SkillResolver;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
+use SanderMuller\BoostCore\Skills\Subagent;
+use SanderMuller\BoostCore\Skills\SubagentDiagnostics;
+use SanderMuller\BoostCore\Skills\SubagentLoader;
+use SanderMuller\BoostCore\Skills\SubagentPipeline;
 use Throwable;
 
 /**
@@ -93,6 +99,8 @@ final readonly class SyncEngine
 
     private CommandLoader $commandLoader;
 
+    private SubagentPipeline $subagentPipeline;
+
     private VendorScanner $vendorScanner;
 
     private EmitterDiscovery $emitterDiscovery;
@@ -135,6 +143,7 @@ final readonly class SyncEngine
         $this->skillLoader = new SkillLoader($this->frontmatterParser);
         $this->guidelineLoader = new GuidelineLoader($this->frontmatterParser);
         $this->commandLoader = new CommandLoader($this->frontmatterParser);
+        $this->subagentPipeline = new SubagentPipeline(new SubagentLoader($this->frontmatterParser));
         $this->vendorScanner = new VendorScanner($this->installedPackages);
         $this->emitterDiscovery = new EmitterDiscovery($this->installedPackages);
         $this->remoteSkillIngester = $remoteSkillIngester ?? new RemoteSkillIngester(
@@ -502,7 +511,7 @@ final readonly class SyncEngine
      * included — those are runtime-only inputs to `sync()` and the
      * wrapper owns its own inspection surface.
      *
-     * @return array{skills: list<Skill>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedSkillVendorKeys: list<string>, scannedGuidelineVendorKeys: list<string>, skillDependencyWarnings: list<array{name: string, dependents: list<string>, reason: 'excluded'|'missing'}>, skillMalformedRequires: list<string>}  The two skill-dependency keys mirror `resolveSkills()` so `boost validate` / `boost doctor` report the exact demand outcome a sync would produce.
+     * @return array{skills: list<Skill>, subagents: list<Subagent>, subagentShadows: list<array{subagent: string, shadowedVendor: string}>, subagentWarnings: list<string>, subagentDependencyWarnings: list<array{name: string, dependents: list<string>, reason: 'excluded'|'missing'}>, guidelines: list<Guideline>, commands: list<Command>, remoteSourceKeys: list<string>, scannedSkillVendorKeys: list<string>, scannedGuidelineVendorKeys: list<string>, skillDependencyWarnings: list<array{name: string, dependents: list<string>, reason: 'excluded'|'missing'}>, skillMalformedRequires: list<string>}  The two skill-dependency keys mirror `resolveSkills()` so `boost validate` / `boost doctor` report the exact demand outcome a sync would produce.
      */
     public function resolveForInspection(string $projectRoot): array
     {
@@ -530,8 +539,16 @@ final readonly class SyncEngine
         $renderErrors = [];
         $skillResolution = $this->resolveSkills($projectRoot, $config, $allowedVendors, false, [], true);
 
+        // Shipped skills drive rescue, so inspection must pass them or `boost
+        // doctor` reports a different outcome than a sync would produce.
+        $subagents = $this->subagentPipeline->resolve($config, $allowedVendors, false, $skillResolution['skills']);
+
         return [
             'skills' => $skillResolution['skills'],
+            'subagents' => $subagents->subagents,
+            'subagentShadows' => $subagents->shadows,
+            'subagentWarnings' => $subagents->loadWarnings,
+            'subagentDependencyWarnings' => $subagents->dependencyWarnings,
             'guidelines' => $this->resolveGuidelines($projectRoot, $config, $allowedVendors, false, [], $renderErrors),
             'commands' => $this->resolveCommands($config),
             'remoteSourceKeys' => array_values($remoteSourceKeys),
@@ -603,7 +620,11 @@ final readonly class SyncEngine
         try {
             $skillResolution = $this->resolveSkills($projectRoot, $config, $allowedVendors, $force, $injectedVendorSkills, $checkOnly, $skipWarnings);
             $resolvedGuidelines = $this->resolveGuidelines($projectRoot, $config, $allowedVendors, $force, $injectedVendorGuidelines, $guidelineRenderErrors, $hostGuidelineShadows, $skipWarnings);
-        } catch (CollidingSkillsException $collidingSkillsException) {
+            // Vendor-vs-vendor subagent collisions ride the same catch: both are
+            // "two packages publish one name", both are fatal, and both are
+            // resolved the same way (host override, or `--force`).
+            $subagents = $this->subagentPipeline->resolve($config, $allowedVendors, $force, $skillResolution['skills']);
+        } catch (CollidingSkillsException|CollidingSubagentsException|DuplicateSubagentNameException $collidingSkillsException) {
             return new SyncResult(writes: [], emitters: [], errors: [$collidingSkillsException->getMessage()], check: $checkOnly);
         } catch (SkillSourceCollisionException $sourceCollisionException) {
             // Caller-config-error class (injected vendor map / remote source
@@ -712,6 +733,7 @@ final readonly class SyncEngine
             $resolvedSkills,
             $resolvedGuidelines,
             $resolvedCommands,
+            $subagents->subagents,
             $droppedSkillNames,
             $checkOnly,
             $guidelineRenderErrors,
@@ -750,7 +772,7 @@ final readonly class SyncEngine
         // `.boost/` gitignore line on its own — an emitter-only project (no
         // agents/conventions) still needs the manifest ignored.
         $willWriteManifest = $gitignoreManaged && (
-            ($config->agents !== [] && ($resolvedSkills !== [] || $resolvedGuidelines !== [] || $resolvedCommands !== []))
+            ($config->agents !== [] && ($resolvedSkills !== [] || $resolvedGuidelines !== [] || $resolvedCommands !== [] || $subagents->subagents !== []))
             || $config->conventions !== []
             || $hasLiveEmitterOutput
             || ! $priorManifest->isEmpty()
@@ -1004,6 +1026,7 @@ final readonly class SyncEngine
                 ...$cleanupResult['diagnostics'],
                 ...$wrapperEmits['diagnostics'],
                 ...$renderFailDiagnostics,
+                ...SubagentDiagnostics::forResult($projectRoot, $subagents, SubagentPipeline::canEmit($this->agentTargets, $config)),
                 ...$unrenderableDiagnostics,
                 ...$dependencyDiagnostics,
                 ...$emitterDiagnostics,
@@ -1924,6 +1947,7 @@ final readonly class SyncEngine
      * @param  list<Skill>  $skills
      * @param  list<Guideline>  $guidelines
      * @param  list<Command>  $commands
+     * @param  list<Subagent>  $subagents
      * @param  list<string>  $droppedSkillNames  Names dropped by SkillTagFilter — candidates for pruning.
      * @param  list<string>  $guidelineRenderErrors  Render failures captured
      *         by `resolveGuidelines()`. When non-empty, the per-target
@@ -1943,6 +1967,7 @@ final readonly class SyncEngine
         array $skills,
         array $guidelines,
         array $commands,
+        array $subagents,
         array $droppedSkillNames,
         bool $checkOnly,
         array $guidelineRenderErrors = [],
@@ -1990,8 +2015,10 @@ final readonly class SyncEngine
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
 
+            // One loop for both: flat per-file emissions with no guideline-style
+            // gating, and a target lacking either surface contributes no writes.
             $planned = $target->planCommands($commands);
-            foreach ($planned['writes'] as $pending) {
+            foreach ([...$planned['writes'], ...$target->planSubagents($subagents)] as $pending) {
                 $this->writeAndPrune($projectRoot, $pending, $target, $checkOnly, $writes, $errors);
             }
 

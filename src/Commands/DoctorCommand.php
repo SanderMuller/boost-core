@@ -135,6 +135,7 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportConventionsBlock($io, $driftResult);
         $this->reportConventionTokenLeaks($io, $projectRoot, $config);
         $this->reportAgentDirSymlinks($io, $projectRoot);
+        (new SubagentReporter())->report($io, $projectRoot, $config, $this->injectedPackages, $configOverride);
         if ($input->getOption('check-versions') === true) {
             $this->reportPathRepoShadows($io, $projectRoot);
         }

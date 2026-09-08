@@ -19,6 +19,7 @@ Shared behavior, written once for every family member.
 - [Skill assets](guide/skill-assets.md) — ship a script or reference file beside a skill
 - [Remote skills](guide/remote-skills.md) — `withRemoteSkills()`, the cache, the trust model
 - [Commands](guide/commands.md) — command fan-out targets and argument placeholders
+- [Subagents](guide/subagents.md) — ship a Claude Code pass that runs in its own context
 - [Skill rendering](guide/skill-rendering.md) — `SkillRenderer` dispatch, failure modes, authoring
 - [Tags and dependencies](guide/tags-and-dependencies.md) — filtering, `boost-requires`, rescue
 - [Project Conventions](guide/conventions.md) — the slot schema and the token syntax

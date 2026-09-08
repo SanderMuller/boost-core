@@ -16,6 +16,12 @@ One exception: a tag-dropped skill that a shipping skill declares in its
 `withExcludedSkills()` drops a specific `vendor/package:skill-name` regardless of
 tags.
 
+### Subagents filter the same way
+
+Vendor **subagents** carry `metadata.boost-tags` and obey the same subset rule,
+with `withExcludedSkills()` as their deny-list too. See
+[Subagents](/guide/subagents).
+
 ### Guidelines filter the same way
 
 Vendor **guidelines** are tagged either by `metadata.boost-tags` or a sidecar
@@ -70,6 +76,10 @@ rescued skill's own requires ship as well.
 
 - **Bare names, not `vendor/package:` keys.** Dependencies bind to the name:
   a host `.ai/skills/` override of the dep satisfies it, and any provider can.
+- **`subagent:<name>` demands a subagent** instead of a skill, so the two may
+  share a name without the demand being ambiguous. Any other prefix is malformed.
+  See [Subagents](/guide/subagents) — including the floor a package must set
+  before it declares one.
 - **`withExcludedSkills()` wins.** An exclude removes that provider's copy
   from consideration; if no other provider holds the name, sync warns and the
   dependent ships degraded. Rescue never overrides an explicit deny.

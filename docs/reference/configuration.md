@@ -45,6 +45,7 @@ a duplicate `(source, version, mode)` entry.
 | `withSkillsPath(string)` | `.ai/skills` | Where host skills are read from |
 | `withGuidelinesPath(string)` | `.ai/guidelines` | Where host guidelines are read from |
 | `withCommandsPath(string)` | `.ai/commands` | Where host command templates are read from |
+| `withSubagentsPath(string)` | `.ai/subagents` | Where host [subagent](/guide/subagents) definitions are read from |
 
 ## Agents
 

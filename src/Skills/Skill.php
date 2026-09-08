@@ -19,6 +19,7 @@ final readonly class Skill
      * @param  bool  $tagsValid  False when `metadata.boost-tags` is present but malformed — the skill then fails closed (ships nowhere).
      * @param  list<SkillAsset>  $assets  Companion files from a nested skill dir (`scripts/`, `references/`, …), emitted beside SKILL.md in every agent target. Empty for flat-layout skills.
      * @param  list<string>  $requires  Bare skill names from the `metadata.boost-requires` frontmatter field — hard deps that must ship whenever this skill ships. Empty = no dependencies.
+     * @param  list<string>  $requiredSubagents  Subagent names from the `subagent:`-prefixed tokens of `metadata.boost-requires`. Appended (1.x additive rule) so positional construction by wrapper packages keeps working.
      * @param  bool  $requiresValid  False when `metadata.boost-requires` is present but malformed — unlike `tagsValid` this does NOT stop the skill from shipping (requires gate completeness, not scoping); it surfaces as a sync warning / validate error.
      */
     public function __construct(
@@ -33,6 +34,7 @@ final readonly class Skill
         public array $assets = [],
         public array $requires = [],
         public bool $requiresValid = true,
+        public array $requiredSubagents = [],
     ) {}
 
     public function isHostAuthored(): bool
@@ -58,6 +60,7 @@ final readonly class Skill
             $this->assets,
             $this->requires,
             $this->requiresValid,
+            $this->requiredSubagents,
         );
     }
 

@@ -256,3 +256,40 @@ it('dependency check: satisfied dependencies stay silent and pass --strict', fun
         validateCleanup($dir);
     }
 });
+
+it('dependency check: an unknown boost-requires prefix is an error and fails --strict', function (): void {
+    $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    try {
+        // A bare skill name never contains a colon, so `agent:` is a typo for
+        // `subagent:` rather than a syntax boost should silently accept.
+        $pkg = validateDepVendor($dir, 'acme/pack', [
+            'typo' => "metadata:\n  boost-requires: \"agent:auditor\"\n",
+        ]);
+
+        $result = runValidateWithPackages($dir, new InstalledPackages(['acme/pack' => $pkg]), ['--strict' => true]);
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+
+        expect($result['exit'])->toBe(1)
+            ->and($display)->toContain('malformed `metadata.boost-requires`');
+    } finally {
+        validateCleanup($dir);
+    }
+});
+
+it('dependency check: a well-formed subagent: require is not an error', function (): void {
+    $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(["acme/pack"])');
+    try {
+        $pkg = validateDepVendor($dir, 'acme/pack', [
+            'evaluate' => "metadata:\n  boost-requires: \"subagent:auditor\"\n",
+        ]);
+
+        $result = runValidateWithPackages($dir, new InstalledPackages(['acme/pack' => $pkg]), ['--strict' => true]);
+        $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
+
+        expect($display)->not->toContain('malformed `metadata.boost-requires`')
+            // It must also not be hunted for as a SKILL named `subagent:auditor`.
+            ->and($display)->not->toContain('subagent:auditor');
+    } finally {
+        validateCleanup($dir);
+    }
+});

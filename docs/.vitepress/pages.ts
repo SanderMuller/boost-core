@@ -94,6 +94,11 @@ export const areas: DocArea[] = [
                         blurb: 'Author a slash command once; sync transpiles the arguments per agent.',
                     },
                     {
+                        file: 'guide/subagents',
+                        text: 'Subagents',
+                        blurb: 'Ship a Claude Code review pass that runs in its own context, from a package.',
+                    },
+                    {
                         file: 'guide/skill-rendering',
                         text: 'Skill rendering',
                         blurb: 'Template-flavored skills, the renderer dispatch, and how a failure surfaces.',

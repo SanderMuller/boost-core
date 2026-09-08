@@ -536,3 +536,101 @@ it('0.18.0 where --conventions: a benign check-only advisory (uncached remote sk
         whereCleanup($vendorPath);
     }
 });
+
+// ============================================================================
+// SUBAGENTS category — host + vendor ingest, host-over-vendor shadowing, and
+// tag filtering, all copied from the skill pipeline.
+// ============================================================================
+
+function whereSubagentFixture(callable $body, string $configBody = "BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])->withAllowedVendors(['acme/pack'])"): void
+{
+    $root = sys_get_temp_dir() . '/boost-where-sub-' . bin2hex(random_bytes(8));
+    $vendorDir = sys_get_temp_dir() . '/boost-where-sub-vendor-' . bin2hex(random_bytes(8));
+    mkdir($root . '/.ai/subagents', 0o755, recursive: true);
+    mkdir($vendorDir . '/resources/boost/subagents', 0o755, recursive: true);
+    file_put_contents($vendorDir . '/composer.json', json_encode(['name' => 'acme/pack'], JSON_THROW_ON_ERROR));
+    file_put_contents(
+        $root . '/boost.php',
+        "<?php\nuse SanderMuller\\BoostCore\\Config\\BoostConfig;\nuse SanderMuller\\BoostCore\\Enums\\Agent;\nreturn {$configBody};\n",
+    );
+
+    try {
+        $body($root, $vendorDir);
+    } finally {
+        foreach ([$root, $vendorDir] as $dir) {
+            if (! is_dir($dir)) {
+                continue;
+            }
+
+            $iter = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            /** @var SplFileInfo $f */
+            foreach ($iter as $f) {
+                $path = $f->getPathname();
+                $f->isDir() ? @rmdir($path) : @unlink($path);
+            }
+
+            @rmdir($dir);
+        }
+    }
+}
+
+function runWhereWithVendor(string $root, string $vendorDir): string
+{
+    $packages = new InstalledPackages([
+        'acme/pack' => new PackageInfo('acme/pack', '1.0.0', $vendorDir),
+    ]);
+    $command = new WhereCommand($packages);
+    (new ComposerApplication())->addCommand($command);
+    $tester = new CommandTester($command);
+    $tester->execute(['--working-dir' => $root]);
+
+    return $tester->getDisplay();
+}
+
+it('boost where: renders a SUBAGENTS section with host and vendor origins', function (): void {
+    whereSubagentFixture(function (string $root, string $vendorDir): void {
+        file_put_contents($root . '/.ai/subagents/mine.md', "---\nname: mine\n---\nbody\n");
+        file_put_contents($vendorDir . '/resources/boost/subagents/theirs.md', "---\nname: theirs\n---\nbody\n");
+
+        $display = runWhereWithVendor($root, $vendorDir);
+
+        expect($display)->toContain('SUBAGENTS')
+            ->and($display)->toContain('.ai/subagents/ (host)')
+            ->and($display)->toContain('• mine')
+            ->and($display)->toContain('• theirs')
+            ->and($display)->toContain('acme/pack');
+    });
+});
+
+it('boost where: a host subagent shadows the vendor one of the same name', function (): void {
+    whereSubagentFixture(function (string $root, string $vendorDir): void {
+        file_put_contents($root . '/.ai/subagents/reviewer.md', "---\nname: reviewer\n---\nhost body\n");
+        file_put_contents($vendorDir . '/resources/boost/subagents/reviewer.md', "---\nname: reviewer\n---\nvendor body\n");
+
+        $display = runWhereWithVendor($root, $vendorDir);
+        $normalised = preg_replace('/\s+/', ' ', $display) ?? '';
+
+        // One entry survives, under the host origin, and the shadow is annotated.
+        expect($normalised)->toContain('SUBAGENTS')
+            ->and($normalised)->toContain('(shadows acme/pack)')
+            ->and(substr_count($normalised, '• reviewer'))->toBe(1);
+    });
+});
+
+it('boost where: a vendor subagent whose tags the consumer does not declare is filtered out', function (): void {
+    whereSubagentFixture(function (string $root, string $vendorDir): void {
+        file_put_contents(
+            $vendorDir . '/resources/boost/subagents/laravel-only.md',
+            "---\nname: laravel-only\nmetadata:\n  boost-tags: \"laravel\"\n---\nbody\n",
+        );
+        file_put_contents($vendorDir . '/resources/boost/subagents/untagged.md', "---\nname: untagged\n---\nbody\n");
+
+        $display = runWhereWithVendor($root, $vendorDir);
+
+        expect($display)->toContain('• untagged')
+            ->and($display)->not->toContain('• laravel-only');
+    });
+});

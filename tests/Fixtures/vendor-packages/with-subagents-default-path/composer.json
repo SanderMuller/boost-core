@@ -1,0 +1,5 @@
+{
+    "name": "test-fixture/with-subagents-default-path",
+    "description": "Fixture: publishes subagents at the convention path resources/boost/subagents.",
+    "type": "library"
+}

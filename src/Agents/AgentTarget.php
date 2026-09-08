@@ -9,7 +9,9 @@ use SanderMuller\BoostCore\Skills\Command;
 use SanderMuller\BoostCore\Skills\CommandTranspileResult;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\Skill;
+use SanderMuller\BoostCore\Skills\Subagent;
 use SanderMuller\BoostCore\Sync\PendingWrite;
+use SanderMuller\BoostCore\Sync\SyncEngine;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -64,6 +66,39 @@ abstract class AgentTarget
     }
 
     /**
+     * Where subagent definitions are written, relative to project root — or
+     * null when the agent has no subagent concept. Example: `.claude/agents`.
+     *
+     * Base default is null (no subagent surface); Claude Code overrides.
+     * Defaulted rather than abstract, per this class's 1.x guarantee — adding
+     * an abstract method would break every in-tree target and every subclass.
+     */
+    public function subagentsDirectoryRelative(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * The boost-owned subtree inside {@see subagentsDirectoryRelative()}.
+     *
+     * Emission nests one level deeper than the directory the agent scans,
+     * because boost must own a directory outright to gitignore and reap it,
+     * and the scanned root holds hand-written definitions boost never touches.
+     * Nesting is free: Claude Code scans recursively and a subagent's identity
+     * comes only from its `name` frontmatter, so the path adds no namespace.
+     */
+    public const string SUBAGENT_BOOST_SEGMENT = 'boost';
+
+    /**
+     * The segment reserved for host-authored subagents under the boost root.
+     *
+     * Needs no validation: a vendor segment is a Composer name flattened by
+     * {@see SyncEngine::packageSuffix()}, which always contains `__`, so no
+     * package can ever produce `host`.
+     */
+    public const string SUBAGENT_HOST_SEGMENT = 'host';
+
+    /**
      * File extension for an emitted command, without the leading dot.
      * Copilot overrides → `prompt.md`.
      */
@@ -93,6 +128,15 @@ abstract class AgentTarget
         $commands = $this->commandsDirectoryRelative();
         if ($commands !== null) {
             $patterns[] = $commands . '/';
+        }
+
+        // The BOOST SUBTREE only — never the scanned root. `.claude/agents/`
+        // holds hand-written definitions the operator tracks in git and boost
+        // must not claim; `.claude/agents/boost/` is 100% generated. Listing
+        // the root would gitignore an operator's own files.
+        $subagents = $this->subagentsDirectoryRelative();
+        if ($subagents !== null) {
+            $patterns[] = $subagents . '/' . self::SUBAGENT_BOOST_SEGMENT . '/';
         }
 
         return $patterns;
@@ -175,6 +219,70 @@ abstract class AgentTarget
         }
 
         return ['writes' => $writes, 'warnings' => $warnings];
+    }
+
+    /**
+     * Produce the set of writes for the given subagents — one file per
+     * subagent, namespaced by provenance inside the boost subtree. Empty when
+     * the agent has no subagent concept ({@see subagentsDirectoryRelative()}
+     * null), which is the silent skip: a target that cannot use subagents
+     * emits nothing and warns nothing, per sync run.
+     *
+     * Frontmatter and body pass through verbatim — there is no transpile step,
+     * because a subagent body carries no argument placeholders.
+     *
+     * @param  list<Subagent>  $subagents
+     * @return list<PendingWrite>
+     *
+     * @internal Engine emit-planning — operates on @internal Subagent/PendingWrite types.
+     */
+    public function planSubagents(array $subagents): array
+    {
+        $directory = $this->subagentsDirectoryRelative();
+        if ($directory === null) {
+            return [];
+        }
+
+        $writes = [];
+        foreach ($subagents as $subagent) {
+            $writes[] = new PendingWrite(
+                relativePath: $directory . '/' . self::SUBAGENT_BOOST_SEGMENT . '/' . self::subagentSegmentFor($subagent) . '/' . $subagent->name . '.md',
+                content: $this->formatSubagentContent($subagent),
+            );
+        }
+
+        return $writes;
+    }
+
+    /**
+     * The provenance segment a subagent emits under: `host` for a
+     * host-authored one, else the publishing package flattened by
+     * {@see SyncEngine::packageSuffix()} (`acme/pack` → `acme__pack`).
+     *
+     * The `__` separator comes from that helper and is why `host` is
+     * collision-free — see {@see SUBAGENT_HOST_SEGMENT}.
+     *
+     * @internal Takes the engine-internal Subagent type. Wrappers computing an
+     * emit path should read the `@api` path methods, not this.
+     */
+    public static function subagentSegmentFor(Subagent $subagent): string
+    {
+        return $subagent->sourceVendor === null
+            ? self::SUBAGENT_HOST_SEGMENT
+            : SyncEngine::packageSuffix($subagent->sourceVendor);
+    }
+
+    /**
+     * Render a subagent file: frontmatter verbatim, then the body. Boost never
+     * rewrites `tools`, `disallowedTools`, `model` or any other key — it cannot
+     * verify a consumer's permission surface, so it does not police claims
+     * about it.
+     *
+     * @internal
+     */
+    protected function formatSubagentContent(Subagent $subagent): string
+    {
+        return $this->renderFrontmatter($subagent->frontmatter) . $subagent->body;
     }
 
     /**

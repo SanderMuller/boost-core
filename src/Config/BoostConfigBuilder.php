@@ -37,6 +37,8 @@ final class BoostConfigBuilder
 
     private ?string $commandsPath = null;
 
+    private ?string $subagentsPath = null;
+
     /** @var list<string> */
     private array $disabledEmitters = [];
 
@@ -100,6 +102,17 @@ final class BoostConfigBuilder
     public function withCommandsPath(string $path): self
     {
         $this->commandsPath = $path;
+
+        return $this;
+    }
+
+    /**
+     * Where host-authored subagent definitions live. Defaults to
+     * `<project>/.ai/subagents`.
+     */
+    public function withSubagentsPath(string $path): self
+    {
+        $this->subagentsPath = $path;
 
         return $this;
     }
@@ -292,6 +305,7 @@ final class BoostConfigBuilder
             remoteSkills: $this->remoteSkills,
             skillRenderers: $this->buildSkillRenderers(),
             conventions: $this->conventions,
+            subagentsPath: $this->subagentsPath ?? $projectRoot . '/.ai/subagents',
         );
     }
 

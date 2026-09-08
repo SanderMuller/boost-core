@@ -44,6 +44,7 @@ every agent you selected in `withAgents(...)`:
 | `.ai/skills/<name>/scripts/` etc. | Skill asset siblings (scripts, references) | Copied verbatim beside each emitted `SKILL.md` |
 | `.ai/guidelines/` | Always-loaded guidance           | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot file |
 | `.ai/commands/`   | Slash-command prompt templates   | Per-agent command dirs (see [Commands](#commands))  |
+| `.ai/subagents/`  | Claude Code subagent definitions | `.claude/agents/boost/host/<name>.md` (Claude Code only) |
 
 Skills and commands land in gitignored per-agent directories; the guidance files
 stay tracked. See [File ownership](#file-ownership) for why.
@@ -420,6 +421,7 @@ Full documentation for boost-core and every family package is at
 - [Remote skills](https://sandermuller.github.io/boost-core/guide/remote-skills) — remote GitHub skill sources in full
 - [Tags and dependencies](https://sandermuller.github.io/boost-core/guide/tags-and-dependencies) — tag filtering and `boost-requires` in full
 - [Commands](https://sandermuller.github.io/boost-core/guide/commands) — command fan-out targets and argument placeholders
+- [Subagents](https://sandermuller.github.io/boost-core/guide/subagents) — package-shipped Claude Code subagents, and the `subagent:` require
 - [Skill rendering](https://sandermuller.github.io/boost-core/guide/skill-rendering) — `SkillRenderer` dispatch, failure modes, authoring
 - [Automating the sync](https://sandermuller.github.io/boost-core/guide/automating-sync) — Composer hooks, self-syncing CLI tools, user scope
 - [Project Conventions](https://sandermuller.github.io/boost-core/guide/conventions) — the slot reference

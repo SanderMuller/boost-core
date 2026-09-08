@@ -49,3 +49,56 @@ it('declaresRequires is true whenever the metadata.boost-requires key is present
         ->and(BoostRequires::declaresRequires(['metadata' => 'not-a-map']))->toBeFalse()
         ->and(BoostRequires::declaresRequires([]))->toBeFalse();
 });
+
+it('keeps parse() returning bare skill names only, never a prefixed token', function (): void {
+    // The @api contract a pinned wrapper depends on: it must not receive
+    // `subagent:foo` and report it as a missing skill.
+    [$requires, $valid] = BoostRequires::parse([
+        'metadata' => ['boost-requires' => 'write-spec subagent:simplification-auditor code-review'],
+    ]);
+
+    expect($requires)->toBe(['write-spec', 'code-review'])
+        ->and($valid)->toBeTrue();
+});
+
+it('returns subagent demands with the prefix stripped', function (): void {
+    [$subagents, $valid] = BoostRequires::parseSubagents([
+        'metadata' => ['boost-requires' => 'write-spec subagent:simplification-auditor subagent:tech-lead-reviewer'],
+    ]);
+
+    expect($subagents)->toBe(['simplification-auditor', 'tech-lead-reviewer'])
+        ->and($valid)->toBeTrue();
+});
+
+it('returns no subagents when none are declared', function (): void {
+    expect(BoostRequires::parseSubagents(['metadata' => ['boost-requires' => 'write-spec']])[0])->toBe([]);
+    expect(BoostRequires::parseSubagents([])[0])->toBe([]);
+});
+
+it('marks an unknown prefix invalid without dropping the valid tokens', function (): void {
+    // A bare skill name never contains a colon, so `foo:bar` is a typo, not a
+    // new syntax. Invalid means "sync warns, validate --strict errors" — the
+    // skill still ships, because requires gate completeness, not scoping.
+    [$requires, $valid] = BoostRequires::parse([
+        'metadata' => ['boost-requires' => 'write-spec foo:bar'],
+    ]);
+
+    expect($requires)->toBe(['write-spec'])
+        ->and($valid)->toBeFalse();
+});
+
+it('marks a bare `subagent:` with no name invalid', function (): void {
+    [$subagents, $valid] = BoostRequires::parseSubagents([
+        'metadata' => ['boost-requires' => 'subagent:'],
+    ]);
+
+    expect($subagents)->toBe([])
+        ->and($valid)->toBeFalse();
+});
+
+it('reports the same validity from both parsers', function (): void {
+    $frontmatter = ['metadata' => ['boost-requires' => 'foo:bar']];
+
+    expect(BoostRequires::parse($frontmatter)[1])->toBeFalse()
+        ->and(BoostRequires::parseSubagents($frontmatter)[1])->toBeFalse();
+});

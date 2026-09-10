@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   help text now names the guidelines half that 1.10.0 added, so `--help` stops
   contradicting the docs.
 
+- `.boost-user-scope.yaml` reads a leading `./` as the same file, and drops an
+  entry that reaches outside the guidelines directory (an absolute path, or one
+  with a `..` segment). `./voice.md` resolved on disk but never matched the
+  relative path eligibility compares against, so the guideline silently never
+  published.
+
 ### Internal
 
 - Cover the user-scope guideline publication end to end through `bin/boost`,

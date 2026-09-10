@@ -88,6 +88,10 @@ safe. A package declares eligibility in one of two ways:
 - laravel/voice.md
 ```
 
+A leading `./` is read as the same file. An entry that reaches outside the
+guidelines directory — an absolute path, or one with a `..` segment — is
+dropped: eligibility decides what enters every session on the machine.
+
 ```markdown
 <!-- or, for a package whose guidelines carry frontmatter -->
 ---

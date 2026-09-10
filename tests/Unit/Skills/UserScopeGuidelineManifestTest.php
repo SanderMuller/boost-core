@@ -51,3 +51,13 @@ it('reads a comment-only sidecar as listing nothing', function (): void {
 it('ignores a non-string entry', function (): void {
     expect(loadUserScopeManifest("- voice.md\n- 42\n")->listedPaths())->toBe(['voice.md']);
 });
+
+it('reads a leading ./ as the same file, since eligibility compares relative paths', function (): void {
+    expect(loadUserScopeManifest("- ./voice.md\n")->isEligible('voice.md'))->toBeTrue();
+});
+
+it('drops an entry that reaches outside the guidelines directory', function (): void {
+    $manifest = loadUserScopeManifest("- ../escape.md\n- /etc/passwd\n- nested/../../escape.md\n- nested/ok.md\n");
+
+    expect($manifest->listedPaths())->toBe(['nested/ok.md']);
+});

@@ -87,12 +87,40 @@ final readonly class UserScopeGuidelineManifest
 
         $eligible = [];
         foreach ($parsed as $filename) {
-            if (is_string($filename) && $filename !== '') {
-                $eligible[$filename] = true;
+            $normalized = is_string($filename) ? self::normalize($filename) : null;
+            if ($normalized !== null) {
+                $eligible[$normalized] = true;
             }
         }
 
         return new self($eligible);
+    }
+
+    /**
+     * Normalize one entry to the form {@see isEligible()} compares against, or
+     * null when the entry can never name a guideline inside the directory.
+     *
+     * Eligibility is compared against the Finder's relative pathname, so
+     * `./voice.md` would resolve on disk yet never match — the guideline would
+     * simply never publish, with no error anywhere. A leading `./` is therefore
+     * stripped rather than refused: it unambiguously means the same file.
+     *
+     * An absolute path or one containing a `..` segment is dropped. Eligibility
+     * decides what goes into every session on the machine, so it must not be
+     * addressable outside the package's own guidelines directory.
+     */
+    private static function normalize(string $entry): ?string
+    {
+        $trimmed = ltrim($entry, '/') === $entry ? $entry : '';
+        while (str_starts_with($trimmed, './')) {
+            $trimmed = substr($trimmed, 2);
+        }
+
+        if ($trimmed === '' || in_array('..', explode('/', $trimmed), true)) {
+            return null;
+        }
+
+        return $trimmed;
     }
 
     /**

@@ -158,8 +158,10 @@ BOOST_SKIP_GITIGNORE=1 composer install
 
 ## User-scope cleanup-on-remove
 
-User scope (`boost sync --scope=user`) reaps the files of a package you've
-`composer global remove`d, the global counterpart of the project-scope reap.
+User scope (`boost sync --scope=user --all`) reaps the files of a package you've
+`composer global remove`d, the global counterpart of the project-scope reap. The
+`--all` form is the one that walks installed packages; bare `--scope=user`
+publishes the working directory's own package and reconciles only that one.
 Each user-scope sync records a per-package ownership manifest at
 `~/.boost/manifests/<vendor>__<package>.json`. On the next
 `boost sync --scope=user --all`, any manifest whose recorded package **install

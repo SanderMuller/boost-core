@@ -95,8 +95,13 @@ final readonly class UserScopeGuidelineManifest
         return new self($eligible);
     }
 
-    public function isEligible(string $filename): bool
+    /**
+     * @param  string  $relativePath  path relative to the guidelines directory —
+     *   the Finder recurses, so a bare basename would make one entry publish
+     *   every same-named guideline in every subdirectory.
+     */
+    public function isEligible(string $relativePath): bool
     {
-        return isset($this->eligible[$filename]);
+        return isset($this->eligible[$relativePath]);
     }
 }

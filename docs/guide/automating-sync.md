@@ -81,9 +81,11 @@ So user scope publishes only the guidelines the **author** marked machine-wide
 safe. A package declares eligibility in one of two ways:
 
 ```yaml
-# resources/boost/guidelines/.boost-user-scope.yaml — a list of filenames
+# resources/boost/guidelines/.boost-user-scope.yaml — paths relative to the
+# guidelines directory, one per line
 - voice.md
 - verification-before-completion.md
+- laravel/voice.md
 ```
 
 ```markdown
@@ -122,7 +124,9 @@ Four rules govern the mechanism:
   publishing a raw token into every session.
 - **Both carriers fail closed.** An unreadable sidecar, a sidecar that is not a
   list, or a `metadata.boost-user-scope` that is not `true` all mean "not
-  eligible".
+  eligible". An eligible guideline that no registered renderer can read (a
+  `.blade.php` guideline on the bare-CLI path, say) fails the plan rather than
+  publishing guidance without it.
 - **The package must also ship skills.** `--scope=user --all` discovers and
   reaps packages by `resources/boost/skills/`, so a guidelines-only package is
   not seen. This is a v1 limit, not a design position; it widens when such a

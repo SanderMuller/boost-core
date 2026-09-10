@@ -126,9 +126,14 @@ final readonly class GuidelineLoader
             // User-scope eligibility is an AUTHOR claim, independent of tags:
             // frontmatter wins, else the `.boost-user-scope.yaml` sidecar (the
             // only carrier for frontmatter-free, laravel/boost-safe guidelines).
+            //
+            // Keyed on the path RELATIVE to the guidelines directory, not the
+            // bare filename: the Finder recurses, so a basename key would make
+            // one entry publish every same-named guideline in every
+            // subdirectory. For a flat directory the two are identical.
             $userScopeEligible = $this->declaresUserScope($parsed->frontmatter)
                 ? $this->readUserScope($parsed->frontmatter)
-                : $userScope->isEligible($file->getFilename());
+                : $userScope->isEligible($file->getRelativePathname());
 
             yield new Guideline(
                 name: $name,

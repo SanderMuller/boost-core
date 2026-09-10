@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guidelines render into one boost-owned file per package,
   `~/.claude/boost/<vendor>__<package>.md`, which the operator activates with a
   single import line. Boost never writes `~/.claude/CLAUDE.md`.
+- Sidecar entries are paths relative to the guidelines directory, so one entry
+  names one file even when guidelines are nested in subdirectories.
 - Eligibility is independent of tags. A tag scopes a guideline to projects and
   needs a `boost.php` to answer; user scope has none, so the two sidecars answer
   different questions and never interact. A guideline can be both tagged and

@@ -6,6 +6,9 @@ use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Conventions\ConventionsInliner;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\GuidelineLoader;
+use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
+use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
+use SanderMuller\BoostCore\Skills\UnrenderableSourceScanner;
 use SanderMuller\BoostCore\Skills\UserScopeGuidelineManifest;
 use Throwable;
 
@@ -150,6 +153,38 @@ final readonly class UserScopeGuidancePlanner
     }
 
     /**
+     * An eligible guideline no registered renderer can read never reaches the
+     * loader — it is dropped with a WARNING, not an error. At project scope that
+     * costs one guideline; here it would silently publish a guidance file
+     * missing the very content the author selected, or reap the file when
+     * nothing else remains. So a skipped source the sidecar names is promoted to
+     * a planning error, which holds the last-known-good file.
+     *
+     * Only the sidecar can be consulted: a source that cannot be rendered cannot
+     * have its frontmatter read either.
+     *
+     * @param  list<string>  $errors  out-parameter
+     */
+    private function reportUnrenderableEligible(string $directory, array &$errors): void
+    {
+        $manifest = UserScopeGuidelineManifest::load($directory);
+        $dispatcher = new SkillRendererDispatcher([new PassthroughRenderer()]);
+
+        foreach ((new UnrenderableSourceScanner())->guidelineSkips($directory, $dispatcher) as $source) {
+            if (! $manifest->isEligible($source->relativePath)) {
+                continue;
+            }
+
+            $errors[] = sprintf(
+                'Guideline `%s` is listed in %s but no registered renderer can read it, so it cannot be published at user scope: %s',
+                $source->relativePath,
+                UserScopeGuidelineManifest::FILENAME,
+                $source->message,
+            );
+        }
+    }
+
+    /**
      * @param  list<string>  $errors
      * @return list<Guideline>
      */
@@ -164,6 +199,8 @@ final readonly class UserScopeGuidancePlanner
         $renderErrors = [];
         /** @var list<Guideline> $eligible */
         $eligible = [];
+
+        $this->reportUnrenderableEligible($directory, $errors);
 
         foreach ($this->guidelineLoader->load($directory, $packageName, errors: $renderErrors, projectRoot: $packageRoot) as $guideline) {
             if (! $guideline->userScopeEligible) {

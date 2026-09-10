@@ -1178,3 +1178,61 @@ it('preserves the last-known-good guidance file when one eligible guideline is r
         rmTreeUserScope($home);
     }
 });
+
+it('does not publish a nested guideline that shares a basename with an eligible one', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Top-level voice.\n");
+        mkdir($guidelines . '/laravel', 0o755, recursive: true);
+        file_put_contents($guidelines . '/laravel/voice.md', "Laravel-only voice.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect((string) file_get_contents($home . '/.claude/boost/acme__kit.md'))
+            ->toContain('Top-level voice.')
+            ->not->toContain('Laravel-only voice.');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('refuses an eligible guideline no registered renderer can read', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+        expect($emitted)->toBeFile();
+
+        // A Blade guideline is selected, but no BladeRenderer is registered on
+        // the bare-CLI path. The loader drops it with a warning, which would
+        // publish guidance missing the selected content — so planning fails and
+        // the last-known-good file is held.
+        file_put_contents($guidelines . '/gates.blade.php', "Gate rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n- gates.blade.php\n");
+        file_put_contents($guidelines . '/voice.md', "Voice rules, revised.\n");
+        $result = $engine->syncUser($pkg, homeRoot: $home);
+
+        expect($result->errors)->not->toBeEmpty()
+            ->and(implode("\n", $result->errors))->toContain('no registered renderer')
+            ->and((string) file_get_contents($emitted))->toBe("Voice rules.\n");
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

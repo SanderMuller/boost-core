@@ -37,34 +37,43 @@ final readonly class UserScopeGuidancePlanner
     ) {}
 
     /**
-     * @param  list<AgentTarget>  $agentTargets
+     * `keep` spans the FULL agent catalog while `writes` covers only the ACTIVE
+     * targets. The two differ whenever the engine is narrowed
+     * (`new SyncEngine([new CursorTarget()])`): such a run plans no Claude Code
+     * guidance, but the package is still eligible, so the Claude file on disk is
+     * live and must not be reaped. Keying the keep set on ELIGIBILITY rather
+     * than on this run's emissions is the same rule
+     * {@see UserScopeReaper::keepAcrossAgents()} applies to skills. A package
+     * with nothing eligible keeps nothing, so withdrawal still reaps.
+     *
+     * @param  list<AgentTarget>  $agentTargets  the engine's ACTIVE targets
      * @param  list<string>  $errors  out-parameter: render failures and refused guidelines
-     * @return array<string, array{target: AgentTarget, content: string}>  relative path → planned write
+     * @return array{writes: array<string, array{target: AgentTarget, content: string}>, keep: array<string, true>}
      */
     public function plan(string $packageRoot, string $packageName, array $agentTargets, array &$errors): array
     {
         $eligible = $this->eligibleGuidelines($packageRoot, $packageName, $errors);
         if ($eligible === []) {
-            return [];
+            return ['writes' => [], 'keep' => []];
         }
 
         $slug = SyncEngine::packageSuffix($packageName);
 
-        /** @var array<string, array{target: AgentTarget, content: string}> $planned */
-        $planned = [];
+        /** @var array<string, array{target: AgentTarget, content: string}> $writes */
+        $writes = [];
         foreach ($agentTargets as $target) {
             $relative = $target->userScopeGuidanceFileRelative($slug);
             if ($relative === null) {
                 continue;
             }
 
-            $planned[$relative] = [
+            $writes[$relative] = [
                 'target' => $target,
                 'content' => $target->formatGuidelinesContent($eligible),
             ];
         }
 
-        return $planned;
+        return ['writes' => $writes, 'keep' => array_fill_keys(self::guidancePathsForSlug($slug), true)];
     }
 
     /**

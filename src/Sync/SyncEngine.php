@@ -286,10 +286,11 @@ final readonly class SyncEngine
         // User-scope guidelines: only the author-eligible subset, one
         // boost-owned file per package per agent that supports the mechanism.
         $guidancePlanner = new UserScopeGuidancePlanner($this->guidelineLoader);
+        $guidancePlan = $guidancePlanner->plan($packageRoot, $packageName, $this->agentTargets, $errors);
         $guidanceEmitted = $guidancePlanner->emit(
             $this->writer,
             $home,
-            $guidancePlanner->plan($packageRoot, $packageName, $this->agentTargets, $errors),
+            $guidancePlan['writes'],
             $checkOnly,
             $writes,
             $errors,
@@ -320,10 +321,12 @@ final readonly class SyncEngine
             $keep = $this->userScopeKeepAcrossAgents($emittedPaths, $packageName);
 
             // A guidance file lives outside `<skillsDir>/<slug>/`, so the
-            // skill-keyed keep set never covers it. Keep exactly the guidance
-            // paths emitted this run: a package that drops its last eligible
-            // guideline emits none, and the reaper then removes the stale file.
-            $keep = [...$keep, ...$guidanceEmitted];
+            // skill-keyed keep set never covers it. The planner's keep set spans
+            // the full agent catalog and is keyed on ELIGIBILITY, not on this
+            // run's emissions, so a narrowed engine never reaps an inactive
+            // agent's live guidance — while a package that drops its last
+            // eligible guideline keeps nothing and the stale file is reaped.
+            $keep = [...$keep, ...$guidancePlan['keep']];
 
             // Clean-slate: reap prior-recorded paths whose skill this package no
             // longer emits (a dropped/renamed skill), sha-gated + slug-validated.

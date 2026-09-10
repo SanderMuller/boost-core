@@ -1118,3 +1118,31 @@ it('reaps the user-scope guidance file of a package that was globally removed', 
         rmTreeUserScope($home);
     }
 });
+
+it('keeps a live guidance file when a later sync drives a narrowed agent set', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+        expect($emitted)->toBeFile();
+
+        // A narrowed engine plans no Claude Code guidance, but the package is
+        // still eligible — the file on disk is live and must survive.
+        (new SyncEngine([new CursorTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect($emitted)->toBeFile("a narrowed run must not reap an inactive agent's live guidance");
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

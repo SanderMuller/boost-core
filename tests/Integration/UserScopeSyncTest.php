@@ -1261,3 +1261,29 @@ it('publishes nothing at all when guidance planning fails, skills included', fun
         rmTreeUserScope($home);
     }
 });
+
+it('does not block user-scope sync when a project-only guideline fails to render', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        // A Blade guideline no renderer claims on the bare-CLI path. It is not
+        // user-scope eligible, so it belongs to project scope alone and must
+        // not stop this package publishing machine-wide.
+        file_put_contents($guidelines . '/migrations.blade.php', "Project-only.\n");
+
+        $result = (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect($result->errors)->toBeEmpty()
+            ->and((string) file_get_contents($home . '/.claude/boost/acme__kit.md'))->toContain('Voice rules.');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

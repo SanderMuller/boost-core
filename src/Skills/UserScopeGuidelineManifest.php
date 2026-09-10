@@ -104,4 +104,14 @@ final readonly class UserScopeGuidelineManifest
     {
         return isset($this->eligible[$relativePath]);
     }
+
+    /**
+     * Every path the sidecar lists, whether or not a guideline exists there.
+     *
+     * @return list<string>
+     */
+    public function listedPaths(): array
+    {
+        return array_keys($this->eligible);
+    }
 }

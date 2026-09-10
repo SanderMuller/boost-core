@@ -185,6 +185,37 @@ final readonly class UserScopeGuidancePlanner
     }
 
     /**
+     * Promote a render failure to a user-scope planning error only when it
+     * concerns a guideline the sidecar selected.
+     *
+     * A planning error stops the package's whole user-scope publication, so a
+     * project-only guideline that fails to render must not block a machine-wide
+     * sync it has no part in. The failure still surfaces at project scope, where
+     * it belongs — the loader reports it on every project sync.
+     *
+     * A failed render leaves no frontmatter to read, so the sidecar is the only
+     * eligibility source here, exactly as in
+     * {@see reportUnrenderableEligible()}.
+     *
+     * @param  list<string>  $renderErrors  loader messages, each naming its source path in backticks
+     * @param  list<string>  $errors  out-parameter
+     */
+    private function reportEligibleRenderFailures(string $directory, array $renderErrors, array &$errors): void
+    {
+        $listed = UserScopeGuidelineManifest::load($directory)->listedPaths();
+
+        foreach ($renderErrors as $renderError) {
+            foreach ($listed as $path) {
+                if (str_contains($renderError, '`' . $path . '`')) {
+                    $errors[] = $renderError;
+
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
      * @param  list<string>  $errors
      * @return list<Guideline>
      */
@@ -221,9 +252,7 @@ final readonly class UserScopeGuidancePlanner
             $eligible[] = $guideline;
         }
 
-        foreach ($renderErrors as $renderError) {
-            $errors[] = $renderError;
-        }
+        $this->reportEligibleRenderFailures($directory, $renderErrors, $errors);
 
         return $eligible;
     }

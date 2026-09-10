@@ -22,9 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   needs a `boost.php` to answer; user scope has none, so the two sidecars answer
   different questions and never interact. A guideline can be both tagged and
   user-scope eligible.
+- A guideline the sidecar selects that no registered renderer can read fails the
+  plan too, rather than publishing guidance without it. A render failure that
+  concerns a guideline the sidecar does not select never blocks user-scope
+  publication — it belongs to project scope alone.
 - An eligible guideline that holds a conventions token is refused with an error.
   The token cannot resolve without a `boost.php`, so publishing it would put a
-  raw token in every session.
+  raw token in every session. A failed plan publishes nothing at all — skills
+  included — because an unclean run skips the ownership manifest update, and
+  files written under a stale manifest could never be reaped.
 - `AgentTarget::userScopeGuidanceFileRelative()` — the per-agent user-scope
   guidance path, defaulting to `null`. Claude Code overrides it; user-level
   import semantics are verified for Claude Code only, so no other agent opts in

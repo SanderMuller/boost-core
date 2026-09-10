@@ -1089,3 +1089,32 @@ it('writes no user-scope guidance for an agent with no verified user-level mecha
         rmTreeUserScope($home);
     }
 });
+
+it('reaps the user-scope guidance file of a package that was globally removed', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+        expect($emitted)->toBeFile();
+
+        // `composer global remove`: the recorded install path is gone, so
+        // reconcile-on-remove reaps the package's files — guidance included.
+        rmTreeUserScope($pkg);
+        $engine->syncUserAll(homeRoot: $home);
+
+        expect($emitted)->not->toBeFile('a removed package must not leave guidance in every session')
+            ->and(is_dir($home . '/.claude/skills/acme__kit'))->toBeFalse();
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

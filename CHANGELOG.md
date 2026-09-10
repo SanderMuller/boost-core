@@ -7,23 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.9.1...HEAD)
 
-## [1.9.1](https://github.com/sandermuller/boost-core/compare/1.9.0...1.9.1) - 2026-09-08
-
-<!-- verified-sha: 7c579c698fc8b266031d3408a304f76c2717bd14 -->
-Documentation only. 1.9.0's subagent guide described a workflow the engine does
-not reward, and the first package to follow it drafted a floor bump it did not
-need.
-
-### Documentation
-
-- [Subagents](https://sandermuller.github.io/boost-core/guide/subagents) read as though a package shipping subagents declares `boost-requires: "subagent:<name>"` and floors `boost-core` accordingly. That is right for a **tagged** subagent, where the require is what rescues it, and for one a consumer is likely to deny-list, where the require is what reports the demand. It is wasteful everywhere else: an untagged, non-deny-listed subagent is already resolved by the time dependencies are considered, so the token produces no rescue, no warning, and no `boost doctor` line — emission is identical with and without it. The page now carries the matrix and says which case is which, next to the floor warning, so the trade is visible before a package pays for it.
-
-No behaviour changed. A package already shipping untagged subagents needs no
-floor at all: the files are ignored by engines older than 1.9.0 and picked up by
-1.9.0 and later, with no version coordination either way.
-
-**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.9.0...1.9.1
-
 ### Added
 
 - User-scope guidelines. A package can now publish a guideline machine-wide, not
@@ -51,6 +34,23 @@ floor at all: the files are ignored by engines older than 1.9.0 and picked up by
   `resources/boost/skills/`. `--scope=user --all` discovers and reaps packages by
   that directory, so a guidelines-only package is not seen. This widens when such
   a package appears.
+
+## [1.9.1](https://github.com/sandermuller/boost-core/compare/1.9.0...1.9.1) - 2026-09-08
+
+<!-- verified-sha: 7c579c698fc8b266031d3408a304f76c2717bd14 -->
+Documentation only. 1.9.0's subagent guide described a workflow the engine does
+not reward, and the first package to follow it drafted a floor bump it did not
+need.
+
+### Documentation
+
+- [Subagents](https://sandermuller.github.io/boost-core/guide/subagents) read as though a package shipping subagents declares `boost-requires: "subagent:<name>"` and floors `boost-core` accordingly. That is right for a **tagged** subagent, where the require is what rescues it, and for one a consumer is likely to deny-list, where the require is what reports the demand. It is wasteful everywhere else: an untagged, non-deny-listed subagent is already resolved by the time dependencies are considered, so the token produces no rescue, no warning, and no `boost doctor` line — emission is identical with and without it. The page now carries the matrix and says which case is which, next to the floor warning, so the trade is visible before a package pays for it.
+
+No behaviour changed. A package already shipping untagged subagents needs no
+floor at all: the files are ignored by engines older than 1.9.0 and picked up by
+1.9.0 and later, with no version coordination either way.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.9.0...1.9.1
 
 ## [1.9.0](https://github.com/sandermuller/boost-core/compare/1.8.1...1.9.0) - 2026-09-08
 

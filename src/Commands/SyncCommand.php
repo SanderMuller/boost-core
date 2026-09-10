@@ -40,7 +40,7 @@ final class SyncCommand extends BoostBaseCommand implements TouchesResolutionPip
                 'scope',
                 null,
                 InputOption::VALUE_REQUIRED,
-                "Sync scope: `project` (default, reads .ai/ + boost.php) or `user` (publishes a package's resources/boost/skills/ wholesale into ~/.{agent}/skills/<pkg>/ — no boost.php, so no tag or allowlist filtering).",
+                "Sync scope: `project` (default, reads .ai/ + boost.php) or `user` (publishes a package's resources/boost/skills/ wholesale into ~/.{agent}/skills/<pkg>/, plus the guidelines its author marked user-scope eligible into ~/.claude/boost/<pkg>.md — no boost.php, so no tag or allowlist filtering).",
                 'project',
             )
             ->addOption(

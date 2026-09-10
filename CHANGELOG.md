@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.10.0...HEAD)
 
+### Fixed
+
+- `boost sync --scope=user` described itself as publishing skills only. The
+  help text now names the guidelines half that 1.10.0 added, so `--help` stops
+  contradicting the docs.
+
+### Internal
+
+- Cover the user-scope guideline publication end to end through `bin/boost`,
+  not only through the engine.
+
 ## [1.10.0](https://github.com/sandermuller/boost-core/compare/1.9.1...1.10.0) - 2026-09-10
 
 <!-- verified-sha: 32b80ee0f9eb3aa8c904a182661014b7b578d4b6 -->

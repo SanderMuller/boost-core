@@ -7,6 +7,7 @@ use SanderMuller\BoostCore\Sync\PackageInfo;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\WriteAction;
 use SanderMuller\BoostCore\Sync\WrittenFile;
+use Symfony\Component\Process\Process;
 
 /**
  * @return array{package: string, home: string}
@@ -1315,6 +1316,38 @@ it('refuses a selected guideline whose extension no renderer claims', function (
         expect($result->errors)->not->toBeEmpty()
             ->and(implode("\n", $result->errors))->toContain('no registered renderer')
             ->and((string) file_get_contents($emitted))->toBe("Voice rules.\n");
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('publishes eligible guidelines through the real CLI, not only the engine', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/migrations.md', "Project-specific.\n");
+        file_put_contents($guidelines . '/.boost-tags.yaml', "voice.md: \"voice\"\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        $process = Process::fromShellCommandline(
+            'php ' . escapeshellarg(dirname(__DIR__, 2) . '/bin/boost') . ' sync --scope=user',
+            cwd: $pkg,
+            env: ['HOME' => $home],
+        );
+        $process->run();
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+
+        expect($process->getExitCode())->toBe(0, $process->getOutput() . $process->getErrorOutput())
+            ->and($emitted)->toBeFile()
+            ->and((string) file_get_contents($emitted))->toContain('Voice rules.')
+            ->and((string) file_get_contents($emitted))->not->toContain('Project-specific.')
+            ->and($home . '/CLAUDE.md')->not->toBeFile();
     } finally {
         rmTreeUserScope($pkg);
         rmTreeUserScope($home);

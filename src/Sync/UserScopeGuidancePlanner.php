@@ -46,18 +46,38 @@ final readonly class UserScopeGuidancePlanner
      * {@see UserScopeReaper::keepAcrossAgents()} applies to skills. A package
      * with nothing eligible keeps nothing, so withdrawal still reaps.
      *
+     * A planning error — a refused token, a failed render — returns NO writes,
+     * even when other guidelines planned cleanly. The guidance file is written
+     * wholesale, so a partial body would silently drop content; and the run's
+     * error stops the manifest update, which would leave the recorded sha
+     * describing the previous file. The reaper would then read the partial file
+     * as operator-edited and preserve it forever. Holding the last-known-good
+     * file is the same trade {@see GuidanceWriter} makes at project scope when a
+     * guideline render fails.
+     *
      * @param  list<AgentTarget>  $agentTargets  the engine's ACTIVE targets
      * @param  list<string>  $errors  out-parameter: render failures and refused guidelines
      * @return array{writes: array<string, array{target: AgentTarget, content: string}>, keep: array<string, true>}
      */
     public function plan(string $packageRoot, string $packageName, array $agentTargets, array &$errors): array
     {
-        $eligible = $this->eligibleGuidelines($packageRoot, $packageName, $errors);
+        /** @var list<string> $planErrors */
+        $planErrors = [];
+        $eligible = $this->eligibleGuidelines($packageRoot, $packageName, $planErrors);
+        $errors = [...$errors, ...$planErrors];
+
+        $slug = SyncEngine::packageSuffix($packageName);
+
+        if ($planErrors !== []) {
+            // Nothing is written, but the package still claims its guidance
+            // paths: the file on disk is the last-known-good copy, not an
+            // orphan, and must survive the degraded run.
+            return ['writes' => [], 'keep' => array_fill_keys(self::guidancePathsForSlug($slug), true)];
+        }
+
         if ($eligible === []) {
             return ['writes' => [], 'keep' => []];
         }
-
-        $slug = SyncEngine::packageSuffix($packageName);
 
         /** @var array<string, array{target: AgentTarget, content: string}> $writes */
         $writes = [];

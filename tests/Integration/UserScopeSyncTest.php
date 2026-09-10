@@ -1146,3 +1146,35 @@ it('keeps a live guidance file when a later sync drives a narrowed agent set', f
         rmTreeUserScope($home);
     }
 });
+
+it('preserves the last-known-good guidance file when one eligible guideline is refused', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n- gates.md\n");
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+        expect($emitted)->toBeFile();
+
+        // A second eligible guideline arrives holding a conventions token, and
+        // the first one changes in the same run. The whole guidance write is
+        // skipped: a partial body would silently drop content, and the run's
+        // error stops the manifest update.
+        file_put_contents($guidelines . '/gates.md', "Gate: <!--boost:conv path=\"pr.gates\" mode=\"inline\"-->\n");
+        file_put_contents($guidelines . '/voice.md', "Voice rules, revised.\n");
+        $result = $engine->syncUser($pkg, homeRoot: $home);
+
+        expect($result->errors)->not->toBeEmpty()
+            ->and((string) file_get_contents($emitted))->toBe("Voice rules.\n");
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

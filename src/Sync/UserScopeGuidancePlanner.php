@@ -6,9 +6,9 @@ use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Conventions\ConventionsInliner;
 use SanderMuller\BoostCore\Skills\Guideline;
 use SanderMuller\BoostCore\Skills\GuidelineLoader;
+use SanderMuller\BoostCore\Skills\Rendering\MatchedRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\PassthroughRenderer;
 use SanderMuller\BoostCore\Skills\Rendering\SkillRendererDispatcher;
-use SanderMuller\BoostCore\Skills\UnrenderableSourceScanner;
 use SanderMuller\BoostCore\Skills\UserScopeGuidelineManifest;
 use Throwable;
 
@@ -153,15 +153,21 @@ final readonly class UserScopeGuidancePlanner
     }
 
     /**
-     * An eligible guideline no registered renderer can read never reaches the
-     * loader — it is dropped with a WARNING, not an error. At project scope that
-     * costs one guideline; here it would silently publish a guidance file
-     * missing the very content the author selected, or reap the file when
-     * nothing else remains. So a skipped source the sidecar names is promoted to
-     * a planning error, which holds the last-known-good file.
+     * A guideline the sidecar selects that no registered renderer can read never
+     * reaches the loader. At project scope that costs one guideline and is only
+     * a warning; here it would publish a guidance file missing the very content
+     * the author selected, or reap the file when nothing else remains eligible.
+     * So it is promoted to a planning error, which holds the last-known-good
+     * file.
      *
-     * Only the sidecar can be consulted: a source that cannot be rendered cannot
-     * have its frontmatter read either.
+     * The selected paths are checked DIRECTLY against the dispatcher rather than
+     * through {@see UnrenderableSourceScanner}, whose warnings exclude anything
+     * it classifies as an asset — a selected `notes.txt` or extensionless file
+     * would otherwise pass unnoticed.
+     *
+     * Only the sidecar can be consulted: a source no renderer reads has no
+     * frontmatter to read either. A listed path with no file behind it is left
+     * to the publishing package's own catalog validation.
      *
      * @param  list<string>  $errors  out-parameter
      */
@@ -170,16 +176,19 @@ final readonly class UserScopeGuidancePlanner
         $manifest = UserScopeGuidelineManifest::load($directory);
         $dispatcher = new SkillRendererDispatcher([new PassthroughRenderer()]);
 
-        foreach ((new UnrenderableSourceScanner())->guidelineSkips($directory, $dispatcher) as $source) {
-            if (! $manifest->isEligible($source->relativePath)) {
+        foreach ($manifest->listedPaths() as $path) {
+            if (! is_file($directory . '/' . $path)) {
+                continue;
+            }
+
+            if ($dispatcher->resolve(basename($path)) instanceof MatchedRenderer) {
                 continue;
             }
 
             $errors[] = sprintf(
-                'Guideline `%s` is listed in %s but no registered renderer can read it, so it cannot be published at user scope: %s',
-                $source->relativePath,
+                'Guideline `%s` is listed in %s but no registered renderer can read it, so it cannot be published at user scope.',
+                $path,
                 UserScopeGuidelineManifest::FILENAME,
-                $source->message,
             );
         }
     }

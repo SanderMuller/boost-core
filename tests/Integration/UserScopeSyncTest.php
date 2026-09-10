@@ -1287,3 +1287,36 @@ it('does not block user-scope sync when a project-only guideline fails to render
         rmTreeUserScope($home);
     }
 });
+
+it('refuses a selected guideline whose extension no renderer claims', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+        expect($emitted)->toBeFile();
+
+        // `.txt` is not a guideline source any renderer reads, and the skip
+        // scanner classifies it as an asset — so the selection must be checked
+        // against the dispatcher directly, or this content vanishes silently.
+        file_put_contents($guidelines . '/notes.txt', "Selected but unreadable.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n- notes.txt\n");
+        file_put_contents($guidelines . '/voice.md', "Voice rules, revised.\n");
+        $result = $engine->syncUser($pkg, homeRoot: $home);
+
+        expect($result->errors)->not->toBeEmpty()
+            ->and(implode("\n", $result->errors))->toContain('no registered renderer')
+            ->and((string) file_get_contents($emitted))->toBe("Voice rules.\n");
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

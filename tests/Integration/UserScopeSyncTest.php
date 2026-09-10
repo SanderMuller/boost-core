@@ -1236,3 +1236,28 @@ it('refuses an eligible guideline no registered renderer can read', function ():
         rmTreeUserScope($home);
     }
 });
+
+it('publishes nothing at all when guidance planning fails, skills included', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Gate: <!--boost:conv path=\"pr.gates\" mode=\"inline\"-->\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        $result = (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        // A refused guideline makes the run unclean, which skips the manifest
+        // update. Writing the skills anyway would leave them untracked and
+        // unreapable, so nothing is written.
+        expect($result->errors)->not->toBeEmpty()
+            ->and($result->writes)->toBeEmpty()
+            ->and(is_dir($home . '/.claude/skills/acme__kit'))->toBeFalse();
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

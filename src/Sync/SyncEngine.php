@@ -256,6 +256,24 @@ final readonly class SyncEngine
         /** @var list<string> $errors */
         $errors = [];
 
+        // Guidance is PLANNED (read-only) before anything is written. A refused
+        // guideline makes the run unclean, and an unclean run skips the manifest
+        // update — so writing skills first would leave new files untracked and
+        // updated files recorded under a stale sha, beyond the reach of a later
+        // reap. Nothing is published at all instead, and the whole prior state
+        // stays consistent with the manifest that still describes it.
+        $guidancePlanner = new UserScopeGuidancePlanner($this->guidelineLoader);
+        $guidancePlan = $guidancePlanner->plan($packageRoot, $packageName, $this->agentTargets, $errors);
+        if ($errors !== []) {
+            return new UserScopeResult(
+                packageName: $packageName,
+                homeRoot: $home,
+                writes: $writes,
+                errors: $errors,
+                check: $checkOnly,
+            );
+        }
+
         if (! $checkOnly) {
             (new UserScopeMigrator())->run($home, $packageName, $skills, $this->agentTargets);
         }
@@ -266,7 +284,7 @@ final readonly class SyncEngine
         $emittedPaths = [];
         foreach ($this->agentTargets as $target) {
             foreach ($target->plan($skills, []) as $pending) {
-                $rewritten = $this->rewriteForUserScope($pending->relativePath, $packageName);
+                $rewritten = UserScopeSkillPath::rewrite($pending->relativePath, $packageName);
                 if ($rewritten === null) {
                     continue;
                 }
@@ -285,8 +303,6 @@ final readonly class SyncEngine
 
         // User-scope guidelines: only the author-eligible subset, one
         // boost-owned file per package per agent that supports the mechanism.
-        $guidancePlanner = new UserScopeGuidancePlanner($this->guidelineLoader);
-        $guidancePlan = $guidancePlanner->plan($packageRoot, $packageName, $this->agentTargets, $errors);
         $guidanceEmitted = $guidancePlanner->emit(
             $this->writer,
             $home,
@@ -454,7 +470,7 @@ final readonly class SyncEngine
      * `vendor/a-foo` style ambiguity that a `-` separator would admit).
      *
      * @see packageBasename for the bare-basename form used by the
-     *   rewriteForUserScope dedupe.
+     *   {@see UserScopeSkillPath::rewrite()} dedupe.
      */
     public static function packageSuffix(string $packageName): string
     {
@@ -463,7 +479,7 @@ final readonly class SyncEngine
 
     /**
      * Bare basename of a Composer package — the portion after the last `/`.
-     * Used by rewriteForUserScope's dedupe to collapse `<slug>/<basename>/SKILL.md`
+     * Used by {@see UserScopeSkillPath::rewrite()}'s dedupe to collapse `<slug>/<basename>/SKILL.md`
      * to `<slug>/SKILL.md` when the source skill directory is named after
      * the package itself (common for single-skill tooling distributions).
      */
@@ -472,47 +488,6 @@ final readonly class SyncEngine
         $slash = strrpos($packageName, '/');
 
         return $slash === false ? $packageName : substr($packageName, $slash + 1);
-    }
-
-    /**
-     * Inject the package-suffix between `skills/` and the filename so multiple
-     * packages can publish user-scope skills without colliding. Returns null
-     * for paths that aren't under a `skills/` directory (guideline files).
-     *
-     * When the first component of the filename already matches the package
-     * suffix (common for single-skill tooling packages where the skill dir
-     * is named after the package, e.g. `sandermuller/repo-init` shipping
-     * `resources/boost/skills/repo-init/SKILL.md`), the redundant level is
-     * dropped — output stays `.claude/skills/repo-init/SKILL.md` instead of
-     * `.claude/skills/repo-init/repo-init/SKILL.md`. Multi-skill packages
-     * and packages whose skill name differs from the package basename are
-     * unaffected.
-     *
-     * Examples (with packageName `acme/repo-init`, slug `acme-repo-init`):
-     *   `.claude/skills/foo.md`                → `.claude/skills/acme-repo-init/foo.md`
-     *   `.claude/skills/foo/SKILL.md`          → `.claude/skills/acme-repo-init/foo/SKILL.md`
-     *   `.claude/skills/repo-init/SKILL.md`    → `.claude/skills/acme-repo-init/SKILL.md`   (deduped: skill basename matches package basename)
-     *   `CLAUDE.md`                            → null
-     *   `AGENTS.md`                            → null
-     */
-    private function rewriteForUserScope(string $relativePath, string $packageName): ?string
-    {
-        $marker = '/skills/';
-        $pos = strpos($relativePath, $marker);
-        if ($pos === false) {
-            return null;
-        }
-
-        $prefix = substr($relativePath, 0, $pos + strlen($marker));
-        $filename = substr($relativePath, $pos + strlen($marker));
-
-        $packageBasename = self::packageBasename($packageName);
-        $firstSlash = strpos($filename, '/');
-        if ($firstSlash !== false && substr($filename, 0, $firstSlash) === $packageBasename) {
-            $filename = substr($filename, $firstSlash + 1);
-        }
-
-        return $prefix . self::packageSuffix($packageName) . '/' . $filename;
     }
 
     /**

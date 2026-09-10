@@ -5,43 +5,81 @@ All notable changes to `sandermuller/boost-core` will be documented in this file
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.9.1...HEAD)
+## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.10.0...HEAD)
+
+## [1.10.0](https://github.com/sandermuller/boost-core/compare/1.9.1...1.10.0) - 2026-09-10
+
+<!-- verified-sha: 32b80ee0f9eb3aa8c904a182661014b7b578d4b6 -->
+User scope published skills only. A package could ship a guideline that applies
+everywhere — a voice rule, a verification rule — with no way to reach a session
+outside a project.
+
+Guidelines cannot follow the skills rule. A skill costs one description line
+until it matches; a guideline is always-on, so publishing a package's set
+wholesale would put project-specific instructions into every repository on the
+machine. This release makes publication opt-in per guideline, declared by the
+author.
 
 ### Added
 
-- User-scope guidelines. A package can now publish a guideline machine-wide, not
-  only its skills. A guideline is always-on, so publication is opt-in per
-  guideline: the author lists it in a `resources/boost/guidelines/.boost-user-scope.yaml`
-  sidecar, or marks it `metadata.boost-user-scope: true` in frontmatter. Eligible
-  guidelines render into one boost-owned file per package,
-  `~/.claude/boost/<vendor>__<package>.md`, which the operator activates with a
-  single import line. Boost never writes `~/.claude/CLAUDE.md`.
-- Sidecar entries are paths relative to the guidelines directory, so one entry
-  names one file even when guidelines are nested in subdirectories.
-- Eligibility is independent of tags. A tag scopes a guideline to projects and
-  needs a `boost.php` to answer; user scope has none, so the two sidecars answer
-  different questions and never interact. A guideline can be both tagged and
+- **User-scope guidelines.** An author marks a guideline machine-wide safe in
+  `resources/boost/guidelines/.boost-user-scope.yaml` — a list of paths relative
+  to the guidelines directory — or with `metadata.boost-user-scope: true` in
+  frontmatter. The sidecar exists because a laravel/boost-safe package's
+  guidelines stay frontmatter-free. One rule, two carriers.
+- **One boost-owned file per package**, `~/.claude/boost/<vendor>__<package>.md`.
+  Boost owns it wholesale, the same rule it applies at project scope, and never
+  writes your own `~/.claude/CLAUDE.md` — the import line that activates the
+  file stays yours. Claude Code is the only agent that opts in;
+  `AgentTarget::userScopeGuidanceFileRelative()` defaults to `null`, so
+  user-level import semantics are never guessed for an agent where they are
+  unverified.
+- **Eligibility is not a tag.** A tag scopes a guideline to projects and needs a
+  `boost.php` to answer; user scope has none. The two sidecars answer different
+  questions and never interact, so a guideline can be both tagged and
   user-scope eligible.
-- A guideline the sidecar selects that no registered renderer can read fails the
-  plan too, rather than publishing guidance without it. A render failure that
-  concerns a guideline the sidecar does not select never blocks user-scope
-  publication — it belongs to project scope alone.
-- An eligible guideline that holds a conventions token is refused with an error.
-  The token cannot resolve without a `boost.php`, so publishing it would put a
-  raw token in every session. A failed plan publishes nothing at all — skills
-  included — because an unclean run skips the ownership manifest update, and
-  files written under a stale manifest could never be reaped.
-- `AgentTarget::userScopeGuidanceFileRelative()` — the per-agent user-scope
-  guidance path, defaulting to `null`. Claude Code overrides it; user-level
-  import semantics are verified for Claude Code only, so no other agent opts in
-  yet. The default keeps every existing subclass compiling.
+- **The file rides the existing per-package manifest.** Withdraw eligibility and
+  it is reaped; remove the package and it is reaped; edit it and it is
+  preserved. A run driving a narrowed agent set never reaps guidance for an
+  agent it does not drive.
+
+### Refused rather than published
+
+A guideline reaches every session, so a doubtful one is not published at all:
+
+- A **conventions token** cannot resolve at user scope — no `boost.php`, no
+  conventions section — so the guideline is refused instead of shipping a raw
+  token into every session.
+- A selected guideline **no registered renderer can read** is refused, rather
+  than publishing guidance that silently omits the content the author chose.
+- A failed plan **publishes nothing at all**, skills included. An unclean run
+  skips the ownership manifest update, and files written under a stale manifest
+  could never be reaped.
+- A render failure that concerns a guideline the sidecar does not select never
+  blocks user-scope publication. It belongs to project scope alone.
+- Both carriers fail closed: an unreadable sidecar, a sidecar that is not a
+  list, and a `metadata.boost-user-scope` that is not `true` all mean "not
+  eligible".
 
 ### Limitations
 
-- User-scope guidelines require the package to also ship
-  `resources/boost/skills/`. `--scope=user --all` discovers and reaps packages by
-  that directory, so a guidelines-only package is not seen. This widens when such
-  a package appears.
+- A package must also ship `resources/boost/skills/`.
+  `boost sync --scope=user --all` discovers and reaps packages by that
+  directory, so a guidelines-only package is not seen. This widens when such a
+  package appears.
+
+### Documentation
+
+- [Automating sync](https://sandermuller.github.io/boost-core/guide/automating-sync#user-scope-guidelines)
+  carries the mechanism, the two-sidecar rule, and the worked example of a
+  guideline that is both tagged and eligible.
+- [File ownership](https://sandermuller.github.io/boost-core/guide/file-ownership)
+  carries the ownership rule for the published file.
+
+Nothing existing changes behaviour. A package that marks nothing eligible
+publishes exactly what it published before.
+
+**Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.9.1...1.10.0
 
 ## [1.9.1](https://github.com/sandermuller/boost-core/compare/1.9.0...1.9.1) - 2026-09-08
 
@@ -346,6 +384,7 @@ Skills can now declare hard dependencies on other skills. Sync guarantees the de
   
   
   
+  
   ```
   Whenever the skill ships, every required name ships too. A dependency that tag filtering would drop is *rescued* — pulled in despite the tag mismatch, transitively, and surfaced as an INFO diagnostic so the pull-in is always visible. The semantics stay predictable: names bind to whatever provider wins resolution (a host `.ai/skills/` override satisfies the dependency), `withExcludedSkills()` always wins over rescue (warning, never an override), a dependency that exists nowhere warns without failing the sync, cycles simply co-ship, and candidate collisions follow the existing resolver rules (`CollidingSkillsException` unless `--force`; same-provider duplicates always throw). `sync --check` previews rescues identically to a real sync.
   
@@ -436,6 +475,7 @@ Skills stop being single-file. A nested skill's companion files — `scripts/`, 
   
   
   
+  
   ```
   boost-core replaces the whole span with the resolved value; the visible default doubles as the inline fallback (an explicit `fallback=` still wins). A resolver-less engine leaves both comments inert, so the visible default reads as ordinary prose — `Run Pest to verify.` — no gap. Resolution order is unchanged (declared → schema default → fallback). The ````boost:conv`fence takes the same`<!--boost:conv:end-->` marker and buffers its body as one block, so a multi-line span resolves whole; paired spans resolve before bare tokens so the open comment is never consumed as a stray unpaired token; inline-code and plain-fence examples stay literal; an orphan end marker is inert and keeps the Project Conventions block.
   
@@ -453,6 +493,7 @@ Skills stop being single-file. A nested skill's companion files — `scripts/`, 
   
   ```
   Run <!--boost:conv path="testing.runner" mode="inline"-->Pest<!--boost:conv:end--> to verify.
+  
   
   
   
@@ -712,6 +753,7 @@ The final 1.0-readiness release. A family + downstream-consumer review of the pu
   
   
   
+  
   ```
   Returning `null` no longer compiles; return `[]` to skip. See [`UPGRADING.md`](../UPGRADING.md). This is the only `FileEmitter` shape change planned before `1.0` — the signature locks at the `1.0` tag.
   
@@ -746,6 +788,7 @@ The 1.0-readiness release: boost-core now **declares and locks its public API su
   ->withTags(Tag::Php, Tag::Jira)
   // after
   ->withTags([Tag::Php, Tag::Jira])
+  
   
   
   
@@ -1219,6 +1262,7 @@ A bare-CLI `boost sync` / `boost sync --check` carries no injection args, so the
 
 
 
+
 ```
 Sourced from production dogfood: a downstream Laravel consumer added a workflow-rule note to their CI explicitly forbidding `boost sync` invocations — documenting a workaround for what should be an engine guarantee.
 
@@ -1241,6 +1285,7 @@ final class BoostWrapper implements BoostWrapperContract
         return ['.agents/skills/some-injected-skill/SKILL.md', /* ... */];
     }
 }
+
 
 
 
@@ -1306,6 +1351,7 @@ Boost-core's retired-paths cleanup walks `.github/skills/` (retired in 0.9.1) on
 
 
 
+
 ```
 This was the older Copilot path-consumption route for `laravel/mcp`-shipped skills. Operators who upgraded across the 0.9.x line carry these symlinks until cleanup removes them.
 
@@ -1346,6 +1392,7 @@ gh release create 0.10.3 \
     --target main \
     --title "v0.10.3" \
     -F internal/release-notes-0.10.3.md
+
 
 
 
@@ -1399,6 +1446,7 @@ Before 0.10.2, all three failure modes produced the same visible signal as a suc
 
 
 
+
 ```
 Operators get a concrete fix path (`chmod`, identify the holding process, retry sync) instead of opaque persistent drift.
 
@@ -1429,6 +1477,7 @@ gh release create 0.10.2 \
     --target main \
     --title "v0.10.2" \
     -F internal/release-notes-0.10.2.md
+
 
 
 
@@ -1481,6 +1530,7 @@ Retired paths still present on disk. Next `vendor/bin/boost sync` will delete:
 
 
 
+
 ```
 When Copilot is not in the project's active agents, the audit surfaces `Copilot not in active agents. Retired-paths registry is Copilot-scoped — nothing to audit.` rather than silently returning clean, since a non-Copilot project may have `.github/skills/` from an unrelated source that boost-core has no intent to delete.
 
@@ -1495,6 +1545,7 @@ Registry extracted to a single source of truth (`SyncEngine::RETIRED_COPILOT_PAT
 ```
 ℹ 3 of 4 allowlisted vendor(s) ship no conventions-schema.json. Inspect
   `boost doctor` vendor allowlist section for the per-vendor list.
+
 
 
 
@@ -1541,6 +1592,7 @@ gh release create 0.10.1 \
     --target main \
     --title "v0.10.1" \
     -F internal/release-notes-0.10.1.md
+
 
 
 
@@ -1631,6 +1683,7 @@ gh release create 0.10.0 \
 
 
 
+
 ```
 **Full Changelog**: https://github.com/SanderMuller/boost-core/compare/0.9.7...0.10.0
 
@@ -1690,6 +1743,7 @@ rm CLAUDE.md && vendor/bin/boost sync
 
 
 
+
 ```
 `boost.php` and `.ai/` are authoritative — the rendered file is derived. Removing it is non-destructive; the next sync re-renders from canonical sources.
 
@@ -1706,6 +1760,7 @@ gh release create 0.9.7 \
     --target main \
     --title "v0.9.7" \
     -F internal/release-notes-0.9.7.md
+
 
 
 
@@ -1813,6 +1868,7 @@ gh release create 0.9.6 \
     --target main \
     --title "v0.9.6" \
     -F internal/release-notes-0.9.6.md
+
 
 
 
@@ -2060,6 +2116,7 @@ return BoostConfig::configure()
 
 
 
+
 ```
 `boost sync` renders the values into CLAUDE.md's marker-bounded region (audit trail) and runs schema validation. `boost validate` / `boost slots` / `boost doctor --check-conventions` source from `boost.php`'s declared values.
 
@@ -2085,6 +2142,7 @@ vendor/bin/boost sync                             # re-render CLAUDE.md from boo
 vendor/bin/boost validate                         # confirm 0 errors
 git add boost.php CLAUDE.md
 git commit -m "Migrate Project Conventions to boost.php"
+
 
 
 
@@ -2128,6 +2186,7 @@ composer update sandermuller/boost-core
 vendor/bin/boost sync          # rewrites .gitignore's managed block
 git add CLAUDE.md              # or AGENTS.md / GEMINI.md per active agents
 git commit
+
 
 
 
@@ -2206,6 +2265,7 @@ composer update sandermuller/boost-core
 
 
 
+
 ```
 Any consumer using the conventions-schema slot fill-in (boost-skills 1.7.0-rc1 + downstream) MUST be on 0.8.2 or later. Consumers not using conventions schema are unaffected — guideline files written by 0.8.x without the markered region were structurally identical to the pre-0.8.x format, and 0.8.2 transparently wraps the content on first sync.
 
@@ -2271,6 +2331,7 @@ github:
 
 
 
+
 ```
 Operator owns the H2, the explainer comment, and the YAML body. boost-core never overwrites values — it only reports diagnostics. The `schema-version` field defaults to `1` if omitted; the scaffold seeds the highest `min(metadata.schema-required)` across allowlisted vendors so newer-schema vendors apply on first run.
 
@@ -2281,6 +2342,7 @@ boost validate [--strict] [--json]      # validate Project Conventions against v
 boost slots [--vendor=X] [--missing] [--filled] [--json]   # list slots, fill state, declaring vendor
 boost paths [--managed] [--json]        # list path globs boost-core manages
 boost doctor --check-conventions        # opt-in conventions diagnostics in doctor output
+
 
 
 
@@ -2322,6 +2384,7 @@ final readonly class SyncResult
 
 
 
+
 ```
 Conventions diagnostics (error / warning / info) route through `SyncResult::diagnostics` and never affect `hasErrors()`. `SyncCommand` and `WhereCommand` render diagnostics after their primary output so error-level lines stay visible despite never triggering exit FAILURE. Backward-compatible — every 0.7.x reader of `SyncResult::errors` continues to work.
 
@@ -2330,6 +2393,7 @@ Conventions diagnostics (error / warning / info) route through `SyncResult::diag
 ```php
 $paths = \SanderMuller\BoostCore\Conventions\Conventions::default()
     ->managedPaths($config);  // list<string> of glob patterns
+
 
 
 
@@ -2402,6 +2466,7 @@ Cost: \$100. Variable: \$ARGUMENTS.
 
 
 
+
 ```
 The frontmatter `arguments:` list is optional but recommended for named arguments — Junie uses it to satisfy its all-required-named-args contract; Claude/Copilot/OpenCode all benefit when the operator wants to declare names explicitly.
 
@@ -2425,6 +2490,7 @@ Sample warning lines (lenient — sync continues):
 [cursor] deploy: cursor has no placeholder syntax; canonical placeholders emitted verbatim.
 [junie] deploy: Junie requires named+required args; positional `$1`, `$2` auto-named to `$arg1`, `$arg2` — declare them in the source frontmatter `arguments:` list so Junie can surface the required-fields prompt.
 [kiro] deploy: Kiro does not document named placeholders; `$issue` emitted verbatim. Use `$ARGUMENTS` (unsplit) or `${1}`/`${2}` (positional) for cross-agent portability.
+
 
 
 
@@ -2468,6 +2534,7 @@ public function planCommands(array $commands): array  // array{writes: list<Pend
 
 
 
+
 ```
 Internal-facing — `SyncEngine` is the only documented caller. The new `warnings` channel surfaces per-command transpile issues (e.g. "Cursor has no placeholder syntax; canonical placeholders emitted verbatim") that previously had nowhere to go.
 
@@ -2487,6 +2554,7 @@ public function transpileCommandBody(Command $command): CommandTranspileResult
 
 
 
+
 ```
 Base implementation = "warn-and-verbatim" (used by Cursor + Amp). Five agents override with their native shapes: Claude, Copilot, Junie, OpenCode, Kiro. `CommandTranspileResult` carries `{content, warnings}`.
 
@@ -2494,6 +2562,7 @@ Base implementation = "warn-and-verbatim" (used by Cursor + Amp). Five agents ov
 
 ```bash
 composer update sandermuller/boost-core
+
 
 
 
@@ -2541,6 +2610,7 @@ If you're a wrapper author calling `AgentTarget::planCommands()` directly: pull 
 
 
 
+
 ```
 Runs after the vendor picker. Pre-checks any tag already declared in `withTags(...)` AND present in the discovered set; declared-but-undiscovered tags (e.g. org-internal tags, tags added ahead of vendor support) are preserved silently and merged back into the final selection.
 
@@ -2551,6 +2621,7 @@ Empty operator selection clears `withTags(...)` from the chain entirely. Skippin
 ```php
 $counts = (new AvailableTagsDiscovery($packages))->discover($vendorNames, $renderers);
 // ['github' => 1, 'jira' => 1, 'php' => 2, ...]
+
 
 
 
@@ -2576,6 +2647,7 @@ $writer->update(
     disabledEmitters: [],
     tags: ['php', 'jira'],          // new — null/[] / non-empty trio of behaviors
 );
+
 
 
 
@@ -2621,6 +2693,7 @@ vendor/bin/boost where --diff=deploy
 
 
 
+
 ```
 Resolves a single named host skill and the upstream vendor copy it shadows. Three exit paths:
 
@@ -2646,12 +2719,14 @@ Shadow diff — `deploy` (host) vs `acme/skills` (vendor)
 
 
 
+
 ```
 **Byte-identical** — host and vendor copies match exactly. The command prints:
 
 ```
 [OK] Host skill `deploy` is byte-identical to the `acme/skills` vendor copy.
      The override earns nothing — consider removing `<host path>` and shipping the vendor version.
+
 
 
 
@@ -2679,6 +2754,7 @@ New public inspection helper backing `--diff`. Returns `array{hostPath: string, 
 
 ```bash
 composer update sandermuller/boost-core
+
 
 
 
@@ -2753,6 +2829,7 @@ host · .ai/commands/ (host) · 1 command(s)
 
 
 
+
 ```
 Each category renders only when it has resolved items — empty sections vanish. The label scheme established in 0.7.2 carries across all three categories:
 
@@ -2785,6 +2862,7 @@ $inspection = SyncEngine::default()->resolveForInspection($projectRoot);
 
 
 
+
 ```
 The 0.7.2 `SyncEngine::resolveSkillsForInspection()` is preserved as a thin back-compat wrapper that delegates to the new method and projects the result into the 0.7.2 shape (`{skills, remoteSourceKeys, scannedVendorKeys}` with `scannedVendorKeys` = the union of skill + guideline vendor sets). External callers wrapping the 0.7.2 method directly keep working without changes.
 
@@ -2797,6 +2875,7 @@ The 0.7.2 `SyncEngine::resolveSkillsForInspection()` is preserved as a thin back
 
 ```bash
 composer update sandermuller/boost-core
+
 
 
 
@@ -2840,6 +2919,7 @@ vendor/bin/boost doctor --check-versions
 
 
 
+
 ```
 When the flag is set, doctor enumerates installed boost-* family packages, identifies the ones whose install path is OUTSIDE the project's `vendor/` (the Composer `path` repo signature, including the `symlink: true` default), and compares each against the latest stable version Packagist publishes.
 
@@ -2855,6 +2935,7 @@ Path-repo version check
 
 Path repos silently override Packagist resolution for matching constraints.
 Remove unused `repositories[]` entries from composer.json + re-run `composer update` to pull from Packagist.
+
 
 
 
@@ -2906,6 +2987,7 @@ $inspection = $engine->resolveSkillsForInspection($projectRoot);
 
 
 
+
 ```
 Internal-facing inspection API — no documented public consumers besides `WhereCommand` itself. External callers wrapping the method directly would need to dereference `['skills']`. Surfaced in the changelog under Changed (not Fixed) for that reason.
 
@@ -2913,6 +2995,7 @@ Internal-facing inspection API — no documented public consumers besides `Where
 
 ```bash
 composer update sandermuller/boost-core
+
 
 
 
@@ -2960,6 +3043,7 @@ If you're a wrapper author who calls `SyncEngine::resolveSkillsForInspection()` 
 
 
 
+
 ```
 `commandsDirectoryRelative()` stays `null` for Kiro so the managed `.gitignore` block, directory tooling, and gitignore-pattern reporters don't double-count `.kiro/commands/` (a directory Kiro doesn't use). The skill directory `.kiro/skills/` is already covered by the existing gitignore pattern.
 
@@ -2974,6 +3058,7 @@ Command-emit limitations
   `~/.codex/prompts/` manually.
 • Gemini: command files use TOML; boost-core does not generate them. Author Gemini commands
   directly in `.gemini/commands/<name>.toml` or use a skill instead.
+
 
 
 
@@ -3042,6 +3127,7 @@ return BoostConfig::configure()
 
 
 
+
 ```
 Resolved on the next `composer install` / `update` through the existing `BoostAutoSync` hook — no separate command, no separate cache-warm step. First sync hits the network; later syncs are offline-fast (cache lives at `<project>/.boost-remote-cache/`, auto-added to the managed `.gitignore`). Removing an entry prunes its agent-dir output on next sync; removing an entire source prunes every skill it last contributed.
 
@@ -3058,6 +3144,7 @@ use SanderMuller\ProjectBoostLaravel\Rendering\BladeRenderer;
 return BoostConfig::configure()
     ->withAgents([Agent::CLAUDE_CODE])
     ->withSkillRenderers([new BladeRenderer]);
+
 
 
 
@@ -3094,6 +3181,7 @@ $engine->sync(
 
 
 
+
 ```
 Three new optional parameters for wrapper packages whose source layout `VendorScanner` cannot reach (laravel/boost's `.ai/<pkg>/...` is the motivating case — `sandermuller/project-boost-laravel` uses this seam). Tag-filtered and collision-detected identically to scanned vendors. Same-vendor name collisions between injected and scanned skills throw `SkillSourceCollisionException`, caught in `SyncEngine::sync` and converted to a `SyncResult::errors` entry (lenient) or rethrown (strict). All three default to `[]`; existing call sites are unchanged.
 
@@ -3101,6 +3189,7 @@ Three new optional parameters for wrapper packages whose source layout `VendorSc
 
 ```bash
 vendor/bin/boost where
+
 
 
 
@@ -3131,6 +3220,7 @@ if ($attribution = $result->renderDeleteAttribution()) {
     $this->warn($attribution); // Laravel artisan
     // or $io->warning($attribution); // Symfony console
 }
+
 
 
 
@@ -3202,6 +3292,7 @@ No migration required from 0.6.x. The three additive surfaces (`withRemoteSkills
   ```
   ! [NOTE] N tagged skill(s) currently filtered out — your `withTags()` is empty.
           Run `vendor/bin/boost tags` to see them.
+  
   
   
   
@@ -3343,6 +3434,7 @@ boost-core is no longer a Composer plugin. It ships as a plain `type: library` �
   
   ```php
   ->withExcludedGuidelines(['acme/pack:database-safety'])
+  
   
   
   
@@ -3676,6 +3768,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   
   
   
+  
     ```
 
 ### Fixed
@@ -3709,6 +3802,7 @@ For consumers without pre-0.2 install history, the upgrade is hands-off — the 
   "SanderMuller\\BoostCore\\Scripts\\BoostAutoSync::run"
   ]
   }
+  
   
   
   

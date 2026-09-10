@@ -309,7 +309,9 @@ errored. `BOOST_SKIP_AUTOSYNC=1` turns it off.
 
 **See [the automating sync docs](https://sandermuller.github.io/boost-core/guide/automating-sync)** for the other entry
 points: `runWithSummary` for user-invoked scripts, `syncUserScopeOnce` for a
-globally-installed CLI tool that self-syncs, and the `--scope=user` sync.
+globally-installed CLI tool that self-syncs, and the `--scope=user` sync — which
+publishes a package's skills wholesale, and the guidelines its author marked
+user-scope eligible.
 
 ## Project Conventions
 

@@ -307,7 +307,9 @@ it('freezes @api value-object + method PARAMETER NAMES — the 1.0 named-arg con
         // Skill @api append rule. Appending is non-breaking for named args;
         // reordering or renaming is not.
         Skill::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid', 'assets', 'requires', 'requiresValid', 'requiredSubagents'],
-        Guideline::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid'],
+        // `userScopeEligible` appended-with-default in 1.10 for user-scope
+        // guideline publication, per the Guideline @api append rule.
+        Guideline::class => ['name', 'description', 'frontmatter', 'body', 'sourcePath', 'sourceVendor', 'tags', 'tagsValid', 'userScopeEligible'],
         SkillAsset::class => ['relativePath', 'contents'],
         RenderContext::class => ['sourcePath', 'sourceVendor', 'frontmatter', 'projectRoot'],
         WrittenFile::class => ['relativePath', 'absolutePath', 'action'],

@@ -46,6 +46,18 @@ final class ClaudeCodeTarget extends AgentTarget
     }
 
     /**
+     * Claude Code reads `@`-imports in `~/.claude/CLAUDE.md`, so a boost-owned
+     * file under `~/.claude/boost/` reaches every session once the operator adds
+     * one import line. Boost owns this file wholesale and never touches
+     * `~/.claude/CLAUDE.md` itself.
+     */
+    #[Override]
+    public function userScopeGuidanceFileRelative(string $slug): string
+    {
+        return '.claude/' . self::USER_SCOPE_GUIDANCE_SEGMENT . '/' . $slug . '.md';
+    }
+
+    /**
      * Claude Code as of 2026 uses zero-indexed `$N` (`$0` = first arg).
      * The canonical syntax is one-indexed (matches OpenCode, Codex,
      * Kiro, and most human intuition) — so positional placeholders

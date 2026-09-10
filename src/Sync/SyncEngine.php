@@ -206,8 +206,12 @@ final readonly class SyncEngine
      *
      * Source: `$packageRoot/resources/boost/skills/`.
      * Target: `$HOME/.{agent}/skills/<package-suffix>/<skill-name>.md`.
-     * Guidelines (CLAUDE.md, AGENTS.md, etc.) are NOT fanned out in user
-     * scope — they'd pollute the home dir with project-specific instructions.
+     * Guidelines are NOT fanned out wholesale in user scope — an always-on
+     * guideline would pollute every session on the machine with
+     * project-specific instructions. Only a guideline the AUTHOR marked
+     * user-scope eligible is published, into a boost-owned per-package file
+     * (`~/.claude/boost/<vendor>__<package>.md`); the operator adds the import
+     * line. Boost never writes the operator's own `~/.claude/CLAUDE.md`.
      *
      * No `boost.php` required: the invoking package itself is the source,
      * all 9 agents are activated by default.
@@ -279,6 +283,19 @@ final readonly class SyncEngine
             }
         }
 
+        // User-scope guidelines: only the author-eligible subset, one
+        // boost-owned file per package per agent that supports the mechanism.
+        $guidancePlanner = new UserScopeGuidancePlanner($this->guidelineLoader);
+        $guidanceEmitted = $guidancePlanner->emit(
+            $this->writer,
+            $home,
+            $guidancePlanner->plan($packageRoot, $packageName, $this->agentTargets, $errors),
+            $checkOnly,
+            $writes,
+            $errors,
+        );
+        $emittedPaths = [...$emittedPaths, ...$guidanceEmitted];
+
         // Ownership reconcile (0.19.0): the user-scope counterpart of the project
         // reap. Gated on a CLEAN run — a write error makes a still-needed path
         // look "absent this run", so reaping or rewriting the manifest over a
@@ -301,6 +318,12 @@ final readonly class SyncEngine
             // are reaped under every agent, active or not) — resolving both codex
             // 0.19.0 findings at once.
             $keep = $this->userScopeKeepAcrossAgents($emittedPaths, $packageName);
+
+            // A guidance file lives outside `<skillsDir>/<slug>/`, so the
+            // skill-keyed keep set never covers it. Keep exactly the guidance
+            // paths emitted this run: a package that drops its last eligible
+            // guideline emits none, and the reaper then removes the stale file.
+            $keep = [...$keep, ...$guidanceEmitted];
 
             // Clean-slate: reap prior-recorded paths whose skill this package no
             // longer emits (a dropped/renamed skill), sha-gated + slug-validated.
@@ -363,6 +386,12 @@ final readonly class SyncEngine
         foreach (self::allAgentTargets() as $target) {
             $roots[] = $target->skillsDirectoryRelative() . '/' . $slug;
         }
+
+        // The per-package user-scope guidance files are exact-path roots:
+        // without them the reaper's slug-prefix predicate would refuse to delete
+        // a stale guidance file, and reconcile-on-remove would leave a removed
+        // package's guidance in every session forever.
+        $roots = [...$roots, ...UserScopeGuidancePlanner::guidancePathsForSlug($slug)];
 
         return array_values(array_unique($roots));
     }

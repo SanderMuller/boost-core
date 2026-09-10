@@ -168,6 +168,22 @@ final readonly class ConventionsInliner
     }
 
     /**
+     * Does this body hold a conventions token at all?
+     *
+     * A cheap, context-free probe — it does not care whether the token is
+     * masked by a fence or resolvable, only whether one is present. Used by the
+     * user-scope guidance plan, where NO token can resolve (no `boost.php`, no
+     * conventions section), so the presence of one is enough to refuse the
+     * guideline. {@see scanLeaks()} stays the classifier for emitted content.
+     */
+    public static function containsToken(string $body): bool
+    {
+        return str_contains($body, '<!--boost:conv')
+            || str_contains($body, '<!--\\boost:conv')
+            || preg_match('/^\s*(?:`{3,}|~{3,})boost:conv\b/m', $body) === 1;
+    }
+
+    /**
      * Detect raw, unresolved `boost:conv` tokens in EMITTED output.
      * Read-only; never
      * resolves. Two leak signals, both decided by the SAME stateful walker

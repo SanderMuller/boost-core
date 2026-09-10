@@ -24,6 +24,34 @@ floor at all: the files are ignored by engines older than 1.9.0 and picked up by
 
 **Full Changelog**: https://github.com/SanderMuller/boost-core/compare/1.9.0...1.9.1
 
+### Added
+
+- User-scope guidelines. A package can now publish a guideline machine-wide, not
+  only its skills. A guideline is always-on, so publication is opt-in per
+  guideline: the author lists it in a `resources/boost/guidelines/.boost-user-scope.yaml`
+  sidecar, or marks it `metadata.boost-user-scope: true` in frontmatter. Eligible
+  guidelines render into one boost-owned file per package,
+  `~/.claude/boost/<vendor>__<package>.md`, which the operator activates with a
+  single import line. Boost never writes `~/.claude/CLAUDE.md`.
+- Eligibility is independent of tags. A tag scopes a guideline to projects and
+  needs a `boost.php` to answer; user scope has none, so the two sidecars answer
+  different questions and never interact. A guideline can be both tagged and
+  user-scope eligible.
+- An eligible guideline that holds a conventions token is refused with an error.
+  The token cannot resolve without a `boost.php`, so publishing it would put a
+  raw token in every session.
+- `AgentTarget::userScopeGuidanceFileRelative()` — the per-agent user-scope
+  guidance path, defaulting to `null`. Claude Code overrides it; user-level
+  import semantics are verified for Claude Code only, so no other agent opts in
+  yet. The default keeps every existing subclass compiling.
+
+### Limitations
+
+- User-scope guidelines require the package to also ship
+  `resources/boost/skills/`. `--scope=user --all` discovers and reaps packages by
+  that directory, so a guidelines-only package is not seen. This widens when such
+  a package appears.
+
 ## [1.9.0](https://github.com/sandermuller/boost-core/compare/1.8.1...1.9.0) - 2026-09-08
 
 <!-- verified-sha: 3c7e5ae7f78288b745df846284f1879d1add1248 -->

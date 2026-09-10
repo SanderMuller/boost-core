@@ -99,6 +99,33 @@ abstract class AgentTarget
     public const string SUBAGENT_HOST_SEGMENT = 'host';
 
     /**
+     * The boost-owned segment under an agent's user-scope home directory that
+     * holds published guidelines — see {@see userScopeGuidanceFileRelative()}.
+     */
+    public const string USER_SCOPE_GUIDANCE_SEGMENT = 'boost';
+
+    /**
+     * Where this agent's user-scope guidance file for package slug `$slug` goes,
+     * relative to the user's home directory — or null when boost has no verified
+     * user-level guidance mechanism for the agent.
+     *
+     * Boost NEVER writes the operator's own user-level guidance file (for Claude
+     * Code, `~/.claude/CLAUDE.md`). It writes a file it owns outright, one per
+     * package, and the operator adds a single import line pointing at it. That
+     * keeps the project-scope ownership rule intact — boost owns a file
+     * wholesale or not at all — and keeps per-package reconcile working, since
+     * the manifest and the reaper are both keyed by package.
+     *
+     * Base default is null: user-level import semantics are verified for Claude
+     * Code only. Another agent opts in by overriding, once its own mechanism is
+     * confirmed. Defaulted rather than abstract, per this class's 1.x guarantee.
+     */
+    public function userScopeGuidanceFileRelative(string $slug): ?string
+    {
+        return null;
+    }
+
+    /**
      * File extension for an emitted command, without the leading dot.
      * Copilot overrides → `prompt.md`.
      */

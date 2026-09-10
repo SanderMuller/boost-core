@@ -17,6 +17,7 @@ final readonly class Guideline
      * @param  string|null  $sourceVendor  Composer vendor/package name. `null` = host-authored.
      * @param  list<string>  $tags  Normalized tags from the `metadata.boost-tags` frontmatter field. Empty = untagged = ships everywhere.
      * @param  bool  $tagsValid  False when `metadata.boost-tags` is present but malformed — the guideline then fails closed (ships nowhere).
+     * @param  bool  $userScopeEligible  True when the AUTHOR marked this guideline machine-wide safe — `metadata.boost-user-scope: true`, or its filename listed in the `.boost-user-scope.yaml` sidecar. Only an eligible guideline is published at user scope; project scope ignores the flag.
      */
     public function __construct(
         public string $name,
@@ -27,6 +28,7 @@ final readonly class Guideline
         public ?string $sourceVendor,
         public array $tags = [],
         public bool $tagsValid = true,
+        public bool $userScopeEligible = false,
     ) {}
 
     public function isHostAuthored(): bool

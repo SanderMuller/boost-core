@@ -166,6 +166,16 @@ Each user-scope sync records a per-package ownership manifest at
 path no longer exists on disk** has its `~/.{agent}/skills/<slug>/` files reaped
 and its manifest deleted.
 
+The same manifest covers the package's user-scope guidance file
+(`~/.claude/boost/<vendor>__<package>.md`, see
+[automating-sync.md](automating-sync.md#user-scope-guidelines)). Boost owns that
+file wholesale, exactly as it owns a project-scope guidance file, so the same
+three gates apply: it is reaped when the package stops publishing eligible
+guidelines and when the package is removed, and it is preserved the moment you
+edit it. Boost never writes your own `~/.claude/CLAUDE.md` — the import line
+that activates the file is yours, and boost neither adds nor removes it. When
+the file is reaped, remove the import line yourself.
+
 A still-installed package is keyed on its install path being present, *not* on
 whether that particular run discovered it, so running `--all` from a project-local
 `vendor/bin/boost` (which can't see the global set) never mass-reaps your global

@@ -57,6 +57,7 @@ final readonly class GuidelineLoader
         $dispatcher = $renderers ?? new SkillRendererDispatcher([new PassthroughRenderer()]);
         $strict = Env::flagEnabled(Env::RENDER_STRICT);
         $manifest = GuidelineTagManifest::load($directory);
+        $userScope = UserScopeGuidelineManifest::load($directory);
 
         $warnings = [...$warnings, ...array_map(
             static fn (UnrenderableSource $source): string => $source->message,
@@ -122,6 +123,13 @@ final readonly class GuidelineLoader
                 ? BoostTags::parse($parsed->frontmatter)
                 : $manifest->tagsFor($file->getFilename());
 
+            // User-scope eligibility is an AUTHOR claim, independent of tags:
+            // frontmatter wins, else the `.boost-user-scope.yaml` sidecar (the
+            // only carrier for frontmatter-free, laravel/boost-safe guidelines).
+            $userScopeEligible = $this->declaresUserScope($parsed->frontmatter)
+                ? $this->readUserScope($parsed->frontmatter)
+                : $userScope->isEligible($file->getFilename());
+
             yield new Guideline(
                 name: $name,
                 description: $description,
@@ -131,8 +139,33 @@ final readonly class GuidelineLoader
                 sourceVendor: $sourceVendor,
                 tags: $tags,
                 tagsValid: $tagsValid,
+                userScopeEligible: $userScopeEligible,
             );
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $frontmatter
+     */
+    private function declaresUserScope(array $frontmatter): bool
+    {
+        $metadata = $frontmatter['metadata'] ?? null;
+
+        return is_array($metadata) && array_key_exists('boost-user-scope', $metadata);
+    }
+
+    /**
+     * A non-boolean `metadata.boost-user-scope` reads as NOT eligible — the
+     * same fail-closed default the sidecar uses. An author who means "yes"
+     * writes `true`.
+     *
+     * @param  array<string, mixed>  $frontmatter
+     */
+    private function readUserScope(array $frontmatter): bool
+    {
+        $metadata = $frontmatter['metadata'] ?? null;
+
+        return is_array($metadata) && ($metadata['boost-user-scope'] ?? null) === true;
     }
 
     private function resolvedPath(SplFileInfo $file): string

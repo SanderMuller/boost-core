@@ -888,3 +888,204 @@ it('0.19.0 P2: --all reaps the old slug of a package renamed/replaced in place',
         rmTreeUserScope($home);
     }
 });
+
+/**
+ * User-scope guidelines (1.10.0).
+ *
+ * A guideline is always-on, so user scope publishes only the subset the AUTHOR
+ * marked eligible — never the wholesale set that user-scope SKILLS get.
+ */
+function seedUserScopeGuidelinePackage(string $pkg, string $packageName): string
+{
+    $guidelines = $pkg . '/resources/boost/guidelines';
+    mkdir($guidelines, 0o755, recursive: true);
+    file_put_contents($pkg . '/composer.json', json_encode(['name' => $packageName], JSON_THROW_ON_ERROR));
+    file_put_contents($pkg . '/resources/boost/skills/a-skill.md', "---\nname: a-skill\n---\nBody.\n");
+
+    return $guidelines;
+}
+
+it('publishes only the author-eligible guidelines into the per-package user-scope file', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/migrations.md', "Project-specific migration rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+
+        $published = is_file($emitted) ? (string) file_get_contents($emitted) : '';
+
+        expect($emitted)->toBeFile('the per-package user-scope guidance file should be written')
+            ->and($published)->toContain('Voice rules.')
+            ->and($published)->not->toContain('Project-specific migration rules.')
+            ->and($home . '/CLAUDE.md')->not->toBeFile("boost must never write the operator's own user-level guidance file");
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('marks a guideline eligible from frontmatter as well as from the sidecar', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents(
+            $guidelines . '/voice.md',
+            "---\nname: voice\nmetadata:\n  boost-user-scope: true\n---\nFrontmatter voice.\n",
+        );
+
+        (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect((string) file_get_contents($home . '/.claude/boost/acme__kit.md'))->toContain('Frontmatter voice.');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('ignores project tags at user scope — a tagged guideline is still published when eligible', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-tags.yaml', "voice.md: \"voice\"\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect((string) file_get_contents($home . '/.claude/boost/acme__kit.md'))->toContain('Voice rules.');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('refuses an eligible guideline that holds a conventions token', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Gate: <!--boost:conv path=\"pr.gates\" mode=\"inline\"-->\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        $result = (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect($result->errors)->not->toBeEmpty()
+            ->and(implode("\n", $result->errors))->toContain('conventions token')
+            ->and(is_file($home . '/.claude/boost/acme__kit.md'))->toBeFalse();
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('emits no user-scope guidance file when the package marks nothing eligible', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+
+        (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect($home . '/.claude/boost/acme__kit.md')->not->toBeFile();
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('reaps the user-scope guidance file when the package drops its last eligible guideline', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+        expect($emitted)->toBeFile();
+
+        // The author withdraws eligibility; the next clean sync reaps the file.
+        unlink($guidelines . '/.boost-user-scope.yaml');
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        expect($emitted)->not->toBeFile('a withdrawn guideline must not linger in every session');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('preserves an operator-edited user-scope guidance file instead of reaping it', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        $emitted = $home . '/.claude/boost/acme__kit.md';
+        file_put_contents($emitted, "Operator's own words.\n");
+
+        unlink($guidelines . '/.boost-user-scope.yaml');
+        $engine->syncUser($pkg, homeRoot: $home);
+
+        expect((string) file_get_contents($emitted))->toBe("Operator's own words.\n");
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});
+
+it('writes no user-scope guidance for an agent with no verified user-level mechanism', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+
+        (new SyncEngine([new CursorTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect(is_dir($home . '/.cursor/boost'))->toBeFalse();
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

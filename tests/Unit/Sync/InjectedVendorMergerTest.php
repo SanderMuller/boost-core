@@ -107,9 +107,8 @@ it('carries every resolved config field across a renderer merge', function (): v
 
     $merged = $merger->mergeExtraRenderers($config, [$extra]);
 
-    // Reflection, not a field list: the bug was an appended-with-default
-    // constructor field the rebuild forgot, so the guard has to cover fields
-    // that do not exist yet.
+    // Reflection, not a field list, so the guard covers fields that do not
+    // exist yet — the bug was a rebuild that forgot an appended field.
     foreach ((new ReflectionClass(BoostConfig::class))->getProperties() as $property) {
         if ($property->getName() === 'skillRenderers') {
             continue;

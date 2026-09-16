@@ -83,6 +83,11 @@ final readonly class InjectedVendorMerger
             remoteSkills: $config->remoteSkills,
             skillRenderers: array_merge($userRenderers, $extras, $trailing),
             conventions: $config->conventions,
+            // Every field the builder resolved has to be carried across, or a
+            // sync that merges renderers silently reverts it to its default —
+            // an empty `subagentsPath` reads as "no host subagents" and drops
+            // every `.ai/subagents/` definition from the emit.
+            subagentsPath: $config->subagentsPath,
         );
     }
 

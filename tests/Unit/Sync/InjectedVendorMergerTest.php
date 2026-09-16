@@ -1,8 +1,10 @@
 <?php declare(strict_types=1);
 
 use SanderMuller\BoostCore\Config\BoostConfig;
+use SanderMuller\BoostCore\Contracts\SkillRenderer;
 use SanderMuller\BoostCore\Enums\Tag;
 use SanderMuller\BoostCore\Skills\GuidelineTagFilter;
+use SanderMuller\BoostCore\Skills\Rendering\RenderContext;
 use SanderMuller\BoostCore\Skills\Skill;
 use SanderMuller\BoostCore\Skills\SkillTagFilter;
 use SanderMuller\BoostCore\Sync\InjectedVendorMerger;
@@ -84,4 +86,38 @@ it('omits vendors with nothing retained from the retained-drops map', function (
     );
 
     expect($retainedDrops)->toBeEmpty();
+});
+
+it('carries every resolved config field across a renderer merge', function (): void {
+    $merger = new InjectedVendorMerger(new SkillTagFilter(), new GuidelineTagFilter());
+    $config = mergerConfig();
+
+    $extra = new class implements SkillRenderer {
+        /** @return list<string> */
+        public function extensions(): array
+        {
+            return ['blade.php'];
+        }
+
+        public function render(string $raw, RenderContext $ctx): string
+        {
+            return $raw;
+        }
+    };
+
+    $merged = $merger->mergeExtraRenderers($config, [$extra]);
+
+    // Reflection, not a field list: the bug was an appended-with-default
+    // constructor field the rebuild forgot, so the guard has to cover fields
+    // that do not exist yet.
+    foreach ((new ReflectionClass(BoostConfig::class))->getProperties() as $property) {
+        if ($property->getName() === 'skillRenderers') {
+            continue;
+        }
+
+        expect($merged->{$property->getName()})->toEqual($config->{$property->getName()});
+    }
+
+    expect($merged->subagentsPath)->toBe('/project/.ai/subagents')
+        ->and($merged->skillRenderers)->toHaveCount(count($config->skillRenderers) + 1);
 });

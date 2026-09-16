@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   relative path eligibility compares against, so the guideline silently never
   published.
 
+- A sync that merges an extra skill renderer dropped every host
+  `.ai/subagents/` definition. `InjectedVendorMerger::mergeExtraRenderers()`
+  rebuilt the config without `subagentsPath`, so the path fell back to its
+  empty default and the subagent pipeline read it as "no host subagents". Any
+  consumer that registers a renderer hit this.
+
 ### Internal
 
 - Cover the user-scope guideline publication end to end through `bin/boost`,

@@ -115,7 +115,7 @@ it('carries every resolved config field across a renderer merge', function (): v
             continue;
         }
 
-        expect($merged->{$property->getName()})->toEqual($config->{$property->getName()});
+        expect($property->getValue($merged))->toEqual($property->getValue($config));
     }
 
     expect($merged->subagentsPath)->toBe('/project/.ai/subagents')

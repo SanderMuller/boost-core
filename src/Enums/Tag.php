@@ -24,6 +24,7 @@ enum Tag: string
     case Jira = 'jira';
     case Github = 'github';
     case GithubIssues = 'github-issues';
+    case Sentry = 'sentry';
 
     // Laravel-ecosystem tags surfaced by laravel/boost's bundled skills.
     // Listed here for `withTags()` autocomplete; string fallback is still

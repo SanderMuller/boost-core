@@ -27,3 +27,8 @@ it('leaves enum case values unchanged through normalization', function (): void 
 it('exposes a Database case — the capability tag for the guideline tag manifest', function (): void {
     expect(Tag::Database->value)->toBe('database');
 });
+
+it('exposes a Sentry case — the capability tag for Sentry-backed error research', function (): void {
+    expect(Tag::Sentry->value)->toBe('sentry')
+        ->and(Tag::from('sentry'))->toBe(Tag::Sentry);
+});

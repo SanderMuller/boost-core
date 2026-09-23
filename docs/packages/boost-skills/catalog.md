@@ -68,7 +68,7 @@ its tags live in a sidecar `.boost-tags.yaml` manifest beside it.
 |---|---|---|
 | `boost-extension` | Opt-in: extending the engine with custom skills and file emitters | `package-boost-php` |
 | `database` | The project has a database | `boost-skills` |
-| `frontend` | A frontend toolchain: type-checking, linting, JS tests | `boost-skills` |
+| `frontend` | The project has a user-facing UI: templates, styles, JS, or any mix. The JS checks skip what the project lacks | `boost-skills` |
 | `github` | Hosted on GitHub | `boost-skills` |
 | `github-issues` | Issue tracking in GitHub Issues | `boost-skills` |
 | `hosting` | The project deploys to a hosted platform. Parent of the platform-specific tags | `boost-skills` |

@@ -27,7 +27,7 @@ return BoostConfig::configure()
 
 | Project | Tags |
 |---|---|
-| Laravel with Livewire | `Tag::Laravel, Tag::Php, 'livewire'` |
+| Laravel with Livewire | `Tag::Laravel, Tag::Php, 'frontend', 'livewire'` |
 | Laravel with Inertia and React | `Tag::Laravel, Tag::Php, 'frontend', 'inertia'` |
 | Laravel API only | `Tag::Laravel, Tag::Php` |
 | Add Pest 4 and browser tests | add `'pest'` |

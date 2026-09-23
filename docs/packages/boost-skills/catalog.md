@@ -75,6 +75,15 @@ Other agent targets receive nothing. See [Subagents](/guide/subagents).
 
 | Subagent | What it does | Tags |
 |---|---|---|
+| `accessibility-reviewer` | Review interactive markup against WCAG 2.2 AA, and cite the exact success criterion for every finding | `frontend` |
+| `comment-analyzer` | Check every comment a change added, changed, or made false against the code, then judge whether it earns its place | — |
+| `database-specialist` | Judge what a MySQL schema change does in production: the algorithm, the lock, the timeout, and where it must run | `laravel` `database` |
+| `db-inspector` | Report the real schema, indexes, and data through the Laravel Boost database tools | `laravel` `database` |
+| `github-researcher` | Mine git and GitHub history for the change, pull request, and review behind a line of code | `github` |
+| `performance-reviewer` | Find N+1 queries, unbounded queries, over-fetching, and slow request-path work, and measure the cost where it can | `laravel` `database` |
+| `security-reviewer` | Review authorization, injection, and data exposure. Every rated finding names the attacker, source, sink, and missing control | `laravel` |
+| `sentry-researcher` | Pull the error signal from Sentry for a bug or a release: stack trace, trend, and release | `sentry` |
+| `silent-failure-hunter` | Find swallowed exceptions, fallbacks that hide a failure, and failures that nobody sees | `laravel` |
 | `simplification-auditor` | Audit a change for code that does not need to exist, and return a ledger that accounts for every unit it added | — |
 | `tech-lead-reviewer` | Review the approach one level above the line: design size, value types, placement, one-way doors | — |
 | `test-coverage-auditor` | Find the untested failure paths and the assertions that pass whatever the code does | — |
@@ -96,6 +105,7 @@ Every subagent is read-only: it reports and never edits the repository.
 | `laravel-cloud` | The application deploys to Laravel Cloud. Pair with `hosting` | `boost-skills` |
 | `php` | A PHP toolchain: Pint, PHPStan, Rector | `boost-skills` |
 | `release-automation` | Opt-in: release-flow content — README authoring, release notes, `UPGRADING.md`, CI changelog automation | `boost-skills`, `package-boost-php` |
+| `sentry` | The project tracks errors in Sentry and can reach them through a Sentry MCP server | `boost-skills` |
 | `single-issue-scope` | Opt-in: enforce single-issue PR, branch, and session discipline | `boost-skills` |
 | `voice` | Opt-in: route every writing surface to one voice rule | `boost-skills` |
 

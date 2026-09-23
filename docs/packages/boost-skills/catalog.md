@@ -30,6 +30,7 @@ declares every tag it carries.
 | `jira-rework` | Research a Jira issue sent back for rework, then propose fix options | `jira` `github` |
 | `jira-updates` | Update a Jira issue after its PR is created, and post Blocked-by-Question comments | `jira` |
 | `migration-squash` | Create or review a Laravel migration squash safely, with a checklist for incomplete or data-losing baselines | `laravel` |
+| `php-generics` | Docblock generics and array shapes: name a repeated `array{...}`, bind a generic base class, type a class-name parameter | `php` |
 | `pr-review-feedback` | Apply PR review comments, evaluating each one critically before acting | `github` |
 | `pre-release` | Pre-push gauntlet: Rector, Pint, the full test suite, PHPStan, and a doc-staleness audit | `php` `github` `release-automation` |
 | `promptimize` | Turn a rough prompt into one optimized, model-agnostic prompt | — |
@@ -37,7 +38,9 @@ declares every tag it carries.
 | `readme` | Author and maintain a README for a Composer package: shape, voice, and staleness audits | `release-automation` |
 | `release-notes` | Draft GitHub release bodies: structure, voice, breaking-change callouts, and what to omit | `release-automation` |
 | `resolve-conflicts` | Resolve git merge conflicts without dropping functionality from either side | — |
+| `simplify-shape` | Judge whether a change carries its values in the right type: enum, form request, DTO, query-builder method | `php` |
 | `test-writing` | Write specific, descriptively named tests that follow Arrange-Act-Assert | — |
+| `test-value` | Judge the tests a change touched: delete the ones that prove nothing, cover what nothing tests | — |
 | `upgrading` | The canonical structure for `UPGRADING.md` in a Composer package | `release-automation` |
 | `ux-review` | Weigh UX and UI options for a new feature, recommend an approach, and document the decision | — |
 | `write-spec` | Write implementation-ready specification files with progress-trackable phases | — |
@@ -56,11 +59,27 @@ them into `CLAUDE.md`, `AGENTS.md`, and the other guidance files.
 | `phpstan-fixing` | Fixing a PHPStan error: write a failing test first when it maps to a runtime bug | `php` |
 | `signed-commits` | Never fall back to an unsigned commit when signing is enabled. Surface the failure instead | — |
 | `single-issue-scope` | Keep each session, branch, and PR focused on exactly one issue | `single-issue-scope` |
+| `task-scope` | Keep the change to what the task asks, pick one reading of an ambiguous ask, and edit in place | — |
 | `verification-before-completion` | Run the verification command and read its output before claiming work is done | — |
 | `voice` | One voice rule per writing surface: a routing table plus the Simplified Technical English rules | `voice` |
 
 A guideline file stays frontmatter-free, for `laravel/boost` compatibility, so
 its tags live in a sidecar `.boost-tags.yaml` manifest beside it.
+
+## Subagents
+
+A subagent is a Claude Code definition that runs in its own context. The fresh
+context is the point: an adversarial pass judges the change as code somebody
+else wrote. The sync writes these to `.claude/agents/boost/sandermuller__boost-skills/`.
+Other agent targets receive nothing. See [Subagents](/guide/subagents).
+
+| Subagent | What it does | Tags |
+|---|---|---|
+| `simplification-auditor` | Audit a change for code that does not need to exist, and return a ledger that accounts for every unit it added | — |
+| `tech-lead-reviewer` | Review the approach one level above the line: design size, value types, placement, one-way doors | — |
+| `test-coverage-auditor` | Find the untested failure paths and the assertions that pass whatever the code does | — |
+
+Every subagent is read-only: it reports and never edits the repository.
 
 ## Tags {#tags}
 

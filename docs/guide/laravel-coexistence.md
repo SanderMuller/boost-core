@@ -75,6 +75,15 @@ For each agent guidance file the project's configured agents target, it:
 5. **Runs `project-boost:sync`** to regenerate the files (now including the
    captured content), unless `--no-sync`.
 
+**A `CLAUDE.md` from laravel/boost before v2.10.** Older laravel/boost versions
+seed their marker block into `CLAUDE.md`. Since boost-core 1.12, Claude Code
+guidance goes to `AGENTS.md`, and while that `CLAUDE.md` exists Claude Code
+skips `AGENTS.md`. From project-boost-laravel 1.5.0, reconcile also checks
+`CLAUDE.md` when Claude Code is an active agent. It backs the file up, captures
+its hand-written content, and after a successful sync replaces the file with a
+single `@AGENTS.md` line. A `CLAUDE.md` without the marker, or a symlinked one,
+is left alone.
+
 After reconciling, review `.ai/guidelines/reconciled.md`. Split or rename it
 into properly named guideline files if you like, then delete `.boost-reconcile/`
 once you are happy. (Both are safe to add to `.gitignore`.)

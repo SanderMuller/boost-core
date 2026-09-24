@@ -28,8 +28,8 @@ directly, once per agent in `boost.php`. No prompts, no multiselect, no crash.
 
 ::: warning
 Running `php artisan boost:install` **without** `--mcp` fires `laravel/boost`'s
-`GuidelineWriter` and `SkillWriter`, which then race this package over `CLAUDE.md`
-and the per-agent skill directories. Always go through `project-boost:install`,
+`GuidelineWriter` and `SkillWriter`, which then race this package over `AGENTS.md`
+(`CLAUDE.md` on laravel/boost versions before #1032) and the per-agent skill directories. Always go through `project-boost:install`,
 or pass `--mcp` yourself. The `suppress_upstream_writers` flag on the
 [configuration page](/packages/project-boost-laravel/configuration) is the
 guardrail for muscle-memory mistakes.

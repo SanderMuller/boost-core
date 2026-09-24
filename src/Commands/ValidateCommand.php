@@ -166,8 +166,8 @@ final class ValidateCommand extends BoostBaseCommand
     /**
      * Proactive legacy `$.<slot-root>` reference scan over the EMITTED set. Such
      * refs are NEVER resolved by boost-core (it only detects them; they emit
-     * literally), and because the `## Project Conventions` block is CLAUDE.md-only
-     * they dangle unresolved for non-Claude agents — a correctness gap, not just
+     * literally), and because the `## Project Conventions` block renders into AGENTS.md only
+     * they dangle unresolved for agents with another guidance file — a correctness gap, not just
      * cosmetics. Advisory (warning-level): does NOT fail `--strict`, since a
      * legacy ref may be mid-migration. De-duplicated by ref, slotted by the first
      * emitted file it appears in.
@@ -191,7 +191,7 @@ final class ValidateCommand extends BoostBaseCommand
             $diagnostics[] = Diagnostic::warning(
                 $relative,
                 sprintf(
-                    'legacy conventions reference `%s` is emitted literally — boost-core never resolves `$.` refs, and the Project Conventions block is CLAUDE.md-only, so it does not resolve for non-Claude agents. Migrate it to a `<!--boost:conv path="…" mode="…"-->` token, or inline the value.',
+                    'legacy conventions reference `%s` is emitted literally — boost-core never resolves `$.` refs, and the Project Conventions block renders into `AGENTS.md` only, so it does not resolve for agents that read a different guidance file. Migrate it to a `<!--boost:conv path="…" mode="…"-->` token, or inline the value.',
                     $ref,
                 ),
             );

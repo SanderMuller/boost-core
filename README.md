@@ -42,7 +42,7 @@ every agent you selected in `withAgents(...)`:
 |-------------------|----------------------------------|-----------------------------------------------------|
 | `.ai/skills/`     | Agent Skills (`<name>/SKILL.md`) | `.{agent}/skills/<name>/SKILL.md` per agent         |
 | `.ai/skills/<name>/scripts/` etc. | Skill asset siblings (scripts, references) | Copied verbatim beside each emitted `SKILL.md` |
-| `.ai/guidelines/` | Always-loaded guidance           | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot file |
+| `.ai/guidelines/` | Always-loaded guidance           | `AGENTS.md`, `GEMINI.md`, Copilot file              |
 | `.ai/commands/`   | Slash-command prompt templates   | Per-agent command dirs (see [Commands](#commands))  |
 | `.ai/subagents/`  | Claude Code subagent definitions | `.claude/agents/boost/host/<name>.md` (Claude Code only) |
 
@@ -331,7 +331,7 @@ return BoostConfig::configure()
 
 Skills consume a slot either with an inline `<!--boost:conv path="…" mode="…"-->`
 token, resolved into the emitted file, or via the rendered `## Project Conventions`
-block in `CLAUDE.md`. `boost validate --strict` hard-fails CI on a leaked token.
+block in `AGENTS.md`. `boost validate --strict` hard-fails CI on a leaked token.
 
 **See [the conventions docs](https://sandermuller.github.io/boost-core/guide/conventions)** for the full reference:
 inline tokens, the paired visible-default form, observability, legacy-ref

@@ -50,7 +50,7 @@ abstract class AgentTarget
 
     /**
      * Where the concatenated guidelines file goes, or null if the agent has no
-     * single guidelines file. Example: `CLAUDE.md`.
+     * single guidelines file. Example: `AGENTS.md`.
      */
     abstract public function guidelinesFileRelative(): ?string;
 

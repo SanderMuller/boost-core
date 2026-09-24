@@ -26,7 +26,7 @@ final class ClaudeCodeTarget extends AgentTarget
 
     public function guidelinesFileRelative(): string
     {
-        return 'CLAUDE.md';
+        return 'AGENTS.md';
     }
 
     public function commandsDirectoryRelative(): string

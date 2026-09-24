@@ -97,7 +97,7 @@ it('omits a command directory from gitignore patterns for an agent without one',
 // would destroy that operator-authored prose. The file MUST stay tracked.
 // Skill + command directories remain 100% generated and stay gitignored.
 it('does NOT gitignore the guideline file (mixed-ownership surface — operator content survives outside markers)', function (): void {
-    expect((new ClaudeCodeTarget())->gitignorePatterns())->not->toContain('CLAUDE.md');
+    expect((new ClaudeCodeTarget())->gitignorePatterns())->not->toContain('AGENTS.md');
 });
 
 it('Kiro command emit content is identical to the equivalent skill-shaped emit (same renderer hooks)', function (): void {

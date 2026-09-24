@@ -26,7 +26,7 @@ function emittedFilesTempProject(): string
     mkdir($dir . '/.cursor/rules/bar', 0o755, recursive: true);
     mkdir($dir . '/.ai/skills/baz', 0o755, recursive: true);
 
-    file_put_contents($dir . '/CLAUDE.md', "# Claude\n");
+    file_put_contents($dir . '/AGENTS.md', "# Claude\n");
     file_put_contents($dir . '/.claude/skills/foo/SKILL.md', "# Foo skill\n");
     file_put_contents($dir . '/.cursor/rules/bar/SKILL.md', "# Bar skill\n");
     // A source file with a token — must NEVER be scanned.
@@ -60,7 +60,7 @@ it('enumerates guidance + per-agent skills for active agents, excluding sources'
         $files = EmittedAgentFiles::default()->forConfig($dir, emittedFilesConfig([Agent::CLAUDE_CODE]));
         $relatives = array_map(static fn (array $f): string => $f['relative'], $files);
 
-        expect($relatives)->toContain('CLAUDE.md')
+        expect($relatives)->toContain('AGENTS.md')
             ->toContain('.claude/skills/foo/SKILL.md');
         // .ai/ sources are never scanned (they legitimately carry tokens).
         expect($relatives)->not->toContain('.ai/skills/baz/SKILL.md');

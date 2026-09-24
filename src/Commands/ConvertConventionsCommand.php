@@ -148,15 +148,16 @@ final class ConvertConventionsCommand extends BoostBaseCommand
         if (! (bool) $input->getOption('keep-block')) {
             $clearedClaudeMd = $this->clearMarkerBody($claudeMd);
             file_put_contents($claudeMdPath, $clearedClaudeMd);
-            $io->writeln('Cleared the CLAUDE.md marker body — next `vendor/bin/boost sync` re-renders from boost.php.');
+            $io->writeln('Cleared the CLAUDE.md marker body — next `vendor/bin/boost sync` renders the conventions from boost.php into AGENTS.md.');
         } else {
             $io->writeln('--keep-block set: CLAUDE.md marker body left intact. Next sync will detect two-source conflict and block the write until you reconcile.');
         }
 
         $io->writeln('Next steps:');
         $io->writeln('  1. Review the boost.php diff to confirm values match.');
-        $io->writeln('  2. Run `vendor/bin/boost sync` to re-render CLAUDE.md from boost.php.');
-        $io->writeln('  3. Run `vendor/bin/boost validate` then commit boost.php + CLAUDE.md together as a single "Migrate Project Conventions to boost.php" change. CLAUDE.md stays tracked — operator-authored content outside the conventions markers (custom H1, intro prose) is preserved across sync.');
+        $io->writeln("  2. Run `vendor/bin/boost sync` to render the conventions from boost.php into AGENTS.md (Claude Code's guidance file since 1.12).");
+        $io->writeln('  3. CLAUDE.md now stops Claude Code from reading AGENTS.md: move its remaining content into `.ai/guidelines/` and delete it, or add an `@AGENTS.md` line to it.');
+        $io->writeln('  4. Run `vendor/bin/boost validate` then commit boost.php, AGENTS.md and CLAUDE.md together as a single "Migrate Project Conventions to boost.php" change.');
 
         return self::SUCCESS;
     }

@@ -503,8 +503,8 @@ final readonly class ConventionsInliner
     /**
      * The legacy `$.<root>...` runtime references in a body — refs boost-core
      * never resolves (it only DETECTS them; they emit literally) and which, since
-     * the `## Project Conventions` block is CLAUDE.md-only, dangle unresolved for
-     * non-Claude agents. Matched only against KNOWN slot roots (from the composed
+     * the `## Project Conventions` block renders into AGENTS.md only, dangle unresolved for
+     * agents with another guidance file (GEMINI.md, Copilot). Matched only against KNOWN slot roots (from the composed
      * schema), so plain `$.foo` text isn't a false positive.
      *
      * PROSE-scoped, with inline-code spans masked — mirroring {@see scanLeaks()}:

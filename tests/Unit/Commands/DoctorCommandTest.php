@@ -708,7 +708,7 @@ it('0.16.0 conventions-token leak: reports a surviving boost:conv fence in an em
     try {
         // A surviving opt-in fence info-string in emitted output = definitive leak
         // (a 0.15+ engine would have stripped it on processing).
-        file_put_contents($dir . '/CLAUDE.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
+        file_put_contents($dir . '/AGENTS.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
 
         $result = runDoctor($dir);
         $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
@@ -716,7 +716,7 @@ it('0.16.0 conventions-token leak: reports a surviving boost:conv fence in an em
         expect($result['exit'])->toBe(0) // doctor is advisory — never fails the build
             ->and($display)->toContain('Conventions tokens')
             ->and($display)->toContain('leaked conventions token')
-            ->and($display)->toContain('CLAUDE.md');
+            ->and($display)->toContain('AGENTS.md');
     } finally {
         doctorCleanup($dir);
     }
@@ -725,7 +725,7 @@ it('0.16.0 conventions-token leak: reports a surviving boost:conv fence in an em
 it('0.16.0 conventions-token leak: clean project reports no leaks', function (): void {
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
     try {
-        file_put_contents($dir . '/CLAUDE.md', "# Project\n\nNo tokens here.\n");
+        file_put_contents($dir . '/AGENTS.md', "# Project\n\nNo tokens here.\n");
 
         $result = runDoctor($dir);
         $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
@@ -1066,8 +1066,8 @@ it('1.0 doctor: WARNS when laravel/boost is installed WITHOUT the wrapper (whole
 
 it('1.1.1 doctor: flags a foreign-seeded guidance file + steers to project-boost:sync (NOT the not-yet-built reconcile)', function (): void {
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
-    // A CLAUDE.md carrying laravel/boost's marker, with no prior boost manifest → not boost-owned.
-    file_put_contents($dir . '/CLAUDE.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
+    // An AGENTS.md carrying laravel/boost's marker, with no prior boost manifest → not boost-owned.
+    file_put_contents($dir . '/AGENTS.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
     try {
         $packages = new InstalledPackages([
             'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
@@ -1077,7 +1077,7 @@ it('1.1.1 doctor: flags a foreign-seeded guidance file + steers to project-boost
         $tester->execute(['--working-dir' => $dir]);
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
 
-        expect($display)->toContain('CLAUDE.md')
+        expect($display)->toContain('AGENTS.md')
             ->and($display)->toContain('project-boost:sync')
             // must NOT point at the not-yet-built reconcile command (1.1.1 fix).
             ->and($display)->not->toContain('project-boost:reconcile');
@@ -1088,7 +1088,7 @@ it('1.1.1 doctor: flags a foreign-seeded guidance file + steers to project-boost
 
 it('1.2.0 doctor: NAMES project-boost:reconcile for a foreign-seeded file once the wrapper is >= 1.1.0', function (): void {
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
-    file_put_contents($dir . '/CLAUDE.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
+    file_put_contents($dir . '/AGENTS.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
     try {
         $packages = new InstalledPackages([
             'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),
@@ -1099,7 +1099,7 @@ it('1.2.0 doctor: NAMES project-boost:reconcile for a foreign-seeded file once t
         $tester->execute(['--working-dir' => $dir]);
         $display = preg_replace('/\s+/', ' ', $tester->getDisplay()) ?? '';
 
-        expect($display)->toContain('CLAUDE.md')
+        expect($display)->toContain('AGENTS.md')
             ->and($display)->toContain('project-boost:reconcile');
     } finally {
         doctorCleanup($dir);
@@ -1108,7 +1108,7 @@ it('1.2.0 doctor: NAMES project-boost:reconcile for a foreign-seeded file once t
 
 it('1.2.0 doctor: a dev/unparseable wrapper version falls back to project-boost:sync (conservative — never name a possibly-absent command)', function (): void {
     $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
-    file_put_contents($dir . '/CLAUDE.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
+    file_put_contents($dir . '/AGENTS.md', "# Guidelines\n\n<laravel-boost-guidelines>\nLaravel framework guidance.\n</laravel-boost-guidelines>\n");
     try {
         $packages = new InstalledPackages([
             'laravel/boost' => new PackageInfo(name: 'laravel/boost', version: '2.4.0', installPath: $dir),

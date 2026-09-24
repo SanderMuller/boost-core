@@ -21,7 +21,7 @@ vendor/bin/package-boost-php lean            # confirm the archive is lean
 
 Generated agent directories (`.claude/`, `.cursor/`, `.codex/`, and so on) are
 added to `.gitignore` automatically. Root-level guidance files (`AGENTS.md`,
-`CLAUDE.md`) stay tracked. Edit `.ai/` only, then re-run `vendor/bin/boost sync`.
+`GEMINI.md`) stay tracked. Edit `.ai/` only, then re-run `vendor/bin/boost sync`.
 [File ownership](/guide/file-ownership) explains the split.
 
 ## Verify

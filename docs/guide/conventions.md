@@ -77,7 +77,8 @@ token that may ship to a consumer using `laravel/boost`.
 ### 2. The `## Project Conventions` block (legacy)
 
 `boost sync` also renders declared values into a markerless `## Project Conventions`
-section in `CLAUDE.md` (always, even if Claude Code isn't in `withAgents(...)`).
+section in `AGENTS.md`, Claude Code's guidance file (always, even if Claude Code
+isn't in `withAgents(...)`). Before 1.12 this block rendered into `CLAUDE.md`.
 This block is **kept** whenever any live skill or guidance still needs it (a legacy
 `$.slot` reference, an unresolved token, or prose pointing at "the Project
 Conventions section") and **drops** only on positive proof of full migration to
@@ -111,7 +112,7 @@ against a tree you expect to be fully migrated to find the one ref still pinning
 
 **Legacy `$.<root>` refs.** A pre-token `$.slot` reference (e.g. `$.testing.runner`)
 is detected but never resolved, so it emits literally and dangles for every
-non-Claude agent (the block is CLAUDE.md-only). `boost validate` surfaces each
+agent that does not read `AGENTS.md` (the block renders into `AGENTS.md` only). `boost validate` surfaces each
 distinct ref as a **warning** (so it does not fail `--strict`, since a ref may be
 mid-migration), pointing at the first file it appears in.
 

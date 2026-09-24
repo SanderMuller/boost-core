@@ -56,14 +56,14 @@ function runValidate(string $dir, array $options = []): array
 it('0.16.0 leak gate: --strict fails on a leaked conventions token in emitted output', function (): void {
     $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
     try {
-        file_put_contents($dir . '/CLAUDE.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
+        file_put_contents($dir . '/AGENTS.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
 
         $result = runValidate($dir, ['--strict' => true]);
         $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
 
         expect($result['exit'])->toBe(1)
             ->and($display)->toContain('leaked conventions token')
-            ->and($display)->toContain('CLAUDE.md');
+            ->and($display)->toContain('AGENTS.md');
     } finally {
         validateCleanup($dir);
     }
@@ -72,7 +72,7 @@ it('0.16.0 leak gate: --strict fails on a leaked conventions token in emitted ou
 it('0.16.0 leak gate: clean emitted output passes --strict', function (): void {
     $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
     try {
-        file_put_contents($dir . '/CLAUDE.md', "# Project\n\nNo tokens here.\n");
+        file_put_contents($dir . '/AGENTS.md', "# Project\n\nNo tokens here.\n");
 
         $result = runValidate($dir, ['--strict' => true]);
 
@@ -85,7 +85,7 @@ it('0.16.0 leak gate: clean emitted output passes --strict', function (): void {
 it('0.16.0 leak gate: reports the leak but stays exit 0 WITHOUT --strict (advisory)', function (): void {
     $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
     try {
-        file_put_contents($dir . '/CLAUDE.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
+        file_put_contents($dir . '/AGENTS.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
 
         $result = runValidate($dir);
         $display = preg_replace('/\s+/', ' ', $result['display']) ?? '';
@@ -100,7 +100,7 @@ it('0.16.0 leak gate: reports the leak but stays exit 0 WITHOUT --strict (adviso
 it('0.16.0 leak gate: emits leak diagnostics in --json output', function (): void {
     $dir = validateTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
     try {
-        file_put_contents($dir . '/CLAUDE.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
+        file_put_contents($dir . '/AGENTS.md', "# Project\n\n```yaml boost:conv\npatterns:\n  - main\n```\n");
 
         $result = runValidate($dir, ['--json' => true]);
         /** @var array{diagnostics: list<array{message: string}>} $decoded */
@@ -123,7 +123,7 @@ it('legacy-ref scan: warns (advisory, never fails --strict) on a $.<root> ref in
         'properties' => ['jira' => ['type' => 'object', 'properties' => ['project_key' => ['type' => 'string']]]],
     ], JSON_THROW_ON_ERROR));
     // An emitted file the agent reads, carrying a legacy $.jira ref (never inlined).
-    file_put_contents($dir . '/CLAUDE.md', "# Project\n\nFile issues under \$.jira.project_key.\n");
+    file_put_contents($dir . '/AGENTS.md', "# Project\n\nFile issues under \$.jira.project_key.\n");
 
     $packages = new InstalledPackages([
         'acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor),

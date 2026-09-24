@@ -1,7 +1,7 @@
 # Coexisting with `laravel/boost`
 
 `laravel/boost` and this package both write to your agent guidance files
-(`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, …). They do it in two different ways,
+(`AGENTS.md`, `GEMINI.md`, …). They do it in two different ways,
 and that difference is the one real footgun. This guide explains the canonical
 command sequence, why a bare `vendor/bin/boost sync` can lose content, and how
 `project-boost:reconcile` makes a takeover safe.

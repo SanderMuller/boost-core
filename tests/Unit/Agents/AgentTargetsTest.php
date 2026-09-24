@@ -23,7 +23,7 @@ use SanderMuller\BoostCore\Sync\PendingWrite;
 function allTargets(): array
 {
     return [
-        [new ClaudeCodeTarget(), Agent::CLAUDE_CODE, '.claude/skills', 'CLAUDE.md'],
+        [new ClaudeCodeTarget(), Agent::CLAUDE_CODE, '.claude/skills', 'AGENTS.md'],
         [new CursorTarget(), Agent::CURSOR, '.cursor/skills', 'AGENTS.md'],
         // Copilot reads AGENTS.md (Changelog 2025-08-28) + project skills
         // from .github/skills | .claude/skills | .agents/skills interchangeably

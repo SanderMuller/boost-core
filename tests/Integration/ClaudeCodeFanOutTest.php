@@ -89,7 +89,7 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
 
         $guidanceBody = $target->formatGuidelinesContent($guidelines);
         $guidanceContent = (new GuidanceComposer())->assemble(null, $guidanceBody);
-        $results[] = $writer->write($root, new PendingWrite('CLAUDE.md', $guidanceContent));
+        $results[] = $writer->write($root, new PendingWrite($target->guidelinesFileRelative(), $guidanceContent));
 
         // Verify all writes happened
         foreach ($results as $result) {
@@ -101,7 +101,7 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
         // Verify expected files exist
         expect(file_exists($root . '/.claude/skills/host-skill/SKILL.md'))->toBeTrue();
         expect(file_exists($root . '/.claude/skills/shared-name/SKILL.md'))->toBeTrue()
-            ->and(file_exists($root . '/CLAUDE.md'))
+            ->and(file_exists($root . '/AGENTS.md'))
             ->toBeTrue();
 
         // Skill content has frontmatter + body
@@ -110,8 +110,8 @@ it('end-to-end: fixture skills → planner → writer → files on disk', functi
             ->toContain('# Host skill');
 
         // Guidelines file has the body
-        $claudeMd = file_get_contents($root . '/CLAUDE.md');
-        expect($claudeMd)->toContain('# Conventions')
+        $agentsMd = file_get_contents($root . '/AGENTS.md');
+        expect($agentsMd)->toContain('# Conventions')
             ->toContain('strict types');
     } finally {
         rmTreeIntegration($root);

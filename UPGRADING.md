@@ -4,6 +4,26 @@ Breaking changes per major/minor bump.
 
 > **Standing note — a `composer update` can produce a guidance-file diff to commit.** Since 0.12 the agent-guidance files (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`/`.github/copilot-instructions.md`) are boost-owned but **tracked** (committed, not gitignored), and the post-install/update hook runs a sync. So when a dependency update changes synced content (a vendor ships a new skill/guideline, or boost-core's own output changes), the next `composer update` rewrites those tracked files → a dirty working tree you commit alongside the dependency bump. This is expected, not drift: the sync is a no-op when nothing changed (so the tree only goes dirty on a real content change), and the diff is reviewable. Commit it as part of the update.
 
+## 1.11 → 1.12
+
+### Claude Code guidance moves from `CLAUDE.md` to `AGENTS.md`
+
+Claude Code reads `AGENTS.md` natively since v2.1.277. boost-core now writes the Claude Code guidance to `AGENTS.md`, the same file Codex, Amp, and the other agents read. laravel/boost made the same change ([laravel/boost#1032](https://github.com/laravel/boost/pull/1032)). The `## Project Conventions` block moves with it.
+
+On the first sync after the upgrade:
+
+- A `CLAUDE.md` that boost wrote since 0.13 (recorded in the sync manifest) and that you did not edit is deleted. Commit the deletion together with the new or changed `AGENTS.md`.
+- A `CLAUDE.md` you wrote or edited stays. boost does not delete it.
+- A marker-bounded `CLAUDE.md` from before 0.12, or any `CLAUDE.md` in a project with `withGitignoreManagement(false)`, also stays. Remove it by hand.
+
+By default Claude Code skips `AGENTS.md` while a `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` exists. `boost sync` and `boost doctor` show a warning in that case. Do one of these:
+
+- Add an `@AGENTS.md` line to `CLAUDE.md` (`@../AGENTS.md` in `.claude/CLAUDE.md`). This also works on Claude Code versions before v2.1.277.
+- Move the content into `.ai/guidelines/` and delete `CLAUDE.md`.
+- Set Claude Code's **Project instructions** setting to `claude-md-and-agents-md`.
+
+Team members on a Claude Code version before v2.1.277 do not read `AGENTS.md`. Update Claude Code, or keep a `CLAUDE.md` that contains `@AGENTS.md`.
+
 ## 0.20 → 0.21
 
 > **⚠️ Migrate your `emit()` signature FIRST.** If you ship a `FileEmitter`, change its `emit()` signature to `iterable` BEFORE you bump boost-core to 0.21+. A still-`?EmittedFile` implementation **hard-fatals** the moment boost-core loads your class (`Declaration … must be compatible with FileEmitter::emit(): iterable`) — a raw PHP fatal at sync startup, not a graceful diagnostic, so it blocks the entire sync. Do this one edit before anything else in this upgrade.

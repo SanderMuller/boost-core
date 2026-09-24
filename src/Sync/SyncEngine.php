@@ -768,11 +768,11 @@ final readonly class SyncEngine
         // guidance + skills are already resolved — and passed to updateGitignore
         // so the ignore lands in the SAME write, gated to avoid adding `.boost/`
         // to an otherwise-empty project's gitignore. conventions is included
-        // because it renders into CLAUDE.md (→ a manifest entry) even without
+        // because it renders into AGENTS.md (→ a manifest entry) even without
         // host guidelines. An unignored manifest breaks clean-tree / CI checks.
         // Skills/guidelines/commands only EMIT (→ manifest entries) when there
         // are active agents to receive them; with no agents nothing is written
-        // regardless of what resolved. Conventions render into CLAUDE.md even
+        // regardless of what resolved. Conventions render into AGENTS.md even
         // without the Claude agent, so they count on their own. A prior manifest
         // is refreshed regardless. A live FileEmitter output is also a manifest
         // entry ($hasLiveEmitterOutput, derived above), so it must trigger the
@@ -1042,6 +1042,7 @@ final readonly class SyncEngine
                 ...$staleManifestDiagnostics,
                 ...$preservedForeignDiagnostics,
                 ...$commandWarningDiagnostics,
+                ...ClaudeInstructionShadowCheck::diagnostics($projectRoot, $config, $writes, $resolvedGuidelines !== [] || $config->conventions !== []),
             ],
             conventionsBlockKept: $guidanceResult['conventionsBlockKept'],
             conventionsKeepReasons: $guidanceResult['conventionsKeepReasons'],

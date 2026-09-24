@@ -114,7 +114,7 @@ it('end-to-end: host skill + guideline → Claude Code files committed to disk',
             ->toBe(3); // skill + guidelines + managed .gitignore
 
         expect(file_exists($root . '/.claude/skills/foo/SKILL.md'))->toBeTrue();
-        expect(file_exists($root . '/CLAUDE.md'))->toBeTrue()
+        expect(file_exists($root . '/AGENTS.md'))->toBeTrue()
             ->and(file_get_contents($root . '/.gitignore'))
             ->toContain('.claude/skills/');
 
@@ -122,7 +122,7 @@ it('end-to-end: host skill + guideline → Claude Code files committed to disk',
         expect($skillContent)->toContain('name: foo')
             ->toContain('# Foo body');
 
-        $claudeMd = file_get_contents($root . '/CLAUDE.md');
+        $claudeMd = file_get_contents($root . '/AGENTS.md');
         expect($claudeMd)->toContain('# Conventions')
             ->toContain('strict types');
     } finally {
@@ -285,7 +285,7 @@ it('sync is idempotent: one sync converges — a check right after is clean + a 
 
 it('does not delete UNCHANGED guidance files listed in a PRIOR (pre-0.12) gitignore block (a4bg5vbh)', function (): void {
     // Regression: migrating FROM the pre-0.12 gitignored-guidance layout, the
-    // prior managed block still lists CLAUDE.md/AGENTS.md. An UNCHANGED guidance
+    // prior managed block still lists AGENTS.md. An UNCHANGED guidance
     // file is absent from this run's $writes (GuidanceWriter omits UNCHANGED), so
     // cleanupStaleManagedFiles — which reaps prior-managed files not in $writes —
     // deleted it on the first post-migration sync (recreated only on a 2nd pass).
@@ -296,84 +296,14 @@ it('does not delete UNCHANGED guidance files listed in a PRIOR (pre-0.12) gitign
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
         file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
 
-        // Sync 1: emits CLAUDE.md (boost content) + a 0.12+ block (guidance NOT listed).
+        // Sync 1: emits AGENTS.md (boost content) + a 0.12+ block (guidance NOT listed).
         SyncEngine::default(emptyInstalledPackages())->sync($root);
-        $claudeMd = $root . '/CLAUDE.md';
-        expect(file_exists($claudeMd))->toBeTrue('CLAUDE.md should emit on the first sync');
+        $claudeMd = $root . '/AGENTS.md';
+        expect(file_exists($claudeMd))->toBeTrue('AGENTS.md should emit on the first sync');
         $content = (string) file_get_contents($claudeMd);
 
         // Simulate the leftover pre-0.12 managed block that still gitignores the
         // guidance file (the real migration state a consumer carries in).
-        $gitignore = $root . '/.gitignore';
-        $patched = str_replace(
-            '# >>> boost (managed) >>>',
-            "# >>> boost (managed) >>>\nCLAUDE.md",
-            (string) file_get_contents($gitignore),
-        );
-        file_put_contents($gitignore, $patched);
-
-        // Sync 2: CLAUDE.md is UNCHANGED (content matches) ⇒ absent from $writes;
-        // the prior block lists it ⇒ the stale-managed cleanup must NOT reap it.
-        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
-
-        expect(file_exists($claudeMd))->toBeTrue('CLAUDE.md must survive — GuidanceWriter-owned, not a stale managed file')
-            ->and((string) file_get_contents($claudeMd))->toBe($content)
-            ->and($result->countByAction(WriteAction::DELETED))->toBe(0);
-    } finally {
-        rmTreeE2E($root);
-    }
-});
-
-it('1.0 warn-and-overwrite guard: warns when a non-owned foreign guidance file is wholesale-overwritten, then steady-state is silent (spec §5)', function (): void {
-    // The never-lossy guard's non-empty sibling: a pre-existing CLAUDE.md authored by
-    // another tool (no boost markers, not boost-owned) is about to be wholesale-replaced
-    // by the assembly. The default is warn-AND-overwrite (MINOR-safe) — the file IS taken
-    // over, but a warning surfaces the takeover. On the next sync boost owns it → silent.
-    $root = makeEndToEndProject();
-    try {
-        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
-        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
-
-        // Foreign-authored CLAUDE.md (no boost markers), content NOT in .ai/guidelines.
-        file_put_contents($root . '/CLAUDE.md', "# Seeded by another tool\n\nBespoke guidance not mirrored into .ai/.\n");
-
-        $first = SyncEngine::default(emptyInstalledPackages())->sync($root);
-        $firstMessages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $first->diagnostics));
-
-        expect($firstMessages)->toContain('was authored outside boost-core')
-            // warn-AND-overwrite default: boost takes the file over.
-            ->and((string) file_get_contents($root . '/CLAUDE.md'))->toContain('Use strict types everywhere')
-            ->and((string) file_get_contents($root . '/CLAUDE.md'))->not->toContain('Seeded by another tool');
-
-        // Second sync: boost now owns CLAUDE.md (manifest sha-match) → guard stays silent.
-        $second = SyncEngine::default(emptyInstalledPackages())->sync($root);
-        $secondMessages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $second->diagnostics));
-        expect($secondMessages)->not->toContain('was authored outside boost-core');
-    } finally {
-        rmTreeE2E($root);
-    }
-});
-
-it('reaps a DROPPED agent guidance file listed in a PRIOR (pre-0.12) block — exemption is scoped to CONFIGURED agents (codex)', function (): void {
-    // Companion to the a4bg5vbh test above. That test proves a CONFIGURED agent's
-    // UNCHANGED guidance survives the stale-managed cleanup. This proves the dual:
-    // a guidance file for an agent NO LONGER configured (here AGENTS.md, with no
-    // Codex/Amp/OpenCode in withAgents) must NOT be exempt — otherwise, because the
-    // exemption was keyed on ALL known agents, a pre-0.12 block listing AGENTS.md
-    // could never reap it (OrphanReaper is manifest-gated and has no entry on the
-    // first post-migration sync), so the dropped agent's guidance lingered forever.
-    $root = makeEndToEndProject();
-    try {
-        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);"); // Codex (AGENTS.md) NOT configured
-        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
-
-        // Sync 1: emits CLAUDE.md + a 0.12+ block (guidance NOT listed).
-        SyncEngine::default(emptyInstalledPackages())->sync($root);
-
-        // Leftover from when Codex WAS configured: a stale AGENTS.md on disk, and a
-        // pre-0.12 managed block that still lists it (the real migration carry-in).
-        $agentsMd = $root . '/AGENTS.md';
-        file_put_contents($agentsMd, "Stale guidance from a since-removed Codex agent.\n");
         $gitignore = $root . '/.gitignore';
         $patched = str_replace(
             '# >>> boost (managed) >>>',
@@ -382,12 +312,82 @@ it('reaps a DROPPED agent guidance file listed in a PRIOR (pre-0.12) block — e
         );
         file_put_contents($gitignore, $patched);
 
-        // Sync 2: AGENTS.md is not emitted (Codex dropped) and not exempt (not a
+        // Sync 2: AGENTS.md is UNCHANGED (content matches) ⇒ absent from $writes;
+        // the prior block lists it ⇒ the stale-managed cleanup must NOT reap it.
+        $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        expect(file_exists($claudeMd))->toBeTrue('AGENTS.md must survive — GuidanceWriter-owned, not a stale managed file')
+            ->and((string) file_get_contents($claudeMd))->toBe($content)
+            ->and($result->countByAction(WriteAction::DELETED))->toBe(0);
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('1.0 warn-and-overwrite guard: warns when a non-owned foreign guidance file is wholesale-overwritten, then steady-state is silent (spec §5)', function (): void {
+    // The never-lossy guard's non-empty sibling: a pre-existing AGENTS.md authored by
+    // another tool (no boost markers, not boost-owned) is about to be wholesale-replaced
+    // by the assembly. The default is warn-AND-overwrite (MINOR-safe) — the file IS taken
+    // over, but a warning surfaces the takeover. On the next sync boost owns it → silent.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
+        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
+
+        // Foreign-authored AGENTS.md (no boost markers), content NOT in .ai/guidelines.
+        file_put_contents($root . '/AGENTS.md', "# Seeded by another tool\n\nBespoke guidance not mirrored into .ai/.\n");
+
+        $first = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $firstMessages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $first->diagnostics));
+
+        expect($firstMessages)->toContain('was authored outside boost-core')
+            // warn-AND-overwrite default: boost takes the file over.
+            ->and((string) file_get_contents($root . '/AGENTS.md'))->toContain('Use strict types everywhere')
+            ->and((string) file_get_contents($root . '/AGENTS.md'))->not->toContain('Seeded by another tool');
+
+        // Second sync: boost now owns AGENTS.md (manifest sha-match) → guard stays silent.
+        $second = SyncEngine::default(emptyInstalledPackages())->sync($root);
+        $secondMessages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $second->diagnostics));
+        expect($secondMessages)->not->toContain('was authored outside boost-core');
+    } finally {
+        rmTreeE2E($root);
+    }
+});
+
+it('reaps a DROPPED agent guidance file listed in a PRIOR (pre-0.12) block — exemption is scoped to CONFIGURED agents (gemini)', function (): void {
+    // Companion to the a4bg5vbh test above. That test proves a CONFIGURED agent's
+    // UNCHANGED guidance survives the stale-managed cleanup. This proves the dual:
+    // a guidance file for an agent NO LONGER configured (here GEMINI.md, with no
+    // Gemini in withAgents) must NOT be exempt — otherwise, because the
+    // exemption was keyed on ALL known agents, a pre-0.12 block listing GEMINI.md
+    // could never reap it (OrphanReaper is manifest-gated and has no entry on the
+    // first post-migration sync), so the dropped agent's guidance lingered forever.
+    $root = makeEndToEndProject();
+    try {
+        writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);"); // Gemini (GEMINI.md) NOT configured
+        file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\nUse strict types everywhere.\n");
+
+        // Sync 1: emits AGENTS.md + a 0.12+ block (guidance NOT listed).
+        SyncEngine::default(emptyInstalledPackages())->sync($root);
+
+        // Leftover from when Gemini WAS configured: a stale GEMINI.md on disk, and a
+        // pre-0.12 managed block that still lists it (the real migration carry-in).
+        $geminiMd = $root . '/GEMINI.md';
+        file_put_contents($geminiMd, "Stale guidance from a since-removed Gemini agent.\n");
+        $gitignore = $root . '/.gitignore';
+        $patched = str_replace(
+            '# >>> boost (managed) >>>',
+            "# >>> boost (managed) >>>\nGEMINI.md",
+            (string) file_get_contents($gitignore),
+        );
+        file_put_contents($gitignore, $patched);
+
+        // Sync 2: GEMINI.md is not emitted (Gemini dropped) and not exempt (not a
         // configured-agent guidance file) ⇒ the stale-managed cleanup reaps it.
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect(file_exists($agentsMd))->toBeFalse("a dropped agent's stale guidance must be reaped, not exempted")
-            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue("the configured agent's guidance must survive");
+        expect(file_exists($geminiMd))->toBeFalse("a dropped agent's stale guidance must be reaped, not exempted")
+            ->and(file_exists($root . '/AGENTS.md'))->toBeTrue("the configured agent's guidance must survive");
     } finally {
         rmTreeE2E($root);
     }
@@ -1149,7 +1149,7 @@ it('tag-filters a vendor guideline by its .boost-tags.yaml manifest entry', func
             . '    ->withAllowedVendors(["acme/db-pack"]);',
         );
         SyncEngine::default($packages)->sync($root);
-        $withoutTag = is_file($root . '/CLAUDE.md') ? (string) file_get_contents($root . '/CLAUDE.md') : '';
+        $withoutTag = is_file($root . '/AGENTS.md') ? (string) file_get_contents($root . '/AGENTS.md') : '';
         expect($withoutTag)->not->toContain('No destructive commands.');
 
         // Declare `database` → the manifest-tagged guideline now ships.
@@ -1163,7 +1163,7 @@ it('tag-filters a vendor guideline by its .boost-tags.yaml manifest entry', func
         $result = SyncEngine::default($packages)->sync($root);
 
         expect($result->hasErrors())->toBeFalse()
-            ->and((string) file_get_contents($root . '/CLAUDE.md'))->toContain('No destructive commands.');
+            ->and((string) file_get_contents($root . '/AGENTS.md'))->toContain('No destructive commands.');
     } finally {
         rmTreeE2E($root);
     }
@@ -1842,7 +1842,7 @@ it('respects withExcludedSkills against injected vendor skills', function (): vo
     }
 });
 
-it('caller-injected vendor guidelines feed into the CLAUDE.md/AGENTS.md fan-out', function (): void {
+it('caller-injected vendor guidelines feed into the AGENTS.md fan-out', function (): void {
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
@@ -1868,8 +1868,8 @@ it('caller-injected vendor guidelines feed into the CLAUDE.md/AGENTS.md fan-out'
         );
 
         expect($result->hasErrors())->toBeFalse()
-            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue()
-            ->and(file_get_contents($root . '/CLAUDE.md'))->toContain('Be consistent with the codebase');
+            ->and(file_exists($root . '/AGENTS.md'))->toBeTrue()
+            ->and(file_get_contents($root . '/AGENTS.md'))->toContain('Be consistent with the codebase');
     } finally {
         rmTreeE2E($root);
     }
@@ -1987,9 +1987,9 @@ it('tag-filters injected vendor guidelines using the same subset rule', function
         );
 
         expect($result->hasErrors())->toBeFalse()
-            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue()
-            ->and(file_get_contents($root . '/CLAUDE.md'))->toContain('KEPT')
-            ->and(file_get_contents($root . '/CLAUDE.md'))->not->toContain('DROPPED');
+            ->and(file_exists($root . '/AGENTS.md'))->toBeTrue()
+            ->and(file_get_contents($root . '/AGENTS.md'))->toContain('KEPT')
+            ->and(file_get_contents($root . '/AGENTS.md'))->not->toContain('DROPPED');
     } finally {
         rmTreeE2E($root);
     }
@@ -2090,9 +2090,9 @@ it('renders host `.ai/guidelines/*.blade.php` through a registered SkillRenderer
         );
 
         expect($result->hasErrors())->toBeFalse('errors=' . json_encode($result->errors))
-            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue();
+            ->and(file_exists($root . '/AGENTS.md'))->toBeTrue();
 
-        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        $claudeMd = (string) file_get_contents($root . '/AGENTS.md');
         expect($claudeMd)->toContain('# HOST BLADE GUIDELINE')
             ->and($claudeMd)->not->toContain('{{ strtoupper');
     } finally {
@@ -2111,7 +2111,7 @@ it('silently skips host `.ai/guidelines/*.blade.php` when NO renderer is wired (
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
         expect($result->hasErrors())->toBeFalse();
-        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        $claudeMd = (string) file_get_contents($root . '/AGENTS.md');
         expect($claudeMd)->toContain('# Host MD Guideline')
             ->and($claudeMd)->not->toContain('Skipped Blade');
     } finally {
@@ -2169,9 +2169,9 @@ it('0.13.0 manifest: a boost-OWNED guidance file CONVERGES to empty when all gui
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
 
-        // Sync 1: CLAUDE.md written from guidance + manifest records ownership.
+        // Sync 1: AGENTS.md written from guidance + manifest records ownership.
         SyncEngine::default(emptyInstalledPackages())->sync($root);
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('Body.')
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toContain('Body.')
             ->and(is_file($root . '/.boost/manifest.json'))->toBeTrue('manifest should be written');
         // `.boost/` is ignored via the root managed .gitignore block, so the
         // regenerable manifest never dirties the working tree.
@@ -2183,7 +2183,7 @@ it('0.13.0 manifest: a boost-OWNED guidance file CONVERGES to empty when all gui
         unlink($root . '/.ai/guidelines/g.md');
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect(trim((string) file_get_contents($root . '/CLAUDE.md')))
+        expect(trim((string) file_get_contents($root . '/AGENTS.md')))
             ->toBeEmpty();
     } finally {
         rmTreeE2E($root);
@@ -2193,7 +2193,7 @@ it('0.13.0 manifest: a boost-OWNED guidance file CONVERGES to empty when all gui
 it('0.14.0 manifest: a de-selected agent guidance file is REAPED (krp3e3nf: dropping GEMINI from withAgents left a 5KB stale GEMINI.md)', function (): void {
     $root = makeEndToEndProject();
     try {
-        // Sync 1: CLAUDE_CODE + GEMINI active → both CLAUDE.md and GEMINI.md are
+        // Sync 1: CLAUDE_CODE + GEMINI active → both AGENTS.md and GEMINI.md are
         // written from the guideline and recorded in the manifest (engine/guidance).
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE, Agent::GEMINI]);");
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
@@ -2206,7 +2206,7 @@ it('0.14.0 manifest: a de-selected agent guidance file is REAPED (krp3e3nf: drop
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
         expect(file_exists($root . '/GEMINI.md'))->toBeFalse('de-selected agent guidance file should be reaped')
-            ->and(file_exists($root . '/CLAUDE.md'))->toBeTrue('the still-active agent guidance file stays');
+            ->and(file_exists($root . '/AGENTS.md'))->toBeTrue('the still-active agent guidance file stays');
     } finally {
         rmTreeE2E($root);
     }
@@ -2269,18 +2269,18 @@ it('0.13.0 manifest: a pre-existing operator file that COINCIDENTALLY matches bo
     writeBoostPhp($probe, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
     file_put_contents($probe . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
     SyncEngine::default(emptyInstalledPackages())->sync($probe);
-    $assembled = (string) file_get_contents($probe . '/CLAUDE.md');
+    $assembled = (string) file_get_contents($probe . '/AGENTS.md');
     rmTreeE2E($probe);
 
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
-        // Operator's pre-existing CLAUDE.md happens to byte-match boost's output,
+        // Operator's pre-existing AGENTS.md happens to byte-match boost's output,
         // but boost has NEVER synced here (no manifest) → it must not be claimed.
-        file_put_contents($root . '/CLAUDE.md', $assembled);
+        file_put_contents($root . '/AGENTS.md', $assembled);
 
-        // Sync 1: CLAUDE.md is UNCHANGED (matches) + absent from the prior
+        // Sync 1: AGENTS.md is UNCHANGED (matches) + absent from the prior
         // manifest → ownership is NOT recorded.
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
@@ -2289,7 +2289,7 @@ it('0.13.0 manifest: a pre-existing operator file that COINCIDENTALLY matches bo
         unlink($root . '/.ai/guidelines/g.md');
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toBe($assembled);
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toBe($assembled);
     } finally {
         rmTreeE2E($root);
     }
@@ -2320,16 +2320,16 @@ it('0.13.0 manifest: a boost-owned guidance file the operator HAND-EDITED is PRE
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# G\n\nBody.\n");
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        // Operator hand-edits the (boost-owned) CLAUDE.md → sha now diverges
+        // Operator hand-edits the (boost-owned) AGENTS.md → sha now diverges
         // from the manifest record.
-        file_put_contents($root . '/CLAUDE.md', "# My own edits\n\nHand-written, must survive.\n");
+        file_put_contents($root . '/AGENTS.md', "# My own edits\n\nHand-written, must survive.\n");
 
         // Remove guidance → empty sync. sha-mismatch means boost can't prove it
         // still owns the file → PRESERVE (never blank a hand-edited file).
         unlink($root . '/.ai/guidelines/g.md');
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('Hand-written, must survive.');
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toContain('Hand-written, must survive.');
         // Observable: the leave-intact INFO fires.
         $messages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics));
         expect($messages)->toContain('left untouched rather than blanked');
@@ -2338,8 +2338,8 @@ it('0.13.0 manifest: a boost-owned guidance file the operator HAND-EDITED is PRE
     }
 });
 
-it('0.12.0 empty-assembly guard: a pre-existing non-empty CLAUDE.md is LEFT INTACT (not wiped) when boost resolves no guidance + emits an INFO (codex P1 — fresh-adopter wipe)', function (): void {
-    // The median fresh-adopter path: an app already has a CLAUDE.md (laravel/
+it('0.12.0 empty-assembly guard: a pre-existing non-empty AGENTS.md is LEFT INTACT (not wiped) when boost resolves no guidance + emits an INFO (codex P1 — fresh-adopter wipe)', function (): void {
+    // The median fresh-adopter path: an app already has a AGENTS.md (laravel/
     // boost's `boost install` writes one; many repos hand-author one) and a
     // boost.php, but no host `.ai/guidelines/` yet → assembled is empty. The
     // stateless markerless write would blank the file (and via BoostAutoSync,
@@ -2349,12 +2349,12 @@ it('0.12.0 empty-assembly guard: a pre-existing non-empty CLAUDE.md is LEFT INTA
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
         // No .ai/guidelines/* → nothing for boost to assemble.
         $preExisting = "# My App\n\nHand-written guidance the operator authored before adopting boost.\n";
-        file_put_contents($root . '/CLAUDE.md', $preExisting);
+        file_put_contents($root . '/AGENTS.md', $preExisting);
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
         // File untouched — byte-for-byte.
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toBe($preExisting);
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toBe($preExisting);
 
         // The leave-prior behavior is observable, not silent.
         $messages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics));
@@ -2366,11 +2366,11 @@ it('0.12.0 empty-assembly guard: a pre-existing non-empty CLAUDE.md is LEFT INTA
     }
 });
 
-it('0.12.0: ->withConventions() still renders CLAUDE.md even when the Claude agent is NOT enabled (codex P1 — conventions independent of active agents)', function (): void {
-    // Pre-0.12 syncConventions() wrote CLAUDE.md whenever conventions were
+it('0.12.0: ->withConventions() still renders AGENTS.md even when the Claude agent is NOT enabled (codex P1 — conventions independent of active agents)', function (): void {
+    // Pre-0.12 syncConventions() wrote AGENTS.md whenever conventions were
     // declared, regardless of which agents were active. A Codex/Gemini-only
     // project that declares ->withConventions([...]) must still get its
-    // conventions written to CLAUDE.md — the markerless rewrite must not make
+    // conventions written to AGENTS.md — the markerless rewrite must not make
     // conventions vanish for non-Claude agent sets.
     $root = makeEndToEndProject();
     $vendor = sys_get_temp_dir() . '/boost-conv-' . bin2hex(random_bytes(8));
@@ -2398,8 +2398,8 @@ it('0.12.0: ->withConventions() still renders CLAUDE.md even when the Claude age
         $result = SyncEngine::default($packages)->sync($root);
 
         expect($result->hasErrors())->toBeFalse()
-            ->and(is_file($root . '/CLAUDE.md'))->toBeTrue('CLAUDE.md must be created to carry conventions');
-        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+            ->and(is_file($root . '/AGENTS.md'))->toBeTrue('AGENTS.md must be created to carry conventions');
+        $claudeMd = (string) file_get_contents($root . '/AGENTS.md');
         expect($claudeMd)
             ->toContain('## Project Conventions')
             ->toContain('project_key: BOOST-1');
@@ -2448,7 +2448,7 @@ it('0.15.0 inlining: a vendor skill token is inlined into the emitted skill AND 
             ->and($skill)->not->toContain('boost:conv');     // no token left
         // The ONLY convention consumer is now token-only → fully migrated →
         // the always-loaded block is dropped.
-        $claudeMd = is_file($root . '/CLAUDE.md') ? (string) file_get_contents($root . '/CLAUDE.md') : '';
+        $claudeMd = is_file($root . '/AGENTS.md') ? (string) file_get_contents($root . '/AGENTS.md') : '';
         expect($claudeMd)->not->toContain('## Project Conventions');
     } finally {
         rmTreeE2E($root);
@@ -2487,7 +2487,7 @@ it('0.15.0 inlining: the conventions block is KEPT while any skill still uses a 
         SyncEngine::default($packages)->sync($root);
 
         // A live skill still needs runtime resolution → block stays rendered.
-        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        $claudeMd = (string) file_get_contents($root . '/AGENTS.md');
         expect($claudeMd)
             ->toContain('## Project Conventions')
             ->toContain('project_key: BOOST-9');
@@ -2515,9 +2515,9 @@ it('0.15.0 inlining: the block is KEPT when EXISTING on-disk guidance content st
             $vendor . '/resources/boost/skills/conv-demo/SKILL.md',
             "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n",
         );
-        // BUT a pre-existing CLAUDE.md carries operator content with a legacy
+        // BUT a pre-existing AGENTS.md carries operator content with a legacy
         // $.slot reference (the kind migrate() preserves as residual).
-        file_put_contents($root . '/CLAUDE.md', "# House rules\n\nResolve `\$.jira.project_key` from the conventions block when filing.\n");
+        file_put_contents($root . '/AGENTS.md', "# House rules\n\nResolve `\$.jira.project_key` from the conventions block when filing.\n");
 
         writeBoostPhp(
             $root,
@@ -2531,7 +2531,7 @@ it('0.15.0 inlining: the block is KEPT when EXISTING on-disk guidance content st
         SyncEngine::default($packages)->sync($root);
 
         // The existing content depends on conventions → block stays.
-        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        $claudeMd = (string) file_get_contents($root . '/AGENTS.md');
         expect($claudeMd)->toContain('## Project Conventions');
     } finally {
         rmTreeE2E($root);
@@ -2556,11 +2556,11 @@ it('0.15.0 inlining: the block is KEPT when preserved legacy RESIDUAL contains a
             $vendor . '/resources/boost/skills/conv-demo/SKILL.md',
             "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n",
         );
-        // Legacy marker-bearing CLAUDE.md with out-of-marker operator residual
+        // Legacy marker-bearing AGENTS.md with out-of-marker operator residual
         // that itself carries an unresolved boost:conv token. migrate() preserves
         // that residual below the new body — so the block must stay.
         file_put_contents(
-            $root . '/CLAUDE.md',
+            $root . '/AGENTS.md',
             "<!-- boost-core:guidelines:start -->\n# Old\n<!-- boost-core:guidelines:end -->\n\nOperator: file under <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n",
         );
 
@@ -2575,7 +2575,7 @@ it('0.15.0 inlining: the block is KEPT when preserved legacy RESIDUAL contains a
         $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
         SyncEngine::default($packages)->sync($root);
 
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('## Project Conventions');
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toContain('## Project Conventions');
     } finally {
         rmTreeE2E($root);
         rmTreeE2E($vendor);
@@ -2608,15 +2608,15 @@ it('0.15.0 inlining: the block DROPS on the re-sync after a skill migrates, even
         );
         $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
         SyncEngine::default($packages)->sync($root);
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('## Project Conventions');
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toContain('## Project Conventions');
 
-        // Sync 2: the skill migrates to a token. The prior CLAUDE.md still
+        // Sync 2: the skill migrates to a token. The prior AGENTS.md still
         // carries the rendered block, but boost's OWN block must not keep itself
         // alive — fully migrated now → block drops.
         file_put_contents($skillFile, "---\nname: conv-demo\ndescription: Demo.\n---\nCreate issues in <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n");
         SyncEngine::default($packages)->sync($root);
 
-        $claudeMd = is_file($root . '/CLAUDE.md') ? (string) file_get_contents($root . '/CLAUDE.md') : '';
+        $claudeMd = is_file($root . '/AGENTS.md') ? (string) file_get_contents($root . '/AGENTS.md') : '';
         expect($claudeMd)->not->toContain('## Project Conventions');
         $skill = (string) file_get_contents($root . '/.claude/skills/conv-demo/SKILL.md');
         expect($skill)->toContain('Create issues in BOOST-9.');
@@ -2626,7 +2626,7 @@ it('0.15.0 inlining: the block DROPS on the re-sync after a skill migrates, even
     }
 });
 
-it('conventions block renders into CLAUDE.md ONLY, never AGENTS.md, even with both CLAUDE_CODE + CODEX active and the block KEPT (#87 — the CLAUDE/AGENTS difference is by-design placement, not a per-target drop)', function (): void {
+it('conventions block renders ONCE into the shared AGENTS.md when both CLAUDE_CODE + CODEX are active and the block is KEPT, and no CLAUDE.md is created (#87, 1.12.0 AGENTS.md flip)', function (): void {
     $root = makeEndToEndProject();
     $vendor = sys_get_temp_dir() . '/boost-conv-placement-' . bin2hex(random_bytes(8));
     mkdir($vendor . '/resources/boost', 0o777, recursive: true);
@@ -2654,19 +2654,14 @@ it('conventions block renders into CLAUDE.md ONLY, never AGENTS.md, even with bo
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nFollow the Project Conventions section above for the key.\n");
         SyncEngine::default($packages)->sync($root);
 
-        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
         $agentsMd = (string) file_get_contents($root . '/AGENTS.md');
 
-        // The block lives in its canonical home (CLAUDE.md) and is ABSENT from
-        // AGENTS.md by design — conventions render into CLAUDE.md only. This is the
-        // CLAUDE-keeps/CODEX-"drops" shape #87 was reported as: it is correct, not a
-        // per-target drop asymmetry. (When fully migrated the block leaves CLAUDE.md
-        // too; resolved values reach every agent inlined into their skill bodies.)
-        expect($claudeMd)->toContain('## Project Conventions')
-            ->and($agentsMd)->not->toContain('## Project Conventions')
-            // The guideline body itself is emitted to BOTH (shared guidance).
-            ->and($claudeMd)->toContain('Follow the Project Conventions section above')
-            ->and($agentsMd)->toContain('Follow the Project Conventions section above');
+        // Claude Code and Codex share AGENTS.md since 1.12.0. The block lands in
+        // it exactly once (the Claude flag is OR-ed into the shared entry, not a
+        // second render), and boost no longer creates a CLAUDE.md at all.
+        expect(substr_count($agentsMd, '## Project Conventions'))->toBe(1)
+            ->and(substr_count($agentsMd, 'Follow the Project Conventions section above'))->toBe(1)
+            ->and(file_exists($root . '/CLAUDE.md'))->toBeFalse();
     } finally {
         rmTreeE2E($root);
         rmTreeE2E($vendor);
@@ -2696,19 +2691,19 @@ it('0.15.0 inlining: a boost-OWNED markerless guidance file with stale conventio
         $packages = new InstalledPackages(['acme/conv' => new PackageInfo('acme/conv', '1.0.0', $vendor)]);
 
         // Sync 1: a host guideline references the conventions section in prose →
-        // CLAUDE.md = block + that guideline body (boost-owned, recorded).
+        // AGENTS.md = block + that guideline body (boost-owned, recorded).
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nFollow the Project Conventions section above for the key.\n");
         SyncEngine::default($packages)->sync($root);
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('## Project Conventions');
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toContain('## Project Conventions');
 
-        // Sync 2: the guideline migrates to a token. The prior CLAUDE.md is
+        // Sync 2: the guideline migrates to a token. The prior AGENTS.md is
         // boost-owned + markerless → its stale prose does NOT survive the
         // wholesale regenerate, so the gate must NOT treat it as a live
         // dependency. Fully migrated → block drops.
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nFile under <!--boost:conv path=\"jira.project_key\" mode=\"inline\"-->.\n");
         SyncEngine::default($packages)->sync($root);
 
-        $claudeMd = (string) file_get_contents($root . '/CLAUDE.md');
+        $claudeMd = (string) file_get_contents($root . '/AGENTS.md');
         expect($claudeMd)->not->toContain('## Project Conventions')
             ->and($claudeMd)->toContain('File under BOOST-9.');
     } finally {
@@ -2717,7 +2712,7 @@ it('0.15.0 inlining: a boost-OWNED markerless guidance file with stale conventio
     }
 });
 
-it('0.12.0 empty-assembly guard is EXEMPT for marker-bounded files: a legacy boost-written CLAUDE.md still converges (markers stripped) even when assembly is empty (codex P1a)', function (): void {
+it('0.12.0 empty-assembly guard is EXEMPT for marker-bounded files: a legacy boost-written AGENTS.md still converges (markers stripped) even when assembly is empty (codex P1a)', function (): void {
     // A file carrying boost markers is definitively boost-written, so the guard
     // must NOT protect it — it falls through to migrate(), which strips the
     // markers (converging to markerless) and drops the now-removed boost
@@ -2729,11 +2724,11 @@ it('0.12.0 empty-assembly guard is EXEMPT for marker-bounded files: a legacy boo
         // No .ai/guidelines/ → empty assembly. Legacy marker file holds only
         // boost guidelines (no operator residual).
         $legacy = "<!-- boost-core:guidelines:start -->\n# Old Boost Guideline\n\nStale instruction.\n<!-- boost-core:guidelines:end -->\n";
-        file_put_contents($root . '/CLAUDE.md', $legacy);
+        file_put_contents($root . '/AGENTS.md', $legacy);
 
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        $after = (string) file_get_contents($root . '/AGENTS.md');
         expect($after)
             ->not->toContain('<!-- boost-core:guidelines:start -->')   // markers stripped
             ->and($after)->not->toContain('Stale instruction.');       // stale boost content gone
@@ -2747,11 +2742,11 @@ it('0.12.0 marker-exemption preserves operator residual: a legacy marker file wi
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
         $legacy = "# My hand-written intro\n\nKeep this.\n\n<!-- boost-core:guidelines:start -->\n# Boost Guideline\n\nStale.\n<!-- boost-core:guidelines:end -->\n";
-        file_put_contents($root . '/CLAUDE.md', $legacy);
+        file_put_contents($root . '/AGENTS.md', $legacy);
 
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        $after = (string) file_get_contents($root . '/AGENTS.md');
         expect($after)
             ->toContain('My hand-written intro')                       // operator residual preserved
             ->toContain('Keep this.')
@@ -2770,11 +2765,11 @@ it('0.12.0 empty-assembly guard does NOT fire when boost HAS content: a non-empt
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
         file_put_contents($root . '/.ai/guidelines/strict.md', "---\nname: strict\n---\n# Strict\n\nUse strict types.\n");
-        file_put_contents($root . '/CLAUDE.md', "# Old hand-written content that should be replaced.\n");
+        file_put_contents($root . '/AGENTS.md', "# Old hand-written content that should be replaced.\n");
 
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        $after = (string) file_get_contents($root . '/AGENTS.md');
         expect($after)
             ->toContain('Use strict types.')                       // boost content regenerated
             ->and($after)->not->toContain('Old hand-written content'); // prior body replaced
@@ -2783,7 +2778,7 @@ it('0.12.0 empty-assembly guard does NOT fire when boost HAS content: a non-empt
     }
 });
 
-it('0.12.0 markerless migration: legacy conventions YAML in CLAUDE.md markers survives the wholesale takeover (preserved, never deleted)', function (): void {
+it('0.12.0 markerless migration: legacy conventions YAML in AGENTS.md markers survives the wholesale takeover (preserved, never deleted)', function (): void {
     // The 0.12.0 successor to the old round-trip-safety test. Markerless
     // wholesale ownership replaces the marker round-trip; the migration MUST
     // still never lose operator-filled conventions YAML — it unwraps the
@@ -2800,9 +2795,9 @@ name: conventions
 
 Use strict types.');
 
-        // First sync — CLAUDE.md gets the markerless guideline body.
+        // First sync — AGENTS.md gets the markerless guideline body.
         SyncEngine::default(emptyInstalledPackages())->sync($root);
-        $afterFirst = (string) file_get_contents($root . '/CLAUDE.md');
+        $afterFirst = (string) file_get_contents($root . '/AGENTS.md');
         expect($afterFirst)
             ->toContain('Use strict types.')
             ->not->toContain('<!-- boost-core:guidelines:start -->');
@@ -2813,11 +2808,11 @@ Use strict types.');
         $legacy = "<!-- boost-core:guidelines:start -->\n# Conventions\n\nUse strict types.\n<!-- boost-core:guidelines:end -->\n\n"
             . "## Project Conventions\n\n"
             . "<!-- boost-core:conventions:start -->\n```yaml\nschema-version: 1\njira:\n  project_key: HPB-OPERATOR-FILLED\n```\n<!-- boost-core:conventions:end -->\n";
-        file_put_contents($root . '/CLAUDE.md', $legacy);
+        file_put_contents($root . '/AGENTS.md', $legacy);
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        $after = (string) file_get_contents($root . '/AGENTS.md');
         // Operator-filled YAML MUST survive — the data-loss guard.
         expect($after)->toContain('HPB-OPERATOR-FILLED')
             ->and($after)->toContain('# Conventions')
@@ -2853,12 +2848,12 @@ it('0.12.0 markerless migration is convergent: re-syncing is a no-op + the migra
         // Legacy file with a hand-written operator note outside the markers.
         $legacy = "<!-- boost-core:guidelines:start -->\n# Conventions\n\nUse strict types.\n<!-- boost-core:guidelines:end -->\n\n"
             . "# My hand-written note\n\nKeep this around.\n";
-        file_put_contents($root . '/CLAUDE.md', $legacy);
+        file_put_contents($root . '/AGENTS.md', $legacy);
 
         // Sync A: the marker→markerless migration. Warns + preserves the note
         // below the generated body for this one sync (grace period).
         $a = SyncEngine::default(emptyInstalledPackages())->sync($root);
-        $afterA = (string) file_get_contents($root . '/CLAUDE.md');
+        $afterA = (string) file_get_contents($root . '/AGENTS.md');
         $warnedA = str_contains(implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $a->diagnostics)), 'markerless migration');
         expect($warnedA)->toBeTrue()
             ->and($afterA)->toContain('My hand-written note')
@@ -2869,7 +2864,7 @@ it('0.12.0 markerless migration is convergent: re-syncing is a no-op + the migra
         // note is gone (operator was warned to move it to .ai/guidelines/; git
         // holds it), and NO migration warning repeats.
         $b = SyncEngine::default(emptyInstalledPackages())->sync($root);
-        $afterB = (string) file_get_contents($root . '/CLAUDE.md');
+        $afterB = (string) file_get_contents($root . '/AGENTS.md');
         $warnedB = str_contains(implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $b->diagnostics)), 'markerless migration');
         expect($afterB)
             ->toContain('Use strict types.')
@@ -2878,7 +2873,7 @@ it('0.12.0 markerless migration is convergent: re-syncing is a no-op + the migra
 
         // Sync C: convergent — identical to B, nothing to write.
         SyncEngine::default(emptyInstalledPackages())->sync($root);
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toBe($afterB);
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toBe($afterB);
     } finally {
         rmTreeE2E($root);
     }
@@ -2895,7 +2890,7 @@ it('0.12.0 markerless: a guideline EDIT replaces the prior body (not appended) �
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\n# Updated\n\nUpdated guidance.\n");
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        $after = (string) file_get_contents($root . '/CLAUDE.md');
+        $after = (string) file_get_contents($root . '/AGENTS.md');
         expect($after)
             ->toContain('Updated guidance.')
             ->not->toContain('Original guidance.')   // old body replaced, not appended
@@ -3471,7 +3466,7 @@ it('0.9.1 cleanup: --check-only reports drift via WOULD_DELETE write + diagnosti
     }
 });
 
-// Signal-1 fix (key removal causing wrote=0 + stale CLAUDE.md) is exercised
+// Signal-1 fix (key removal causing wrote=0 + stale AGENTS.md) is exercised
 // by SyncEngine's syncConventions warn-and-proceed path. The integration
 // shape would need a vendor schema scaffold + InstalledPackages fixture
 // the existing E2E helpers don't expose. The behavioral change (error+skip
@@ -3549,16 +3544,16 @@ it('0.9.6 path-ownership: mixed-content at `.github/copilot-instructions.md` (op
     }
 });
 
-it('0.9.3 render-fail safety: when ANY guideline renderer throws, the prior CLAUDE.md managed-region body is preserved byte-for-byte (no data loss)', function (): void {
+it('0.9.3 render-fail safety: when ANY guideline renderer throws, the prior AGENTS.md managed-region body is preserved byte-for-byte (no data loss)', function (): void {
     $root = makeEndToEndProject();
     try {
         writeBoostPhp($root, "return BoostConfig::configure()\n    ->withAgents([Agent::CLAUDE_CODE]);");
         file_put_contents($root . '/.ai/guidelines/conventions.md', "---\nname: conventions\n---\n# Conventions\n\nUse strict types.\n");
 
-        // Sync 1: normal flow, CLAUDE.md gets the rendered guideline body.
+        // Sync 1: normal flow, AGENTS.md gets the rendered guideline body.
         SyncEngine::default(emptyInstalledPackages())->sync($root);
 
-        $afterFirst = (string) file_get_contents($root . '/CLAUDE.md');
+        $afterFirst = (string) file_get_contents($root . '/AGENTS.md');
         expect($afterFirst)->toContain('Use strict types.')
             // 0.12.0: markerless — the guideline body is written wholesale, no markers.
             ->and($afterFirst)->not->toContain('<!-- boost-core:guidelines:start -->');
@@ -3585,7 +3580,7 @@ it('0.9.3 render-fail safety: when ANY guideline renderer throws, the prior CLAU
             extraSkillRenderers: [$failing],
         );
 
-        $afterSecond = (string) file_get_contents($root . '/CLAUDE.md');
+        $afterSecond = (string) file_get_contents($root . '/AGENTS.md');
 
         // CRITICAL: prior body MUST survive byte-for-byte. The naive bug
         // was the failed-render output (empty body) replacing prior content.
@@ -3619,11 +3614,11 @@ it('0.16.0 self-check: sync surfaces a positional warning + leaves the raw token
 
         $messages = implode("\n", array_map(static fn (Diagnostic $d): string => $d->message, $result->diagnostics));
         expect($messages)->toContain('left raw')
-            ->and($messages)->toContain('CLAUDE.md');
+            ->and($messages)->toContain('AGENTS.md');
 
         // The on-disk emitted file carries the raw token — exactly what doctor /
         // validate scan for after the fact.
-        expect((string) file_get_contents($root . '/CLAUDE.md'))
+        expect((string) file_get_contents($root . '/AGENTS.md'))
             ->toContain('<!--boost:conv path="github.default_base_branch" mode="inline"-->');
     } finally {
         rmTreeE2E($root);
@@ -3639,7 +3634,7 @@ it('Phase0 characterization: an errored sync SKIPS reap + manifest write, and a 
     $root = makeEndToEndProject();
 
     try {
-        // Run 1 — clean, two agents: CLAUDE.md + GEMINI.md written + owned.
+        // Run 1 — clean, two agents: AGENTS.md + GEMINI.md written + owned.
         writeBoostPhp($root, 'return BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE, Agent::GEMINI]);');
         file_put_contents($root . '/.ai/guidelines/g.md', "---\nname: g\n---\nGuidance body.");
         SyncEngine::default(emptyInstalledPackages())->sync($root);
@@ -3684,7 +3679,7 @@ it('#85: a host guideline whose extension has no renderer is skipped with a WARN
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root);
 
         // The .md guideline still ships normally.
-        expect((string) file_get_contents($root . '/CLAUDE.md'))->toContain('Markdown guideline body.');
+        expect((string) file_get_contents($root . '/AGENTS.md'))->toContain('Markdown guideline body.');
 
         // The .blade.php is skipped — but now OBSERVABLE as a warning naming it.
         $skipWarnings = array_filter(
@@ -3902,7 +3897,7 @@ it('0.18.0 .config/boost.php migration: a legacy root .boost/manifest.json is re
         file_put_contents($root . '/.boost/manifest.json', json_encode([
             'version' => 1,
             'generator' => 'boost-core',
-            'emitted' => ['CLAUDE.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+            'emitted' => ['AGENTS.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
         ], JSON_THROW_ON_ERROR));
 
         SyncEngine::default(emptyInstalledPackages())->sync($root);
@@ -3932,7 +3927,7 @@ it('0.18.0 .config/boost.php migration: a legacy root manifest is removed even w
         file_put_contents($root . '/.boost/manifest.json', json_encode([
             'version' => 1,
             'generator' => 'boost-core',
-            'emitted' => ['CLAUDE.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+            'emitted' => ['AGENTS.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
         ], JSON_THROW_ON_ERROR));
 
         SyncEngine::default(emptyInstalledPackages())->sync($root);
@@ -3955,7 +3950,7 @@ it('0.18.0 reverse migration: moving .config/boost.php back to root carries owne
         file_put_contents($root . '/.config/boost/manifest.json', json_encode([
             'version' => 1,
             'generator' => 'boost-core',
-            'emitted' => ['CLAUDE.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+            'emitted' => ['AGENTS.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
         ], JSON_THROW_ON_ERROR));
 
         SyncEngine::default(emptyInstalledPackages())->sync($root);
@@ -3983,7 +3978,7 @@ it('0.18.1 --check reports (but does NOT remove) a stale old-layout manifest a r
         file_put_contents($root . '/.boost/manifest.json', json_encode([
             'version' => 1,
             'generator' => 'boost-core',
-            'emitted' => ['CLAUDE.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
+            'emitted' => ['AGENTS.md' => ['sha256' => 'deadbeef', 'category' => 'guidance', 'provenance' => 'engine', 'scope' => 'project']],
         ], JSON_THROW_ON_ERROR));
 
         $result = SyncEngine::default(emptyInstalledPackages())->sync($root, checkOnly: true);

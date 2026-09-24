@@ -67,7 +67,9 @@ replacing the old "delete by hand" step. Two cases:
    returns `null`, the previously-emitted file (e.g. `.mcp.json`) is deleted
    instead of left stale.
 2. **A de-selected agent's guidance file.** Drop an agent from `withAgents(...)`
-   and its orphaned `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` is removed.
+   and its orphaned `AGENTS.md` / `GEMINI.md` is removed. The same reap removes
+   a `CLAUDE.md` that boost wrote before 1.12, when Claude Code guidance moved
+   to `AGENTS.md`.
 
 Reaping only ever touches files boost owns. A hand-edited file (sha diverged), a
 path turned into a directory, a *disabled* emitter's file (`withDisabledEmitters`
@@ -121,7 +123,7 @@ Sync never blanks a non-empty guidance file it can't prove it owns: if boost
 resolves no guidelines and no conventions, an existing non-empty
 `CLAUDE.md` / `AGENTS.md` / `GEMINI.md` that isn't manifest-owned (or is
 sha-diverged) is left untouched (an INFO records this) rather than overwritten.
-So adopting boost-core in a repo that already has a hand-written `CLAUDE.md` never
+So adopting boost-core in a repo that already has a hand-written `AGENTS.md` never
 wipes it; delete the file manually if you want it empty. (Legacy marker-bounded
 files are exempt: they're provably boost-written, so they still converge.)
 

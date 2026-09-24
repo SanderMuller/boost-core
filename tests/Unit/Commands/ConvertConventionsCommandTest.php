@@ -219,7 +219,7 @@ it('writes next-step guidance WITHOUT the reverted `git rm --cached` instruction
 
         expect($result['exit'])->toBe(0)
             ->and($result['display'])->not->toContain('git rm --cached')
-            ->and($result['display'])->toContain('CLAUDE.md stays tracked');
+            ->and($result['display'])->toContain('add an `@AGENTS.md` line to it');
     } finally {
         convertCleanup($dir);
     }

@@ -40,7 +40,7 @@ it('reports the Claude Code agent and conventional paths', function (): void {
         ->and($target->skillsDirectoryRelative())
         ->toBe('.claude/skills')
         ->and($target->guidelinesFileRelative())
-        ->toBe('CLAUDE.md');
+        ->toBe('AGENTS.md');
 });
 
 it('plans one PendingWrite per skill, named `{name}/SKILL.md` under skills dir', function (): void {
@@ -85,11 +85,11 @@ it('omits the frontmatter block when frontmatter is empty', function (): void {
     expect($writes[0]->content)->toBe('Just body.');
 });
 
-it('formats guidelines body markerless for CLAUDE.md (0.12.0: write handled centrally by SyncEngine, not plan())', function (): void {
+it('formats guidelines body markerless for AGENTS.md (0.12.0: write handled centrally by SyncEngine, not plan())', function (): void {
     $target = new ClaudeCodeTarget();
 
     // The guideline DESTINATION is declared by guidelinesFileRelative().
-    expect($target->guidelinesFileRelative())->toBe('CLAUDE.md');
+    expect($target->guidelinesFileRelative())->toBe('AGENTS.md');
 
     // plan() no longer emits a guideline write — only per-skill writes.
     expect($target->plan(skills: [], guidelines: [makeGuideline('g', 'G')]))

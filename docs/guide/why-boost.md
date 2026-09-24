@@ -1,8 +1,8 @@
 # Why boost?
 
 Agent configuration multiplies in two directions at once. Every agent wants its
-own file in its own place: `CLAUDE.md` for Claude Code, `AGENTS.md` for Codex and
-Amp, `GEMINI.md` for Gemini, `.github/copilot-instructions.md` for Copilot, and a
+own file in its own place: `CLAUDE.md` or `AGENTS.md` for Claude Code, `AGENTS.md`
+for Codex and Amp, `GEMINI.md` for Gemini, `.github/copilot-instructions.md` for Copilot, and a
 skills directory per agent on top. Multiply that by the repositories you work in,
 and one skill you wrote once now exists as a dozen copies that drift apart.
 

@@ -50,6 +50,10 @@ Safe by default. boost tracks what it owns in a manifest, and a file whose
 checksum does not match the manifest is never blanked or reaped. An existing
 hand-written `CLAUDE.md` survives the first sync.
 
+boost writes Claude Code guidance to `AGENTS.md`. While a `CLAUDE.md` exists,
+Claude Code reads it and skips `AGENTS.md`. Add an `@AGENTS.md` line to your
+`CLAUDE.md` to load both. `boost sync` warns until you do.
+
 Move that hand-written content into `.ai/guidelines/` when you are ready. From
 then on the guidance files are generated, and you edit the source instead of the
 target. [File ownership](/guide/file-ownership) has the full lifecycle.

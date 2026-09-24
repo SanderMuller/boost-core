@@ -3,12 +3,14 @@
 namespace SanderMuller\BoostCore\Sync;
 
 use SanderMuller\BoostCore\Agents\AgentTarget;
+use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
 use SanderMuller\BoostCore\Config\BoostConfig;
 use SanderMuller\BoostCore\Conventions\ConventionsBlockEmitter;
 use SanderMuller\BoostCore\Conventions\ConventionsPass;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Conventions\GuidanceComposer;
 use SanderMuller\BoostCore\Conventions\KeepReason;
+use SanderMuller\BoostCore\Enums\Agent;
 use SanderMuller\BoostCore\Skills\Guideline;
 
 /**
@@ -16,7 +18,7 @@ use SanderMuller\BoostCore\Skills\Guideline;
  * wholesale + markerless.
  *
  * Conventions + guidelines assemble into ONE wholesale path per file.
- * Conventions render markerless into CLAUDE.md (from `boost.php`'s
+ * Conventions render markerless into Claude Code's file (from `boost.php`'s
  * `->withConventions([...])`, via the passed {@see ConventionsPass}); guidelines
  * render markerless into each guidance file. {@see GuidanceComposer} migrates
  * legacy marker-bounded files, and the never-lossy empty-assembly guard ensures a
@@ -43,7 +45,7 @@ final readonly class GuidanceWriter
      *   later empty sync can prove ownership + converge. Excludes preserved
      *   operator files and empty/cleared files. `emittedGuidancePaths` = every
      *   guidance file boost is RESPONSIBLE for this sync (CONFIGURED agents +
-     *   conventions-CLAUDE.md), changed or unchanged or left-intact — the set the
+     *   the conventions file), changed or unchanged or left-intact — the set the
      *   stale-managed cleanup must EXEMPT from reaping. Scoped to configured
      *   agents so a DROPPED agent's guidance is NOT exempt and gets reaped.
      *   `conventionsErrors` = guidance-side
@@ -97,7 +99,7 @@ final readonly class GuidanceWriter
         $diagnostics = [...$diagnostics, ...$guidanceSelfCheck];
 
         // Every guidance file boost is responsible for THIS sync (configured
-        // agents + conventions-CLAUDE.md), independent of whether it ends up
+        // agents + the conventions file), independent of whether it ends up
         // written, unchanged, or left-intact. The stale-managed cleanup exempts
         // exactly this set — a dropped agent's guidance is absent here and so
         // stays reapable.
@@ -208,10 +210,11 @@ final readonly class GuidanceWriter
      * first active target owning a file defines its guideline body formatting
      * (shared-pool agents use the default formatter, so this is deterministic).
      *
-     * Conventions render into CLAUDE.md specifically (its canonical home —
-     * convert-conventions / validate all key off it): if there is a conventions
-     * section but the Claude agent isn't active, schedule CLAUDE.md anyway with an
-     * empty guideline body so the conventions don't silently vanish.
+     * Conventions render into Claude Code's guidance file (`AGENTS.md` since
+     * 1.12.0): if there is a conventions section but the Claude agent isn't
+     * active, schedule that file anyway so the conventions don't silently
+     * vanish. When another active agent already schedules it (Codex), the
+     * existing body is kept and only the flag flips.
      *
      * @param  list<Guideline>  $resolvedGuidelines
      * @return array<string, array{body: string, isClaude: bool}>
@@ -229,21 +232,43 @@ final readonly class GuidanceWriter
                 continue;
             }
 
+            $isClaude = $target->agent() === Agent::CLAUDE_CODE;
+
+            // Claude Code shares `AGENTS.md` with Codex and others. Whichever
+            // target claims the file first defines the body; the Claude flag
+            // is OR-ed in so the conventions section still lands in it.
             if (isset($guidanceFiles[$file])) {
+                $guidanceFiles[$file]['isClaude'] = $guidanceFiles[$file]['isClaude'] || $isClaude;
+
                 continue;
             }
 
             $guidanceFiles[$file] = [
                 'body' => $resolvedGuidelines === [] ? '' : $target->formatGuidelinesContent($resolvedGuidelines),
-                'isClaude' => $file === 'CLAUDE.md',
+                'isClaude' => $isClaude,
             ];
         }
 
-        if ($conventionsSection !== null && ! isset($guidanceFiles['CLAUDE.md'])) {
-            $guidanceFiles['CLAUDE.md'] = ['body' => '', 'isClaude' => true];
+        $claudeFile = (new ClaudeCodeTarget())->guidelinesFileRelative();
+        if ($conventionsSection !== null && ! $this->hasClaudeFile($guidanceFiles)) {
+            $guidanceFiles[$claudeFile] = ['body' => $guidanceFiles[$claudeFile]['body'] ?? '', 'isClaude' => true];
         }
 
         return $guidanceFiles;
+    }
+
+    /**
+     * @param  array<string, array{body: string, isClaude: bool}>  $guidanceFiles
+     */
+    private function hasClaudeFile(array $guidanceFiles): bool
+    {
+        foreach ($guidanceFiles as $info) {
+            if ($info['isClaude']) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

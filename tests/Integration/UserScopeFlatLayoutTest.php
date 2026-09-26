@@ -77,7 +77,8 @@ it('publishes each skill flat as <skill>-user with references between them rewri
         $interview = (string) file_get_contents($home . '/.claude/skills/interview-user/SKILL.md');
         $clarify = (string) file_get_contents($home . '/.claude/skills/clarify-user/SKILL.md');
 
-        expect($result->errors)->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
             ->and($interview)->toContain('name: interview-user')
             ->and($interview)->toContain('Read `clarify-user` first. Then hand off to `write-spec`.')
             ->and($clarify)->toContain('Standalone: /clarify-user <ask>.')
@@ -138,7 +139,8 @@ it('adopts an unowned file whose content already equals the planned content', fu
         /** @var array{emitted: array<string, string>} $manifest */
         $manifest = json_decode((string) file_get_contents($home . '/.boost/manifests/acme__kit.json'), true, 512, JSON_THROW_ON_ERROR);
 
-        expect($result->errors)->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
             ->and($manifest['emitted'])->toHaveKey('.claude/skills/alpha-user/SKILL.md');
     } finally {
         flatLayoutRm($pkg, $home);
@@ -182,7 +184,8 @@ it('lets the first package by name win when two packages publish the same skill 
         }
 
         expect((string) file_get_contents($home . '/.claude/skills/shared-user/SKILL.md'))->toContain('From alpha.')
-            ->and($byPackage['alpha/tools']->errors)->toBe([])
+            ->and($byPackage['alpha/tools']->errors)
+            ->toBeEmpty()
             ->and($byPackage['zeta/tools']->errors)->toHaveCount(1)
             ->and($byPackage['zeta/tools']->errors[0])->toContain('is owned by alpha/tools');
     } finally {
@@ -271,7 +274,8 @@ it('migrates the nested layout: writes flat files and reaps the recorded nested 
         /** @var array{emitted: array<string, string>} $manifest */
         $manifest = json_decode((string) file_get_contents($home . '/.boost/manifests/acme__kit.json'), true, 512, JSON_THROW_ON_ERROR);
 
-        expect($result->errors)->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
             ->and($home . '/.claude/skills/alpha-user/SKILL.md')->toBeFile()
             ->and($home . '/.claude/skills/beta-user/SKILL.md')->toBeFile()
             ->and($home . '/.claude/skills/acme__kit/alpha')->not->toBeDirectory('unchanged nested copy reaped')
@@ -286,7 +290,7 @@ it('migrates the nested layout: writes flat files and reaps the recorded nested 
     }
 });
 
-it('reconcile-on-remove reaps a removed package\'s flat files', function (): void {
+it("reconcile-on-remove reaps a removed package's flat files", function (): void {
     $pkg = flatLayoutPackage('acme/gone', ['alpha' => 'Alpha.']);
     $home = flatLayoutDir('home');
 
@@ -328,7 +332,8 @@ it('warns and skips a skill whose -user name is over the limit', function (): vo
     try {
         $result = flatLayoutEngine()->syncUser($pkg, homeRoot: $home);
 
-        expect($result->errors)->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
             ->and($result->warnings)->toHaveCount(1)
             ->and($home . '/.claude/skills/ok-user/SKILL.md')->toBeFile()
             ->and($home . '/.claude/skills/' . $long . '-user')->not->toBeDirectory();
@@ -367,7 +372,8 @@ it('--all publishes a replacement skill in one run when the removed package owne
 
         $errors = array_merge(...array_map(static fn (UserScopeResult $result): array => $result->errors, $results));
 
-        expect($errors)->toBe([])
+        expect($errors)
+            ->toBeEmpty()
             ->and((string) file_get_contents($home . '/.claude/skills/shared-user/SKILL.md'))->toContain('New.')
             ->and($home . '/.boost/manifests/acme__gone.json')->not->toBeFile();
     } finally {
@@ -433,7 +439,8 @@ it('--check predicts a clash with a package synced earlier in the same run', fun
             $byPackage[$result->packageName] = $result;
         }
 
-        expect($byPackage['alpha/tools']->errors)->toBe([])
+        expect($byPackage['alpha/tools']->errors)
+            ->toBeEmpty()
             ->and($byPackage['zeta/tools']->errors)->toHaveCount(1)
             ->and($byPackage['zeta/tools']->errors[0])->toContain('is owned by alpha/tools')
             ->and($home . '/.claude/skills/shared-user')->not->toBeDirectory();
@@ -457,7 +464,8 @@ it('--check predicts the hand-over from a removed package without a clash', func
 
         $errors = array_merge(...array_map(static fn (UserScopeResult $result): array => $result->errors, $results));
 
-        expect($errors)->toBe([])
+        expect($errors)
+            ->toBeEmpty()
             ->and((string) file_get_contents($home . '/.claude/skills/shared-user/SKILL.md'))->toContain('Old.')
             ->and($home . '/.boost/manifests/acme__gone.json')->toBeFile();
     } finally {
@@ -510,7 +518,8 @@ it('--all hands a skill over in one run when the outgoing owner sorts later', fu
 
         $errors = array_merge(...array_map(static fn (UserScopeResult $result): array => $result->errors, $results));
 
-        expect($errors)->toBe([]);
+        expect($errors)
+            ->toBeEmpty();
         if (! $checkOnly) {
             expect((string) file_get_contents($home . '/.claude/skills/shared-user/SKILL.md'))->toContain('From alpha.');
         }

@@ -25,7 +25,8 @@ it('suffixes the name and the frontmatter name, and keeps everything else', func
 
     $skill = $result['skills'][0];
 
-    expect($result['warnings'])->toBe([])
+    expect($result['warnings'])
+        ->toBeEmpty()
         ->and($skill->name)->toBe('interview-user')
         ->and($skill->frontmatter['name'])->toBe('interview-user')
         ->and($skill->frontmatter['description'])->toBe('A skill.')

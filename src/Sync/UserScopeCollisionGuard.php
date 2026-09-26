@@ -95,7 +95,7 @@ final readonly class UserScopeCollisionGuard
     private function hasSymlinkedSkillDir(string $home, string $relative): bool
     {
         $dir = dirname($relative);
-        while ($dir !== '.' && $dir !== '' && $dir !== '/') {
+        while (! in_array($dir, ['.', '', '/'], true)) {
             if (str_ends_with($dir, UserScopeSkillRenamer::SUFFIX) && is_link($home . '/' . $dir)) {
                 return true;
             }

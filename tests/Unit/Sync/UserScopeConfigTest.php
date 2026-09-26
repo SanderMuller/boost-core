@@ -31,7 +31,8 @@ it('reads the selection per package', function (): void {
 
     expect($config->hasErrors())->toBeFalse()
         ->and($config->selectionFor('acme/tools'))->toBe(['alpha', 'beta'])
-        ->and($config->selectionFor('acme/quiet'))->toBe([])
+        ->and($config->selectionFor('acme/quiet'))
+        ->toBeEmpty()
         ->and($config->selectionFor('acme/not-installed-here'))->toBeNull();
 });
 

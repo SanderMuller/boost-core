@@ -41,7 +41,6 @@ final readonly class UserScopeConfig
         }
 
         try {
-            /** @var mixed $raw */
             $raw = self::includeIsolated($path);
         } catch (Throwable $throwable) {
             return self::invalid($path, sprintf('could not be loaded: %s', $throwable->getMessage()));

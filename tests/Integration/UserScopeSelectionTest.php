@@ -57,7 +57,7 @@ function selectionEngine(): SyncEngine
 function selectionPublished(string $home): array
 {
     $dirs = glob($home . '/.claude/skills/*-user', GLOB_ONLYDIR);
-    $names = array_map('basename', $dirs === false ? [] : $dirs);
+    $names = array_map(basename(...), $dirs === false ? [] : $dirs);
     sort($names);
 
     return $names;
@@ -93,8 +93,10 @@ it('publishes only the selected skills', function (): void {
 
         $result = selectionEngine()->syncUser($pkg, homeRoot: $home);
 
-        expect($result->errors)->toBe([])
-            ->and($result->warnings)->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
+            ->and($result->warnings)
+            ->toBeEmpty()
             ->and(selectionPublished($home))->toBe(['alpha-user', 'gamma-user']);
     } finally {
         selectionRm($pkg, $home);
@@ -131,8 +133,10 @@ it('an empty entry publishes no skills, reaps prior copies, and keeps eligible g
         selectionConfig($home, "<?php return ['skills' => ['acme/kit' => []]];");
         $result = selectionEngine()->syncUser($pkg, homeRoot: $home);
 
-        expect($result->errors)->toBe([])
-            ->and(selectionPublished($home))->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
+            ->and(selectionPublished($home))
+            ->toBeEmpty()
             ->and((string) file_get_contents($home . '/.claude/boost/acme__kit.md'))->toContain('Voice rules.');
     } finally {
         selectionRm($pkg, $home);
@@ -163,7 +167,8 @@ it('warns about an unknown skill name and publishes the rest', function (): void
 
         $result = selectionEngine()->syncUser($pkg, homeRoot: $home);
 
-        expect($result->errors)->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
             ->and($result->warnings)->toHaveCount(1)
             ->and($result->warnings[0])->toContain('Unknown skill "alhpa"')
             ->and(selectionPublished($home))->toBe(['alpha-user']);
@@ -186,7 +191,8 @@ it('pulls declared dependencies of the same package, transitively, and rewrites 
 
         $result = selectionEngine()->syncUser($pkg, homeRoot: $home);
 
-        expect($result->errors)->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
             ->and(selectionPublished($home))->toBe(['clarify-user', 'interview-user', 'write-spec-user'])
             ->and($result->warnings)->toBe([
                 'Published write-spec-user because interview requires it.',
@@ -207,7 +213,8 @@ it('warns when a declared dependency is not shipped, and still publishes the dep
 
         $result = selectionEngine()->syncUser($pkg, homeRoot: $home);
 
-        expect($result->errors)->toBe([])
+        expect($result->errors)
+            ->toBeEmpty()
             ->and($result->warnings)->toHaveCount(1)
             ->and($result->warnings[0])->toContain('Skill "elsewhere" is required by interview')
             ->and(selectionPublished($home))->toBe(['interview-user']);
@@ -260,7 +267,8 @@ it('reports warnings and the selection through the real CLI, including --check',
         expect($check->getExitCode())->toBe(1, 'drift is a failure in --check')
             ->and($output)->toContain('Unknown skill "nope"')
             ->and($output)->toContain('(9 write, 0 reap)') // one selected skill × 9 agents
-            ->and(selectionPublished($home))->toBe([]);
+            ->and(selectionPublished($home))
+            ->toBeEmpty();
 
         $sync = Process::fromShellCommandline(
             'php ' . escapeshellarg(dirname(__DIR__, 2) . '/bin/boost') . ' sync --scope=user',

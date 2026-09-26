@@ -49,7 +49,7 @@ final readonly class UserScopeReaper
         $retained = false;
 
         foreach ($manifest->paths() as $relative) {
-            if (isset($keep[$relative]) || isset($foreignPaths[$relative]) || ! self::isNormalized($relative)) {
+            if (isset($keep[$relative]) || isset($foreignPaths[$relative]) || ! $this->isNormalized($relative)) {
                 continue;
             }
 
@@ -62,7 +62,7 @@ final readonly class UserScopeReaper
 
             // Never reap through a symlinked dir: an operator who swapped a
             // `<name>-user/` dir for a link points it at files boost never wrote.
-            if (self::hasSymlinkedParent($home, $relative)) {
+            if ($this->hasSymlinkedParent($home, $relative)) {
                 continue;
             }
 
@@ -102,7 +102,7 @@ final readonly class UserScopeReaper
      * Whether any dir on the path is a symlink — the same rule `FileWriter`
      * applies before a write, so boost never deletes where it would not write.
      */
-    private static function hasSymlinkedParent(string $home, string $relative): bool
+    private function hasSymlinkedParent(string $home, string $relative): bool
     {
         for ($dir = dirname($relative); $dir !== '.' && $dir !== ''; $dir = dirname($dir)) {
             if (is_link($home . '/' . $dir)) {
@@ -118,14 +118,14 @@ final readonly class UserScopeReaper
      * segments — otherwise a root-prefix check like `x-user/../../CLAUDE.md`
      * would pass while the path resolves outside the skill dir.
      */
-    private static function isNormalized(string $relative): bool
+    private function isNormalized(string $relative): bool
     {
         if ($relative === '' || str_starts_with($relative, '/')) {
             return false;
         }
 
         foreach (explode('/', $relative) as $segment) {
-            if ($segment === '' || $segment === '.' || $segment === '..') {
+            if (in_array($segment, ['', '.', '..'], true)) {
                 return false;
             }
         }

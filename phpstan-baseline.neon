@@ -7,11 +7,13 @@ parameters:
 		# (two guards in resolveSkills; the diagnostics mapping already lives in
 		# SkillDependencyDiagnostics). It FELL 187 -> 185 with user-scope
 		# guidelines: that work added one guard to syncUser and moved the
-		# user-scope path rewrite out to UserScopeSkillPath. The real remedy is
-		# decomposing the class,
+		# user-scope path rewrite out to UserScopeSkillPath. It FELL 185 -> 184
+		# with the flat `-user` user-scope layout: the migrator guard left
+		# syncUser, and the config guard it gained is offset by the plan/write
+		# split. The real remedy is decomposing the class,
 		# not shaving decision points here (which would only obscure it further).
 		-
-			rawMessage: 'Class cognitive complexity is 185, keep it under 80'
+			rawMessage: 'Class cognitive complexity is 184, keep it under 80'
 			identifier: complexity.classLike
 			count: 1
 			path: src/Sync/SyncEngine.php

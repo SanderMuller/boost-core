@@ -205,7 +205,9 @@ final readonly class SyncEngine
      * `sandermuller/repo-init`.
      *
      * Source: `$packageRoot/resources/boost/skills/`.
-     * Target: `$HOME/.{agent}/skills/<package-suffix>/<skill-name>.md`.
+     * Target: `$HOME/.{agent}/skills/<skill-name>-user/SKILL.md` — flat, so
+     * agents discover it, and suffixed, so it never hides a project skill of
+     * the same name ({@see UserScopeSkillRenamer}).
      * Guidelines are NOT fanned out wholesale in user scope — an always-on
      * guideline would pollute every session on the machine with
      * project-specific instructions. Only a guideline the AUTHOR marked
@@ -216,7 +218,7 @@ final readonly class SyncEngine
      * No `boost.php` required: the invoking package itself is the source,
      * all 9 agents are activated by default.
      */
-    public function syncUser(string $packageRoot, bool $checkOnly = false, ?string $homeRoot = null): UserScopeResult
+    public function syncUser(string $packageRoot, bool $checkOnly = false, ?string $homeRoot = null, UserScopeCheckOverlay $overlay = new UserScopeCheckOverlay()): UserScopeResult
     {
         $packageRoot = rtrim($packageRoot, '/');
         $home = $homeRoot !== null ? rtrim($homeRoot, '/') : self::resolveHomeDirectory();
@@ -243,6 +245,19 @@ final readonly class SyncEngine
             );
         }
 
+        // The operator's selection. A broken file fails closed: nothing is
+        // published and nothing is reaped until the operator fixes it.
+        $config = UserScopeConfig::fromHome($home);
+        if ($config->hasErrors()) {
+            return new UserScopeResult(
+                packageName: $packageName,
+                homeRoot: $home,
+                writes: [],
+                errors: $config->errors(),
+                check: $checkOnly,
+            );
+        }
+
         $skillsDir = $packageRoot . '/resources/boost/skills';
 
         /** @var list<Skill> $skills */
@@ -250,6 +265,8 @@ final readonly class SyncEngine
         foreach ($this->skillLoader->load($skillsDir, $packageName, projectRoot: $packageRoot) as $skill) {
             $skills[] = $skill;
         }
+
+        $selected = (new UserScopeSkillSelector())->select($skills, $config->selectionFor($packageName), $packageName, $config->path);
 
         /** @var list<WrittenFile> $writes */
         $writes = [];
@@ -274,31 +291,59 @@ final readonly class SyncEngine
             );
         }
 
-        if (! $checkOnly) {
-            (new UserScopeMigrator())->run($home, $packageName, $skills, $this->agentTargets);
+        $renamed = (new UserScopeSkillRenamer())->rename($selected['skills']);
+        $warnings = [...$selected['warnings'], ...$renamed['warnings']];
+
+        $priorManifest = UserScopeManifest::fromFile(UserScopeManifest::pathFor($home, $packageName));
+        // A path an earlier `--check` step would delete is no longer its old
+        // owner's claim: that owner's rewritten manifest would drop it.
+        $foreignPaths = [
+            ...array_diff_key(
+                UserScopeManifest::pathsRecordedByOthers($home, self::packageSuffix($packageName), $overlay->ignoredSlugs),
+                $overlay->absent,
+            ),
+            ...$overlay->claimed,
+        ];
+
+        // Plan every agent's writes first: the collision guard must see the
+        // whole plan before anything is written (see UserScopeCollisionGuard).
+        /** @var list<array{target: AgentTarget, pending: PendingWrite}> $planned */
+        $planned = [];
+        foreach ($this->agentTargets as $target) {
+            foreach ($target->plan($renamed['skills'], []) as $pending) {
+                $planned[] = ['target' => $target, 'pending' => $pending];
+            }
+        }
+
+        $errors = (new UserScopeCollisionGuard())->check(
+            $home,
+            $packageName,
+            array_column($planned, 'pending'),
+            $priorManifest,
+            $foreignPaths,
+            $overlay->absent,
+        );
+        if ($errors !== []) {
+            return new UserScopeResult(
+                packageName: $packageName,
+                homeRoot: $home,
+                writes: $writes,
+                errors: $errors,
+                check: $checkOnly,
+                warnings: $warnings,
+            );
         }
 
         // Every user-scope path this package emits this sync — the keep set the
         // clean-slate reap diffs against, and the new manifest's contents.
         /** @var array<string, true> $emittedPaths */
         $emittedPaths = [];
-        foreach ($this->agentTargets as $target) {
-            foreach ($target->plan($skills, []) as $pending) {
-                $rewritten = UserScopeSkillPath::rewrite($pending->relativePath, $packageName);
-                if ($rewritten === null) {
-                    continue;
-                }
+        foreach ($planned as ['target' => $target, 'pending' => $pending]) {
+            $emittedPaths[$pending->relativePath] = true;
 
-                $emittedPaths[$rewritten] = true;
-                $this->writeAndPrune(
-                    $home,
-                    new PendingWrite($rewritten, $pending->content, pruneLegacyFlatSibling: $pending->pruneLegacyFlatSibling),
-                    $target,
-                    $checkOnly,
-                    $writes,
-                    $errors,
-                );
-            }
+            // No legacy-sibling prune at user scope: no boost release ever wrote a
+            // flat `<name>-user.md`, so a file there belongs to someone else.
+            $this->writeAndPrune($home, new PendingWrite($pending->relativePath, $pending->content), $target, $checkOnly, $writes, $errors);
         }
 
         // User-scope guidelines: only the author-eligible subset, one
@@ -319,8 +364,6 @@ final readonly class SyncEngine
         // transient failure could delete a live file. On failure the prior
         // manifest stays last-known-good for the next clean run.
         if ($errors === []) {
-            $priorManifest = UserScopeManifest::fromFile(UserScopeManifest::pathFor($home, $packageName));
-
             // Validate delete candidates against the FULL agent catalog so a
             // dropped skill's copies are reapable under every agent — including
             // ones this (possibly narrowed) engine does not drive.
@@ -328,13 +371,13 @@ final readonly class SyncEngine
 
             // The keep set is keyed by SKILL, not by exact emitted path: take each
             // path the active targets emit, reduce it to its per-skill suffix
-            // (`<skillName>/<file>`, identical across agents), and re-expand across
+            // (`<skillName>-user/<file>`, identical across agents), and re-expand across
             // every agent root. A still-shipped skill is then kept on EVERY agent
             // (so a narrowed engine never over-deletes an inactive agent's live
             // copy), while a dropped skill is kept on NONE (so its stale copies
             // are reaped under every agent, active or not) — resolving both codex
             // 0.19.0 findings at once.
-            $keep = $this->userScopeKeepAcrossAgents($emittedPaths, $packageName);
+            $keep = $this->userScopeKeepAcrossAgents($emittedPaths);
 
             // A guidance file lives outside `<skillsDir>/<slug>/`, so the
             // skill-keyed keep set never covers it. The planner's keep set spans
@@ -348,7 +391,7 @@ final readonly class SyncEngine
             // longer emits (a dropped/renamed skill), sha-gated + slug-validated.
             // The next sync re-reaps any retain-on-fail leftover, so no retain
             // bookkeeping here.
-            $cleanSlate = (new UserScopeReaper())->reap($home, $slugRoots, $priorManifest, $keep, $checkOnly);
+            $cleanSlate = (new UserScopeReaper())->reap($home, $slugRoots, $priorManifest, $keep, $checkOnly, $foreignPaths);
             foreach ($cleanSlate['writes'] as $reaped) {
                 $writes[] = $reaped;
             }
@@ -367,6 +410,7 @@ final readonly class SyncEngine
             writes: $writes,
             errors: $errors,
             check: $checkOnly,
+            warnings: $warnings,
         );
     }
 
@@ -378,21 +422,39 @@ final readonly class SyncEngine
      * @param  array<string, true>  $emittedPaths  active-target emissions this sync
      * @return array<string, true>  full-path keep set spanning every agent root
      */
-    private function userScopeKeepAcrossAgents(array $emittedPaths, string $packageName): array
+    private function userScopeKeepAcrossAgents(array $emittedPaths): array
     {
-        $slug = self::packageSuffix($packageName);
-
         $activeRoots = [];
         foreach ($this->agentTargets as $target) {
-            $activeRoots[] = $target->skillsDirectoryRelative() . '/' . $slug;
+            $activeRoots[] = $target->skillsDirectoryRelative();
         }
 
-        return UserScopeReaper::keepAcrossAgents($emittedPaths, $activeRoots, self::userScopeSlugRootsForSlug($slug));
+        return UserScopeReaper::keepAcrossAgents($emittedPaths, array_values(array_unique($activeRoots)), self::userScopeSkillsDirs());
     }
 
     /**
-     * Slug roots from a bare `<vendor__pkg>` slug across the FULL static agent
-     * catalog — used by reconcile-on-REMOVE, which keys off the manifest filename
+     * Every agent's skills directory across the FULL static catalog — the roots
+     * flat user-scope skill dirs (`<skillsDir>/<name>-user/`) live under.
+     *
+     * @return list<string>
+     */
+    public static function userScopeSkillsDirs(): array
+    {
+        $dirs = [];
+        foreach (self::allAgentTargets() as $target) {
+            $dirs[] = $target->skillsDirectoryRelative();
+        }
+
+        return array_values(array_unique($dirs));
+    }
+
+    /**
+     * Legacy nested slug roots (`<skillsDir>/<vendor__pkg>`, the pre-flat
+     * user-scope layout) plus the package's guidance-file paths, from a bare
+     * slug across the FULL static agent catalog. The flat `<name>-user/` skill
+     * paths are validated by {@see UserScopeReaper::isFlatSkillPath()} instead;
+     * the legacy roots stay so the first flat sync reaps the old nested copies.
+     * Used by reconcile-on-REMOVE, which keys off the manifest filename
      * stem rather than a live package name, and must reap every agent's copy of a
      * package that is gone (a removed/dropped package may have written for agents
      * not active in the reconciling run).
@@ -468,26 +530,10 @@ final readonly class SyncEngine
      * valid Composer name, which makes this mapping injective: distinct
      * package names always produce distinct slugs (no `vendor-a/foo` vs
      * `vendor/a-foo` style ambiguity that a `-` separator would admit).
-     *
-     * @see packageBasename for the bare-basename form used by the
-     *   {@see UserScopeSkillPath::rewrite()} dedupe.
      */
     public static function packageSuffix(string $packageName): string
     {
         return str_replace('/', '__', $packageName);
-    }
-
-    /**
-     * Bare basename of a Composer package — the portion after the last `/`.
-     * Used by {@see UserScopeSkillPath::rewrite()}'s dedupe to collapse `<slug>/<basename>/SKILL.md`
-     * to `<slug>/SKILL.md` when the source skill directory is named after
-     * the package itself (common for single-skill tooling distributions).
-     */
-    public static function packageBasename(string $packageName): string
-    {
-        $slash = strrpos($packageName, '/');
-
-        return $slash === false ? $packageName : substr($packageName, $slash + 1);
     }
 
     /**

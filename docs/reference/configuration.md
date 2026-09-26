@@ -71,6 +71,31 @@ vocabulary is open:
 each one would unlock. The filtering rule is in
 [Tags and dependencies](/guide/tags-and-dependencies).
 
+## User-scope selection
+
+`boost sync --scope=user` reads no `boost.php`. It reads `~/.boost/user-scope.php`
+instead, which picks the skills each globally installed package publishes:
+
+```php
+<?php
+
+return [
+    'skills' => [
+        'sandermuller/boost-skills' => ['interview', 'promptimize'],
+        'acme/noisy-tools' => [],
+    ],
+];
+```
+
+| Entry | Effect |
+|---|---|
+| No entry for a package | Every skill it ships |
+| A list of names | Those skills, plus their `metadata.boost-requires` dependencies from the same package |
+| `[]` | No skills. The package's user-scope guidelines are not affected |
+
+The rules and the `-user` layout are in
+[Automating sync](/guide/automating-sync#choose-user-scope-skills).
+
 ## Related pages
 
 - [Project Conventions](/guide/conventions) — the slot schema and the token syntax

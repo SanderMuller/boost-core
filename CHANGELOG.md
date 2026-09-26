@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased](https://github.com/sandermuller/boost-core/compare/1.12.1...HEAD)
 
+### Changed
+
+- **User-scope skills are flat and end in `-user`.** `boost sync --scope=user`
+  now writes `~/.{agent}/skills/<skill>-user/SKILL.md` instead of
+  `~/.{agent}/skills/<vendor>__<package>/<skill>/SKILL.md`. Claude Code did not
+  find skills in the nested folder. The suffix keeps a user-scope copy from
+  hiding a project skill of the same name. References between one package's
+  published skills (backticked names, slash commands, relative skill links) are
+  renamed with it. The first sync reaps the old nested copies.
+- **A user-scope sync refuses to write over a file boost does not own.** A
+  `SKILL.md` (or other target file) of your own, or a symlink at a `-user`
+  target, stops that package's sync with an error. When two packages publish
+  the same skill name, the first package by name wins, and `--check` predicts
+  the clash.
+
+### Added
+
+- **`~/.boost/user-scope.php` picks the skills each package publishes at user
+  scope.** A listed skill brings its `metadata.boost-requires` dependencies from
+  the same package. A package with no entry still publishes every skill.
+
+### Removed
+
+- **The 0.3 → 0.4 user-scope folder migration.** A leftover
+  `~/.{agent}/skills/<package-basename>/` folder from before 0.4 now stays until
+  you delete it.
+
 ## [1.12.1](https://github.com/sandermuller/boost-core/compare/1.12.0...1.12.1) - 2026-09-24
 
 <!-- verified-sha: 75ac1b6276c7be1135f253014225135ccf2dada3 -->

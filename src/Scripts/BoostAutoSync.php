@@ -8,6 +8,7 @@ use OutOfBoundsException;
 use SanderMuller\BoostCore\Env;
 use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncSummary;
+use SanderMuller\BoostCore\Sync\UserScopeConfig;
 use Symfony\Component\Process\Process;
 use Throwable;
 
@@ -160,6 +161,10 @@ final class BoostAutoSync
             return 1;
         }
 
+        foreach ($result->warnings as $warning) {
+            self::writeStderr('boost: user-scope auto-sync — ' . $warning);
+        }
+
         return 0;
     }
 
@@ -172,6 +177,8 @@ final class BoostAutoSync
      * `$packageName` namespaces the sentinel; its version resolves via
      * `Composer\InstalledVersions`, so the sentinel auto-invalidates on
      * every version bump — a patched tool re-syncs once, on its next run.
+     * The operator's `~/.boost/user-scope.php` is keyed in too, so an edit to
+     * the skill selection also re-syncs once.
      *
      * Returns true when the sync ran (sentinel absent), false when it was
      * skipped (sentinel present, or `BOOST_SKIP_AUTOSYNC` set). The
@@ -279,10 +286,22 @@ final class BoostAutoSync
             return null;
         }
 
-        $slug = str_replace('/', '-', $packageName) . '@' . $version;
+        $slug = str_replace('/', '-', $packageName) . '@' . $version . self::userScopeConfigKey();
         $slug = preg_replace('/[^A-Za-z0-9._@-]+/', '-', $slug) ?? $slug;
 
         return self::cacheDirectory() . '/boost/synced/' . $slug;
+    }
+
+    /**
+     * `+<hash>` of the operator's user-scope selection file, or '' when there
+     * is none — so a machine without the file keeps its existing sentinels.
+     */
+    private static function userScopeConfigKey(): string
+    {
+        $path = UserScopeConfig::pathFor(SyncEngine::resolveHomeDirectory());
+        $content = is_file($path) ? @file_get_contents($path) : false;
+
+        return $content === false ? '' : '+' . substr(hash('sha256', $content), 0, 12);
     }
 
     private static function resolvePackageVersion(string $packageName): ?string
@@ -339,12 +358,17 @@ final class BoostAutoSync
 
     private static function warnUserScopeFailure(string $detail): void
     {
+        self::writeStderr('boost: user-scope auto-sync failed — ' . $detail);
+    }
+
+    private static function writeStderr(string $line): void
+    {
         $stderr = fopen('php://stderr', 'w');
         if ($stderr === false) {
             return;
         }
 
-        fwrite($stderr, 'boost: user-scope auto-sync failed — ' . $detail . PHP_EOL);
+        fwrite($stderr, $line . PHP_EOL);
         fclose($stderr);
     }
 }

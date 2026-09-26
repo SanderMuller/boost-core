@@ -4,6 +4,58 @@ Breaking changes per major/minor bump.
 
 > **Standing note — a `composer update` can produce a guidance-file diff to commit.** Since 0.12 the agent-guidance files (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`/`.github/copilot-instructions.md`) are boost-owned but **tracked** (committed, not gitignored), and the post-install/update hook runs a sync. So when a dependency update changes synced content (a vendor ships a new skill/guideline, or boost-core's own output changes), the next `composer update` rewrites those tracked files → a dirty working tree you commit alongside the dependency bump. This is expected, not drift: the sync is a no-op when nothing changed (so the tree only goes dirty on a real content change), and the diff is reviewable. Commit it as part of the update.
 
+## 1.12 → 1.13
+
+### User-scope skills are flat and end in `-user`
+
+`boost sync --scope=user` used to write each skill to
+`~/.{agent}/skills/<vendor>__<package>/<skill>/SKILL.md`. Claude Code does not
+find a skill in that nested folder, so only a package whose one skill had the
+package's own name showed up, and under the name `<vendor>__<package>`.
+
+Each skill now lands at `~/.{agent}/skills/<skill>-user/SKILL.md`:
+
+| Was (1.12) | Now (1.13) |
+|---|---|
+| `/sandermuller__repo-init` | `/repo-init-user` |
+| `~/.claude/skills/sandermuller__boost-skills/write-spec/` (not found by Claude Code) | `/write-spec-user` |
+
+The `-user` suffix keeps a user-scope copy from hiding a project skill of the
+same name. References between one package's published skills are renamed too.
+
+On the first user-scope sync after the upgrade:
+
+- The flat folders are written, and the old nested copies are deleted. A nested
+  file you edited stays.
+- Skills of multi-skill packages that Claude Code could not see before become
+  visible. `sandermuller/boost-skills` alone publishes 36. To publish only some,
+  list them in `~/.boost/user-scope.php` (below) and sync again.
+- A file of your own at a target path (for example a hand-made
+  `~/.claude/skills/write-spec-user/SKILL.md`), or a symlink there, stops that
+  package's sync with an error. Rename or remove it.
+
+Remove the workarounds that the new layout replaces:
+
+- symlinks you made in `~/.{agent}/skills/` to skills in the global Composer
+  `vendor/` folder, or each skill shows twice (`interview` and `interview-user`);
+- a leftover `~/.{agent}/skills/<package-basename>/` folder from before 0.4. The
+  0.3 → 0.4 migration no longer runs.
+
+### Choose user-scope skills in `~/.boost/user-scope.php`
+
+```php
+<?php
+
+return [
+    'skills' => [
+        'sandermuller/boost-skills' => ['interview', 'promptimize', 'write-spec'],
+    ],
+];
+```
+
+A package with no entry still publishes all its skills. See
+[Choose user-scope skills](https://sandermuller.github.io/boost-core/guide/automating-sync#choose-user-scope-skills).
+
 ## 1.11 → 1.12
 
 ### Claude Code guidance moves from `CLAUDE.md` to `AGENTS.md`
@@ -165,7 +217,7 @@ The plugin also auto-synced skills for `composer global require`-d packages. Tha
 vendor/bin/boost sync --scope=user --all
 ```
 
-It user-scope-syncs every globally-installed package that ships `resources/boost/skills/`, wholesale — every skill is published. Tag filters and the vendor allowlist are project-scope controls; with no `boost.php` in user scope, neither applies.
+It user-scope-syncs every globally-installed package that ships `resources/boost/skills/`. Tag filters and the vendor allowlist are project-scope controls; with no `boost.php` in user scope, neither applies. (Since 1.13 you can pick skills per package in `~/.boost/user-scope.php` — see 1.12 → 1.13.)
 
 ### Drop the now-dead `allow-plugins` entry
 

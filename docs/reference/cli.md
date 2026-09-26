@@ -10,7 +10,7 @@ Every family package exposes the same binary at `vendor/bin/boost`.
 | `boost remote [<owner>/<repo>]` | Read a GitHub repository of skills and pick which to declare in `withRemoteSkills()` (`--ref`, `--mode`) |
 | `boost sync` | Fan skills, guidelines, and commands out to the selected agents |
 | `boost sync --check` | Dry run — report drift, write nothing. Offline. Gate CI on this |
-| `boost sync --scope=user [--all]` | User-scope sync, for globally-installed CLI tools |
+| `boost sync --scope=user [--all]` | User-scope sync, for globally-installed CLI tools. Publishes flat `~/.{agent}/skills/<skill>-user/` folders; pick skills in `~/.boost/user-scope.php` |
 | `boost where` | Origin-traced listing of every skill, guideline, and command that would ship |
 | `boost where --diff=<name>` | Unified diff between a host override and the vendor copy |
 | `boost where --conventions [--json]` | Resolved conventions slots, their provenance, and block keep/drop status |

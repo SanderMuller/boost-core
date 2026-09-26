@@ -3,6 +3,7 @@
 namespace SanderMuller\BoostCore\Sync;
 
 use JsonException;
+use SanderMuller\BoostCore\Discovery\DiscoveredVendor;
 use SanderMuller\BoostCore\Discovery\VendorScanner;
 use Throwable;
 
@@ -27,10 +28,20 @@ final class UserScopeBulkSync
     {
         $home = $homeRoot !== null ? rtrim($homeRoot, '/') : SyncEngine::resolveHomeDirectory();
 
-        /** @var list<UserScopeResult> $results */
-        $results = [];
-        /** @var array<string, string> $claimedSuffixes  user-scope suffix => package name */
-        $claimedSuffixes = [];
+        // A broken `~/.boost/user-scope.php` fails the whole run closed: nothing
+        // is published and nothing — not even a removed package — is reaped.
+        $config = UserScopeConfig::fromHome($home);
+        if ($config->hasErrors()) {
+            return [new UserScopeResult(packageName: '', homeRoot: $home, writes: [], errors: $config->errors(), check: $checkOnly)];
+        }
+
+        // Sorted by name: the flat `<name>-user/` namespace is shared across
+        // packages, and when two packages publish the same name the first one
+        // written wins (the second hits the collision guard). Discovery follows
+        // the installed-packages order, which is not guaranteed stable.
+        $vendors = [...$vendorScanner->discover()];
+        usort($vendors, static fn (DiscoveredVendor $a, DiscoveredVendor $b): int => strcmp($a->name, $b->name));
+
         // Every package discovered present THIS run, keyed by user-scope slug.
         // `$discoveredWithSkills` is the subset that still ships skills — those are
         // synced below and must never be reconcile-reaped, even if their manifest's
@@ -39,15 +50,35 @@ final class UserScopeBulkSync
         $discovered = [];
         /** @var array<string, true> $discoveredWithSkills */
         $discoveredWithSkills = [];
-
-        foreach ($vendorScanner->discover() as $vendor) {
+        foreach ($vendors as $vendor) {
             $discovered[SyncEngine::packageSuffix($vendor->name)] = true;
+            if ($vendor->skillsPath !== null) {
+                $discoveredWithSkills[SyncEngine::packageSuffix($vendor->name)] = true;
+            }
+        }
 
+        // Reconcile removed packages FIRST: a removed package may still own a
+        // `<name>-user/` path an installed package now publishes, and the
+        // installed package's collision guard would refuse it until the old
+        // owner's files and manifest are gone.
+        $reconciledSlugs = [];
+        $results = $this->reconcileRemoved($home, $checkOnly, $discovered, $discoveredWithSkills, $reconciledSlugs);
+
+        // `--check` writes and deletes nothing, so carry forward what the real
+        // run would already have changed by the time it reaches each package.
+        $overlay = new UserScopeCheckOverlay(ignoredSlugs: $reconciledSlugs);
+        foreach ($results as $reconciled) {
+            $overlay = $overlay->after($reconciled);
+        }
+
+        /** @var array<string, string> $claimedSuffixes  user-scope suffix => package name */
+        $claimedSuffixes = [];
+        /** @var array<int, DiscoveredVendor> $failed  result index => vendor */
+        $failed = [];
+        foreach ($vendors as $vendor) {
             if ($vendor->skillsPath === null) {
                 continue;
             }
-
-            $discoveredWithSkills[SyncEngine::packageSuffix($vendor->name)] = true;
 
             // Defensive: `packageSuffix` is injective for valid Composer
             // names, so this never fires in practice — a guardrail against
@@ -68,24 +99,40 @@ final class UserScopeBulkSync
 
             $claimedSuffixes[$suffix] = $vendor->name;
 
-            try {
-                $results[] = $engine->syncUser($vendor->installPath, $checkOnly, $home);
-            } catch (Throwable $throwable) {
-                $results[] = new UserScopeResult(
-                    packageName: $vendor->name,
-                    homeRoot: $home,
-                    writes: [],
-                    errors: [$throwable->getMessage()],
-                    check: $checkOnly,
-                );
+            $result = $this->syncOne($engine, $vendor, $checkOnly, $home, $overlay);
+            $overlay = $overlay->after($result);
+            if ($result->hasErrors()) {
+                $failed[count($results)] = $vendor;
             }
-        }
 
-        foreach ($this->reconcileRemoved($home, $checkOnly, $discovered, $discoveredWithSkills) as $result) {
             $results[] = $result;
         }
 
-        return $results;
+        // One retry for a refused package: a package that sorts LATER may have
+        // released a `<name>-user/` path this one now selects (it deselected or
+        // dropped the skill), so the hand-over completes in the same run.
+        foreach ($failed as $index => $vendor) {
+            $result = $this->syncOne($engine, $vendor, $checkOnly, $home, $overlay);
+            $overlay = $overlay->after($result);
+            $results[$index] = $result;
+        }
+
+        return array_values($results);
+    }
+
+    private function syncOne(SyncEngine $engine, DiscoveredVendor $vendor, bool $checkOnly, string $home, UserScopeCheckOverlay $overlay): UserScopeResult
+    {
+        try {
+            return $engine->syncUser($vendor->installPath, $checkOnly, $home, $checkOnly ? $overlay : new UserScopeCheckOverlay());
+        } catch (Throwable $throwable) {
+            return new UserScopeResult(
+                packageName: $vendor->name,
+                homeRoot: $home,
+                writes: [],
+                errors: [$throwable->getMessage()],
+                check: $checkOnly,
+            );
+        }
     }
 
     /**
@@ -100,9 +147,10 @@ final class UserScopeBulkSync
      *
      * @param  array<string, true>  $discovered  user-scope slugs of every package present this run
      * @param  array<string, true>  $discoveredWithSkills  subset that still ships skills (synced above)
+     * @param  list<string>  $reconciledSlugs  out: slugs whose manifest a real run deletes
      * @return list<UserScopeResult>  one per removed package whose files were reaped
      */
-    private function reconcileRemoved(string $home, bool $checkOnly, array $discovered, array $discoveredWithSkills): array
+    private function reconcileRemoved(string $home, bool $checkOnly, array $discovered, array $discoveredWithSkills, array &$reconciledSlugs): array
     {
         $dir = $home . '/' . UserScopeManifest::DIR;
         if (! is_dir($dir)) {
@@ -158,7 +206,12 @@ final class UserScopeBulkSync
                 }
             }
 
-            $reap = $reaper->reap($home, SyncEngine::userScopeSlugRootsForSlug($slug), $manifest, [], $checkOnly);
+            $foreignPaths = UserScopeManifest::pathsRecordedByOthers($home, $slug);
+            $reap = $reaper->reap($home, SyncEngine::userScopeSlugRootsForSlug($slug), $manifest, [], $checkOnly, $foreignPaths);
+
+            if (! $reap['retained']) {
+                $reconciledSlugs[] = $slug;
+            }
 
             if (! $checkOnly && ! $reap['retained']) {
                 @unlink($file);

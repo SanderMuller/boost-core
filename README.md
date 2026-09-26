@@ -61,7 +61,7 @@ stay tracked. See [File ownership](#file-ownership) for why.
 | Tag filtering            | none                     | `withTags()` subset rule                                                                                             |
 | Skill dependencies       | none                     | `metadata.boost-requires` — required skills co-ship, tag-dropped deps rescued                                        |
 | Remote skill sources     | none                     | `withRemoteSkills()` — GitHub bundles + path imports                                                                 |
-| User-scope sync          | none                     | `boost sync --scope=user` for globally-installed CLI tools                                                           |
+| User-scope sync          | none                     | `boost sync --scope=user` for globally-installed CLI tools, as `<skill>-user`, selectable in `~/.boost/user-scope.php` |
 | Origin tracing           | none                     | `boost where` + `boost where --diff=<name>` (host / vendor / remote / shadow)                                        |
 | Doctor / path-repo audit | none                     | `boost doctor`, `boost doctor --check-versions`                                                                      |
 | `.ai/commands/` fan-out  | none                     | per-agent argument transpilation across 7 emit targets                                                               |
@@ -310,7 +310,8 @@ errored. `BOOST_SKIP_AUTOSYNC=1` turns it off.
 **See [the automating sync docs](https://sandermuller.github.io/boost-core/guide/automating-sync)** for the other entry
 points: `runWithSummary` for user-invoked scripts, `syncUserScopeOnce` for a
 globally-installed CLI tool that self-syncs, and the `--scope=user` sync — which
-publishes a package's skills wholesale, and the guidelines its author marked
+publishes a package's skills as flat `<skill>-user` folders (all of them, or the
+ones you pick in `~/.boost/user-scope.php`), and the guidelines its author marked
 user-scope eligible.
 
 ## Project Conventions
@@ -369,7 +370,7 @@ user-scope cleanup-on-remove.
 | `boost remote [<owner>/<repo>]`      | Read a GitHub repo of skills and pick which ones to declare in `withRemoteSkills()` (`--ref`, `--mode`)                              |
 | `boost sync`                         | Fan out skills / guidelines / commands to selected agents                                                                            |
 | `boost sync --check`                 | Dry run — report drift, no writes (offline; gate CI on this)                                                                         |
-| `boost sync --scope=user [--all]`    | User-scope sync for globally-installed CLI tools                                                                                     |
+| `boost sync --scope=user [--all]`    | User-scope sync for globally-installed CLI tools, as `~/.{agent}/skills/<skill>-user/` — pick skills in `~/.boost/user-scope.php`    |
 | `boost where`                        | Origin-traced listing of every skill / guideline / command that would ship                                                           |
 | `boost where --diff=<name>`          | Unified diff (skill OR guideline) between a host override and the vendor copy                                                        |
 | `boost where --conventions [--json]` | Effective resolved conventions slots + provenance + block keep/drop status                                                           |

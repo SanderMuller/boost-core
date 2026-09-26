@@ -64,11 +64,80 @@ even if its sync fails.
 
 After `composer global require`-ing skill-bearing packages, run
 `vendor/bin/boost sync --scope=user --all` once to user-scope-sync every globally
-installed package that ships `resources/boost/skills/`, into
-`~/.{agent}/skills/<vendor>__<package>/<skill>/SKILL.md`. User scope publishes a
-package's **skills** wholesale: there's no `boost.php`, so tag filters and the
-vendor allowlist (both project-scope controls) don't apply. Removed packages are
-reaped on the next `--all` run; see [file-ownership.md](file-ownership.md).
+installed package that ships `resources/boost/skills/`. Each skill lands flat, in
+its own folder with a `-user` suffix:
+
+```text
+~/.claude/skills/write-spec-user/SKILL.md
+~/.cursor/skills/write-spec-user/SKILL.md
+…one folder per skill, for each of the 9 agents
+```
+
+- **Flat**, because agents discover a skill one level under their skills folder.
+  A nested `<vendor>__<package>/<skill>/` folder is invisible to Claude Code.
+- **Suffixed**, because an agent prefers a personal skill over a project skill of
+  the same name. A user-scope copy has no project conventions filled in, so a
+  plain `write-spec` would hide the project's better copy. `write-spec-user` never
+  does; both show, and you pick.
+
+References between one package's published skills follow the rename: the
+published `interview-user` tells the agent to hand off to `write-spec-user`.
+Boost rewrites a whole backticked name (`` `write-spec` ``), a slash command
+(`/clarify`), and a relative skill link (`../codex-review/`) in `.md` files. It
+leaves plain text, the `description`, and a name the run does not publish alone.
+
+There's no `boost.php` at user scope, so tag filters and the vendor allowlist
+(both project-scope controls) don't apply. Removed packages are reaped on the
+next `--all` run; see [file-ownership.md](file-ownership.md).
+
+### Choose user-scope skills
+
+By default a package publishes every skill it ships. To publish only some,
+create `~/.boost/user-scope.php`:
+
+```php
+<?php
+
+return [
+    'skills' => [
+        // Only these, plus whatever they declare in `metadata.boost-requires`.
+        'sandermuller/boost-skills' => ['interview', 'promptimize'],
+
+        // Nothing from this package.
+        'acme/noisy-tools' => [],
+    ],
+];
+```
+
+- A package with no entry publishes all its skills.
+- A listed skill also publishes the skills of the same package it declares in
+  `metadata.boost-requires`, transitively. `interview` above brings
+  `clarify-user` and `write-spec-user` with it; the sync prints a note for each.
+- A skill you take off the list is reaped on the next sync.
+- A name the package does not ship prints a warning; the rest still publishes.
+- An empty list publishes no skills. It does not affect the package's
+  user-scope guidelines, which the author opts in (below).
+- A file that throws, or has the wrong shape, stops every user-scope sync with
+  an error. Nothing is published or reaped until you fix it.
+
+Every user-scope sync reads the file: `--scope=user`, `--scope=user --all`, and
+the `BoostAutoSync::syncUserScope()` / `syncUserScopeOnce()` hooks a tool calls
+on its own. `syncUserScopeOnce()` runs once per tool version, and once more
+after each edit to the file.
+
+### Name clashes
+
+The `-user` folders share the agent's skills folder with your own skills and
+with other packages. Before it writes anything, a sync checks every target
+file: a file boost did not write (your own `SKILL.md`), or a symlink at the
+file or its `-user` folder, stops that package's sync with an error that names
+the path. Rename or remove it, then sync again.
+
+When two packages publish the same skill name, the first package by name wins
+and the second reports the clash, naming the owner. Drop the skill from one of
+them in `~/.boost/user-scope.php`. A removed package keeps its claim until
+`boost sync --scope=user --all` reaps it; the `--all` run reaps removed packages
+before it publishes, so a new owner takes the name over in the same run.
 
 ### User-scope guidelines
 

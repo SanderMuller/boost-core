@@ -65,7 +65,7 @@ it("syncs a tool's bundled skills into the home dir and returns 0", function ():
             $exit = BoostAutoSync::syncUserScope($pkg);
 
             expect($exit)->toBe(0)
-                ->and(file_exists($home . '/.claude/skills/acme__sample-tool/sample-skill/SKILL.md'))->toBeTrue();
+                ->and(file_exists($home . '/.claude/skills/sample-skill-user/SKILL.md'))->toBeTrue();
         });
     } finally {
         cleanupTestDir($pkg);
@@ -259,5 +259,28 @@ it('degrades to an ungated sync when the package version cannot be resolved', fu
     } finally {
         cleanupTestDir($pkg);
         cleanupTestDir($xdg);
+    }
+});
+
+it('re-syncs once after the user-scope selection file changes', function (): void {
+    $pkg = makeUserScopeToolFixture('acme/sample-tool', withSkill: false);
+    $xdg = sys_get_temp_dir() . '/boost-uss-xdg-' . bin2hex(random_bytes(8));
+    $home = sys_get_temp_dir() . '/boost-uss-home-' . bin2hex(random_bytes(8));
+    mkdir($home . '/.boost', 0o755, recursive: true);
+
+    try {
+        withUserScopeEnv(['XDG_CACHE_HOME' => $xdg, 'HOME' => $home, 'BOOST_SKIP_AUTOSYNC' => null], function () use ($pkg, $home): void {
+            expect(BoostAutoSync::syncUserScopeOnce($pkg, 'sandermuller/boost-core'))->toBeTrue()
+                ->and(BoostAutoSync::syncUserScopeOnce($pkg, 'sandermuller/boost-core'))->toBeFalse();
+
+            file_put_contents($home . '/.boost/user-scope.php', "<?php return ['skills' => ['acme/sample-tool' => []]];");
+
+            expect(BoostAutoSync::syncUserScopeOnce($pkg, 'sandermuller/boost-core'))->toBeTrue('a new selection re-syncs')
+                ->and(BoostAutoSync::syncUserScopeOnce($pkg, 'sandermuller/boost-core'))->toBeFalse('then the sentinel holds again');
+        });
+    } finally {
+        cleanupTestDir($pkg);
+        cleanupTestDir($xdg);
+        cleanupTestDir($home);
     }
 });

@@ -167,8 +167,15 @@ publishes the working directory's own package and reconciles only that one.
 Each user-scope sync records a per-package ownership manifest at
 `~/.boost/manifests/<vendor>__<package>.json`. On the next
 `boost sync --scope=user --all`, any manifest whose recorded package **install
-path no longer exists on disk** has its `~/.{agent}/skills/<slug>/` files reaped
-and its manifest deleted.
+path no longer exists on disk** has its `~/.{agent}/skills/<skill>-user/` files
+reaped and its manifest deleted.
+
+The flat `-user` folders share one namespace across packages, so a reap never
+touches a path another package's manifest records, and a sync never writes over
+a path it does not own (see
+[automating-sync.md](automating-sync.md#name-clashes)). The first flat sync after
+an upgrade also reaps the package's recorded copies from the old nested
+`~/.{agent}/skills/<vendor>__<package>/` layout.
 
 The same manifest covers the package's user-scope guidance file
 (`~/.claude/boost/<vendor>__<package>.md`, see
@@ -183,8 +190,9 @@ the file is reaped, remove the import line yourself.
 A still-installed package is keyed on its install path being present, *not* on
 whether that particular run discovered it, so running `--all` from a project-local
 `vendor/bin/boost` (which can't see the global set) never mass-reaps your global
-skills. Reaping is sha-gated (a file you hand-edited is preserved), slug-scoped
-(only the package's own dirs), and clean-run-gated (a write error skips reaping).
+skills. Reaping is sha-gated (a file you hand-edited is preserved), shape-scoped
+(only `-user` skill folders, the legacy slug folders, and the package's guidance
+file), and clean-run-gated (a write error skips reaping).
 `--check` reports the pending reap without deleting. A package globally installed
 before cleanup-on-remove shipped has no manifest yet, so nothing is reaped until
 its first user-scope sync records one.

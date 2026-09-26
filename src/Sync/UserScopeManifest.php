@@ -123,6 +123,41 @@ final readonly class UserScopeManifest
         return new self($this->package, $this->installPath, $entries);
     }
 
+    /**
+     * Every path recorded by the manifests of OTHER packages under `$home`,
+     * mapped to the package that records it.
+     *
+     * Flat user-scope skill dirs (`<skillsDir>/<name>-user/`) share one
+     * namespace across packages, so the package slug no longer fences a reap.
+     * A path another package records is never this package's to write or
+     * delete.
+     *
+     * @param  list<string>  $ignoredSlugs  manifests to skip (a `--check` run's would-be-deleted ones)
+     * @return array<string, string>  path => owning package
+     */
+    public static function pathsRecordedByOthers(string $home, string $exceptSlug, array $ignoredSlugs = []): array
+    {
+        $files = glob(rtrim($home, '/') . '/' . self::DIR . '/*.json');
+        if ($files === false) {
+            return [];
+        }
+
+        $paths = [];
+        foreach ($files as $file) {
+            $slug = basename($file, '.json');
+            if ($slug === $exceptSlug || in_array($slug, $ignoredSlugs, true)) {
+                continue;
+            }
+
+            $manifest = self::fromFile($file);
+            foreach ($manifest->paths() as $path) {
+                $paths[$path] = $manifest->package !== '' ? $manifest->package : $slug;
+            }
+        }
+
+        return $paths;
+    }
+
     public function withInstallPath(string $installPath): self
     {
         return new self($this->package, $installPath, $this->entries);

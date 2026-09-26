@@ -6,7 +6,7 @@ namespace SanderMuller\BoostCore\Sync;
  * Outcome of a `boost:sync --scope=user` run.
  *
  * User-scope syncs install a single package's `resources/boost/skills/`
- * into `~/.{agent}/skills/<package-suffix>/` so the skills activate in
+ * into flat `~/.{agent}/skills/<skill>-user/` dirs so the skills activate in
  * any AI session on the machine. Used primarily by globally-installed
  * Composer tools that ship their own skills (e.g. `sandermuller/repo-init`).
  *
@@ -17,6 +17,7 @@ final readonly class UserScopeResult
     /**
      * @param  list<WrittenFile>  $writes
      * @param  list<string>  $errors
+     * @param  list<string>  $warnings  non-fatal notes (a skipped over-long name, an unknown selected skill, a pulled dependency)
      */
     public function __construct(
         public string $packageName,
@@ -24,6 +25,7 @@ final readonly class UserScopeResult
         public array $writes,
         public array $errors,
         public bool $check,
+        public array $warnings = [],
     ) {}
 
     public function hasDrift(): bool

@@ -20,6 +20,12 @@ use SanderMuller\BoostCore\Skills\SkillAsset;
  *  - a slash command: `/clarify`, `/autoresearch:plan`;
  *  - a relative skill link: `../codex-review/`.
  *
+ * The `metadata.boost-requires` tokens that name a published skill get the
+ * suffix as well, so the copy declares the dependencies it actually has. A
+ * `subagent:` token, a name outside the published set, and a value that is
+ * not a string stay as they are. Plain-text names in the description and
+ * the body are not rewritten: they are often ordinary words.
+ *
  * @internal
  */
 final readonly class UserScopeSkillRenamer
@@ -90,6 +96,24 @@ final readonly class UserScopeSkillRenamer
     }
 
     /**
+     * Suffix each token that is exactly a published skill name. A `subagent:`
+     * token never equals a skill name, so it passes through.
+     *
+     * @param  list<string>  $tokens
+     * @param  list<string>  $names
+     * @return list<string>
+     */
+    private function renameRequiredNames(array $tokens, array $names): array
+    {
+        $published = array_flip($names);
+
+        return array_map(
+            static fn (string $token): string => isset($published[$token]) ? $token . self::SUFFIX : $token,
+            $tokens,
+        );
+    }
+
+    /**
      * @param  list<string>  $names
      */
     private function renameOne(Skill $skill, array $names): Skill
@@ -98,6 +122,13 @@ final readonly class UserScopeSkillRenamer
 
         $frontmatter = $skill->frontmatter;
         $frontmatter['name'] = $newName;
+
+        $metadata = $frontmatter['metadata'] ?? null;
+        if (is_array($metadata) && is_string($metadata['boost-requires'] ?? null)) {
+            $tokens = preg_split('/\s+/', trim($metadata['boost-requires']), -1, PREG_SPLIT_NO_EMPTY);
+            $metadata['boost-requires'] = implode(' ', $this->renameRequiredNames($tokens === false ? [] : $tokens, $names));
+            $frontmatter['metadata'] = $metadata;
+        }
 
         $assets = [];
         foreach ($skill->assets as $asset) {
@@ -116,7 +147,7 @@ final readonly class UserScopeSkillRenamer
             tags: $skill->tags,
             tagsValid: $skill->tagsValid,
             assets: $assets,
-            requires: $skill->requires,
+            requires: $this->renameRequiredNames($skill->requires, $names),
             requiresValid: $skill->requiresValid,
             requiredSubagents: $skill->requiredSubagents,
         );

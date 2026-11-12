@@ -17,9 +17,8 @@ config, since they break if the file moves.
 
 ## Markerless wholesale ownership
 
-The agent-guidance files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`,
-`.github/copilot-instructions.md`) are wholesale boost-owned and carry **no
-markers**. boost-core regenerates them in full on every sync from
+The agent-guidance files (`AGENTS.md`, `GEMINI.md`) are wholesale boost-owned
+and carry **no markers**. boost-core regenerates them in full on every sync from
 `.ai/guidelines/` + `boost.php`. Operator-authored guidance belongs in
 `.ai/guidelines/` (it's assembled into the file on every sync), not hand-edited
 into the emission target.
@@ -139,9 +138,8 @@ directory. `.claude/agents/boost/` is listed; `.claude/agents/` itself is not,
 because that directory holds definitions you write by hand. See
 [Subagents](/guide/subagents).
 
-The agent **guidance files** (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`,
-`.github/copilot-instructions.md`) are deliberately **not** gitignored: they're
-wholesale boost-owned but kept tracked so the output is reviewable in diffs and
+The agent **guidance files** (`AGENTS.md`, `GEMINI.md`) are deliberately
+**not** gitignored: they're wholesale boost-owned but kept tracked so the output is reviewable in diffs and
 present on a fresh clone.
 
 Opt out per project:

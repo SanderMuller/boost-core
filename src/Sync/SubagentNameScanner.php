@@ -2,7 +2,6 @@
 
 namespace SanderMuller\BoostCore\Sync;
 
-use SanderMuller\BoostCore\Agents\AgentTarget;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use Symfony\Component\Finder\Finder;
 
@@ -113,28 +112,29 @@ final readonly class SubagentNameScanner
     }
 
     /**
-     * Files OUTSIDE the boost subtree that declare one of `$names`.
+     * Files boost does not own that declare one of `$names`.
      *
      * The emission-time half of the check: boost knows the names it is about to
      * write before it writes them, so it can name the conflict at the moment it
-     * is introduced rather than leaving the operator to find it later. Files
-     * under the boost subtree are excluded — those are boost's own emissions,
-     * and an emitted file colliding with itself is not a finding.
+     * is introduced rather than leaving the operator to find it later.
+     *
+     * Ownership is the caller's `$ownedPaths` (what this sync emitted, plus what
+     * the prior manifest records), never the path prefix. A file under the boost
+     * subtree that neither set covers is a leftover boost did not write and will
+     * not reap, for example an old vendor copy a branch switch restored. Claude
+     * Code still loads it, so it is reported like any other unowned holder.
      *
      * @param  list<string>  $names
+     * @param  array<string, true>  $ownedPaths  project-relative paths boost owns
      * @return array<string, list<string>>  name => sorted project-relative paths of the unowned holders
      */
-    public function unownedHolders(string $projectRoot, array $names): array
+    public function unownedHolders(string $projectRoot, array $names, array $ownedPaths): array
     {
         if ($names === []) {
             return [];
         }
 
         $wanted = array_flip($names);
-        $ownedPrefixes = array_map(
-            static fn (string $root): string => $root . '/' . AgentTarget::SUBAGENT_BOOST_SEGMENT . '/',
-            self::roots(),
-        );
 
         $holders = [];
         foreach ($this->namesByPath($projectRoot) as $relativePath => $name) {
@@ -142,7 +142,7 @@ final readonly class SubagentNameScanner
                 continue;
             }
 
-            if ($this->isBoostOwned($relativePath, $ownedPrefixes)) {
+            if (isset($ownedPaths[$relativePath])) {
                 continue;
             }
 
@@ -152,20 +152,6 @@ final readonly class SubagentNameScanner
         ksort($holders);
 
         return $holders;
-    }
-
-    /**
-     * @param  list<string>  $ownedPrefixes
-     */
-    private function isBoostOwned(string $relativePath, array $ownedPrefixes): bool
-    {
-        foreach ($ownedPrefixes as $prefix) {
-            if (str_starts_with($relativePath, $prefix)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

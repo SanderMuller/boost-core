@@ -10,7 +10,7 @@ cd boost-core
 composer install
 ```
 
-`composer install` triggers the plugin's own auto-sync, which regenerates the agent fan-out files (`.claude/skills/<name>/SKILL.md`, etc.) from `.ai/`. The fan-out is gitignored; only `.ai/` sources are tracked.
+`composer install` runs boost-core's own `post-install-cmd` auto-sync script, which regenerates the agent fan-out files (`.claude/skills/<name>/SKILL.md`, etc.) from `.ai/`. The fan-out is gitignored; only `.ai/` sources are tracked.
 
 ## Running checks
 

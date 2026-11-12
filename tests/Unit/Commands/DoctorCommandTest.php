@@ -11,6 +11,7 @@ use SanderMuller\BoostCore\Sync\EmitterAction;
 use SanderMuller\BoostCore\Sync\EmitterResult;
 use SanderMuller\BoostCore\Sync\InstalledPackages;
 use SanderMuller\BoostCore\Sync\PackageInfo;
+use SanderMuller\BoostCore\Sync\SyncEngine;
 use SanderMuller\BoostCore\Sync\SyncReporter;
 use SanderMuller\BoostCore\Sync\SyncResult;
 use SanderMuller\BoostCore\Sync\WrapperEntryPoints;
@@ -19,6 +20,22 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Console\Tester\CommandTester;
+
+// Doctor checks the user-scope copies under HOME. Point HOME at an empty temp
+// dir so no doctor test reads the real home directory.
+beforeEach(function (): void {
+    $this->previousHome = getenv('HOME');
+    $this->doctorHome = sys_get_temp_dir() . '/boost-doctor-home-' . bin2hex(random_bytes(8));
+    mkdir($this->doctorHome, 0o755, recursive: true);
+    putenv('HOME=' . $this->doctorHome);
+});
+
+afterEach(function (): void {
+    putenv(is_string($this->previousHome) ? 'HOME=' . $this->previousHome : 'HOME');
+    if (is_string($this->doctorHome)) {
+        cleanupTestDir($this->doctorHome);
+    }
+});
 
 function doctorTempProject(string $boostBody): string
 {
@@ -1651,6 +1668,29 @@ it('reports a subagent resolution failure instead of staying silent', function (
 
         expect($display)->toContain('Could not resolve subagents')
             ->and($display)->toContain('ships two subagents named');
+    } finally {
+        doctorCleanup($dir);
+    }
+});
+
+it('reports drifted user-scope copies under the HOME it runs with', function (): void {
+    $dir = doctorTempProject('BoostConfig::configure()->withAgents([Agent::CLAUDE_CODE])');
+    $package = $dir . '/global/vendor/acme/tool';
+    mkdir($package . '/resources/boost/skills/sample', 0o755, recursive: true);
+    file_put_contents($package . '/composer.json', json_encode(['name' => 'acme/tool'], JSON_THROW_ON_ERROR));
+    file_put_contents($package . '/resources/boost/skills/sample/SKILL.md', "---\nname: sample\ndescription: Sample.\n---\nFirst body.\n");
+
+    try {
+        // The HOME the beforeEach hook set, which doctor reads too.
+        $home = getenv('HOME');
+        expect($home)->toBeString();
+        SyncEngine::default()->syncUser($package, homeRoot: is_string($home) ? $home : null);
+        file_put_contents($package . '/resources/boost/skills/sample/SKILL.md', "---\nname: sample\ndescription: Sample.\n---\nSecond body.\n");
+
+        $display = runDoctor($dir)['display'];
+
+        expect($display)->toContain('acme/tool')
+            ->and($display)->toContain('composer global exec -- boost sync --scope=user --all');
     } finally {
         doctorCleanup($dir);
     }

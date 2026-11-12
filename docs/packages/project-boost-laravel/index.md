@@ -38,7 +38,7 @@ over for the fan-out.
 | MCP server, and the MCP config writes `boost:install` performs | `laravel/boost` |
 | MCP config files (`.mcp.json`, `.amp/settings.json`, agent-specific) | `laravel/boost` |
 | Laravel docs API and semantic search | `laravel/boost` |
-| `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` content | This package, through the engine |
+| `AGENTS.md`, `GEMINI.md` content | This package, through the engine |
 | `.{agent}/skills/<name>/SKILL.md` files | This package, through the engine |
 | Skill discovery and Blade rendering | This package — `LaravelBoostAssetReader` and `BladeRenderer` |
 | Versioned-variant resolution, such as `pest/3` versus `pest/4` | This package, matched to the host's installed major |

@@ -137,6 +137,7 @@ final class DoctorCommand extends BoostBaseCommand
         $this->reportAgentDirSymlinks($io, $projectRoot);
         (new ClaudeInstructionReporter())->report($io, $driftResult);
         (new SubagentReporter())->report($io, $projectRoot, $config, $this->injectedPackages, $configOverride);
+        (new UserScopeDriftReporter())->report($io, SyncEngine::resolveHomeDirectory());
         if ($input->getOption('check-versions') === true) {
             $this->reportPathRepoShadows($io, $projectRoot);
         }

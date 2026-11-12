@@ -98,3 +98,41 @@ it('keeps a 59-character name, which fits exactly', function (): void {
     expect($result['skills'])->toHaveCount(1)
         ->and(strlen($result['skills'][0]->name))->toBe(64);
 });
+
+it('rewrites the boost-requires names that are in the published set, and keeps the rest', function (): void {
+    $interview = new Skill(
+        name: 'interview',
+        description: 'A skill.',
+        frontmatter: ['name' => 'interview', 'metadata' => ['boost-requires' => 'clarify write-spec subagent:clarify unpublished', 'boost-tags' => 'php']],
+        body: 'Body.',
+        sourcePath: '/src/interview/SKILL.md',
+        sourceVendor: 'acme/tools',
+        requires: ['clarify', 'write-spec', 'unpublished'],
+        requiredSubagents: ['clarify'],
+    );
+
+    $result = (new UserScopeSkillRenamer())->rename([$interview, renamerSkill('clarify'), renamerSkill('write-spec')]);
+    $renamed = $result['skills'][0];
+
+    expect($renamed->frontmatter['metadata'])->toBe([
+        'boost-requires' => 'clarify-user write-spec-user subagent:clarify unpublished',
+        'boost-tags' => 'php',
+    ])
+        ->and($renamed->requires)->toBe(['clarify-user', 'write-spec-user', 'unpublished'])
+        ->and($renamed->requiredSubagents)->toBe(['clarify']);
+});
+
+it('passes a boost-requires value that is not a string through unchanged', function (): void {
+    $skill = new Skill(
+        name: 'interview',
+        description: 'A skill.',
+        frontmatter: ['name' => 'interview', 'metadata' => ['boost-requires' => ['clarify']]],
+        body: 'Body.',
+        sourcePath: '/src/interview/SKILL.md',
+        sourceVendor: 'acme/tools',
+    );
+
+    $result = (new UserScopeSkillRenamer())->rename([$skill, renamerSkill('clarify')]);
+
+    expect($result['skills'][0]->frontmatter['metadata'])->toBe(['boost-requires' => ['clarify']]);
+});

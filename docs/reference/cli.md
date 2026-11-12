@@ -14,7 +14,7 @@ Every family package exposes the same binary at `vendor/bin/boost`.
 | `boost where` | Origin-traced listing of every skill, guideline, and command that would ship |
 | `boost where --diff=<name>` | Unified diff between a host override and the vendor copy |
 | `boost where --conventions [--json]` | Resolved conventions slots, their provenance, and block keep/drop status |
-| `boost doctor` | Offline health check — config, remote sources, cache, emitters, skill dependencies, token leaks |
+| `boost doctor` | Offline health check — config, remote sources, cache, emitters, skill dependencies, token leaks, out-of-date user-scope skills |
 | `boost doctor --check-versions` | Opt-in Packagist comparison for path-repository shadows. One HTTP call per package |
 | `boost doctor --check-conventions` | Report conventions slot status: missing, unknown, file existence |
 | `boost doctor --check-stale-paths` | Read-only audit of the retired-paths registry — what the next sync would clean up |

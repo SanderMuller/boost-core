@@ -343,7 +343,7 @@ migration, and migrating vendor skills.
 boost-core generates files into your repo and home directory and tracks what it
 owns in a manifest, so a sync never silently overwrites hand-written content:
 
-- **Guidance files** (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot) are wholesale
+- **Guidance files** (`AGENTS.md`, `GEMINI.md`) are wholesale
   boost-owned, markerless, and regenerated from `.ai/guidelines/` on every sync,
   but kept **tracked** so output is reviewable in diffs. Author guidance in
   `.ai/guidelines/`, never by hand-editing the target.

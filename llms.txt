@@ -20,7 +20,7 @@ Key facts for agents:
   and remote skills per project. `metadata.boost-requires` declares hard skill
   dependencies: whenever a skill ships, its requires co-ship (tag-dropped deps
   are rescued; `withExcludedSkills()` still wins).
-- Guidance files (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, Copilot) are markerless,
+- Guidance files (`AGENTS.md`, `GEMINI.md`) are markerless,
   boost-owned, regenerated on every sync, but kept tracked. Skill and command
   directories are gitignored. A hand-edited file is never blanked.
 - Coexists with [`laravel/boost`](https://github.com/laravel/boost) in Laravel

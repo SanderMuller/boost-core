@@ -665,3 +665,52 @@ it('does not claim a collision for a project whose agents cannot receive subagen
         rmTreeSubagent($vendorDir);
     }
 });
+
+it('warns about a stale copy in the boost subtree that the manifest does not record, and keeps it', function (): void {
+    $root = subagentSyncRoot();
+    $vendorDir = subagentVendorDir('reviewer');
+
+    try {
+        mkdir($root . '/.ai/subagents', 0o755, recursive: true);
+        file_put_contents($root . '/.ai/subagents/reviewer.md', "---\nname: reviewer\n---\nHost version.\n");
+
+        SyncEngine::default(subagentPackages($vendorDir))->sync($root);
+
+        // An old vendor copy comes back (a branch switch, a force-added file).
+        // No manifest records it, so boost neither emits nor reaps it.
+        mkdir($root . '/.claude/agents/boost/acme__pack', 0o755, recursive: true);
+        file_put_contents($root . '/.claude/agents/boost/acme__pack/reviewer.md', "---\nname: reviewer\n---\nOld vendor copy.\n");
+
+        $result = SyncEngine::default(subagentPackages($vendorDir))->sync($root);
+        $messages = subagentMessages($result->diagnostics);
+
+        expect($messages)->toContain('subagent `reviewer`')
+            ->and($messages)->toContain('.claude/agents/boost/acme__pack/reviewer.md')
+            ->and($messages)->not->toContain('.claude/agents/boost/host/reviewer.md')
+            ->and(file_get_contents($root . '/.claude/agents/boost/acme__pack/reviewer.md'))->toContain('Old vendor copy.');
+    } finally {
+        rmTreeSubagent($root);
+        rmTreeSubagent($vendorDir);
+    }
+});
+
+it('does not warn about a recorded stale copy that the sync reaps, in check mode or for real', function (bool $checkOnly): void {
+    $root = subagentSyncRoot();
+    $vendorDir = subagentVendorDir('reviewer');
+
+    try {
+        SyncEngine::default(subagentPackages($vendorDir))->sync($root);
+
+        // A host override now shadows the vendor copy the manifest records.
+        mkdir($root . '/.ai/subagents', 0o755, recursive: true);
+        file_put_contents($root . '/.ai/subagents/reviewer.md', "---\nname: reviewer\n---\nHost version.\n");
+
+        $result = SyncEngine::default(subagentPackages($vendorDir))->sync($root, checkOnly: $checkOnly);
+
+        expect(subagentMessages($result->diagnostics))->not->toContain('boost does not arbitrate')
+            ->and(subagentDeletedPaths($result->writes))->toContain('.claude/agents/boost/acme__pack/reviewer.md');
+    } finally {
+        rmTreeSubagent($root);
+        rmTreeSubagent($vendorDir);
+    }
+})->with(['check' => [true], 'real' => [false]]);

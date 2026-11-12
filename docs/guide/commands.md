@@ -21,6 +21,12 @@ populated and one of those agents is selected, `boost doctor` prints the manual
 authoring path so the gap isn't silent. Override the source dir
 with `->withCommandsPath(...)`.
 
+A command and a skill with the same name both emit; boost does not pick one.
+`boost sync` warns when that happens, because the agent then shows two entries
+for one slash name (on Kiro the command overwrites the skill). Exclude the
+package's skill with `withExcludedSkills(['vendor/package:name'])`, or rename
+one side.
+
 ## Argument placeholders
 
 Author once using the canonical syntax:

@@ -258,7 +258,7 @@ Run the family member's verify command from Step 3 and confirm exit 0. Then:
   host / vendor / remote with no surprises.
 - `vendor/bin/boost doctor` — advisory health check (config load, remote
   sources, emitters, token leaks). It exits 0 even with warnings; read them.
-- Confirm guidance files (`CLAUDE.md`, `AGENTS.md`, etc.) were generated for the
+- Confirm guidance files (`AGENTS.md`, `GEMINI.md`) were generated for the
   selected agents, and that skill/command directories were created.
 
 Report to the user: which family member you installed and why, the agents and

@@ -31,6 +31,7 @@ use SanderMuller\BoostCore\Skills\CollidingSkillsException;
 use SanderMuller\BoostCore\Skills\CollidingSubagentsException;
 use SanderMuller\BoostCore\Skills\Command;
 use SanderMuller\BoostCore\Skills\CommandLoader;
+use SanderMuller\BoostCore\Skills\CommandSkillNameClash;
 use SanderMuller\BoostCore\Skills\DuplicateSubagentNameException;
 use SanderMuller\BoostCore\Skills\FrontmatterParser;
 use SanderMuller\BoostCore\Skills\Guideline;
@@ -357,6 +358,10 @@ final readonly class SyncEngine
             $errors,
         );
         $emittedPaths = [...$emittedPaths, ...$guidanceEmitted];
+
+        // Boost never edits `~/.claude/CLAUDE.md`, so say which import line the
+        // published guidance file needs (read-only; silent under --check).
+        $warnings = [...$warnings, ...UserScopeGuidanceImportHint::forRun($home, self::packageSuffix($packageName), $writes, $checkOnly)];
 
         // Ownership reconcile (0.19.0): the user-scope counterpart of the project
         // reap. Gated on a CLEAN run — a write error makes a still-needed path
@@ -1079,7 +1084,7 @@ final readonly class SyncEngine
                 ...$cleanupResult['diagnostics'],
                 ...$wrapperEmits['diagnostics'],
                 ...$renderFailDiagnostics,
-                ...SubagentDiagnostics::forResult($projectRoot, $subagents, SubagentPipeline::canEmit($this->agentTargets, $config)),
+                ...SubagentDiagnostics::forResult($projectRoot, $subagents, SubagentPipeline::canEmit($this->agentTargets, $config), $writes, $priorManifest),
                 ...$unrenderableDiagnostics,
                 ...$dependencyDiagnostics,
                 ...$emitterDiagnostics,
@@ -1088,6 +1093,7 @@ final readonly class SyncEngine
                 ...$staleManifestDiagnostics,
                 ...$preservedForeignDiagnostics,
                 ...$commandWarningDiagnostics,
+                ...CommandSkillNameClash::diagnostics($projectRoot, $resolvedCommands, $resolvedSkills, $config, $this->agentTargets),
                 ...ClaudeInstructionShadowCheck::diagnostics($projectRoot, $config, $writes, $resolvedGuidelines !== [] || $config->conventions !== []),
             ],
             conventionsBlockKept: $guidanceResult['conventionsBlockKept'],
@@ -1689,7 +1695,9 @@ final readonly class SyncEngine
 
     /**
      * Load host commands from `.ai/commands/`. Host-only — vendor commands,
-     * tag-filtering, and collision resolution are not yet supported.
+     * tag-filtering, and collision resolution are not yet supported. A command
+     * that shares a name with a resolved skill is not resolved either: both
+     * emit, and {@see CommandSkillNameClash} warns.
      *
      * @return list<Command>
      */

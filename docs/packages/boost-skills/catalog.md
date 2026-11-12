@@ -48,7 +48,7 @@ declares every tag it carries.
 ## Guidelines
 
 Guidelines are always active. There is no on-demand activation. The sync folds
-them into `CLAUDE.md`, `AGENTS.md`, and the other guidance files.
+them into `AGENTS.md` and the other guidance files.
 
 | Guideline | What it covers | Tags |
 |---|---|---|

@@ -31,26 +31,28 @@ final readonly class CommandSkillNameClash
      */
     public static function diagnostics(string $projectRoot, array $commands, array $skills, BoostConfig $config, array $agentTargets): array
     {
-        if ($commands === [] || ! self::anyCommandSurface($commands, $config, $agentTargets)) {
-            return [];
-        }
-
         $skillsByName = [];
         foreach ($skills as $skill) {
             $skillsByName[$skill->name] = $skill;
         }
 
-        $diagnostics = [];
+        $clashes = [];
         foreach ($commands as $command) {
             $skill = $skillsByName[$command->name] ?? null;
-            if (! $skill instanceof Skill) {
-                continue;
+            if ($skill instanceof Skill) {
+                $clashes[] = [$command, $skill];
             }
-
-            $diagnostics[] = Diagnostic::warning(null, self::message($projectRoot, $command, $skill));
         }
 
-        return $diagnostics;
+        // Planning commands renders every body, so ask only once a name clashes.
+        if ($clashes === [] || ! self::anyCommandSurface($commands, $config, $agentTargets)) {
+            return [];
+        }
+
+        return array_map(
+            static fn (array $clash): Diagnostic => Diagnostic::warning(null, self::message($projectRoot, $clash[0], $clash[1])),
+            $clashes,
+        );
     }
 
     private static function message(string $projectRoot, Command $command, Skill $skill): string
@@ -59,24 +61,20 @@ final readonly class CommandSkillNameClash
         $excludeKey = $skill->excludeKey();
 
         if ($excludeKey === null) {
-            return sprintf(
-                'command `%s` (%s) has the same name as the host skill `%s` (%s). Both publish `/%s` to each agent with a command surface, as two entry points or as one file that the command overwrites. Rename one of them.',
-                $command->name,
-                $commandSource,
-                $skill->name,
-                self::relative($projectRoot, $skill->sourcePath),
-                $command->name,
-            );
+            $skillOrigin = sprintf('host skill `%s` (%s)', $skill->name, self::relative($projectRoot, $skill->sourcePath));
+            $fix = 'Rename one of them.';
+        } else {
+            $skillOrigin = sprintf('skill `%s` from %s', $skill->name, (string) $skill->sourceVendor);
+            $fix = sprintf("Exclude the skill with `withExcludedSkills(['%s'])` in boost.php, or rename the command.", $excludeKey);
         }
 
         return sprintf(
-            "command `%s` (%s) has the same name as the skill `%s` from %s. Both publish `/%s` to each agent with a command surface, as two entry points or as one file that the command overwrites. Exclude the skill with `withExcludedSkills(['%s'])` in boost.php, or rename the command.",
+            'command `%s` (%s) has the same name as the %s. Both publish `/%s` to each agent with a command surface, as two entry points or as one file that the command overwrites. %s',
             $command->name,
             $commandSource,
-            $skill->name,
-            (string) $skill->sourceVendor,
+            $skillOrigin,
             $command->name,
-            $excludeKey,
+            $fix,
         );
     }
 

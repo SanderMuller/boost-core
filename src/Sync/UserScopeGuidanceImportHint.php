@@ -19,7 +19,7 @@ use SanderMuller\BoostCore\Agents\ClaudeCodeTarget;
  */
 final readonly class UserScopeGuidanceImportHint
 {
-    public const string CLAUDE_MD = '.claude/CLAUDE.md';
+    private const string CLAUDE_MD = '.claude/CLAUDE.md';
 
     /**
      * Zero or one hint, as a list so the caller can spread it into its warnings.

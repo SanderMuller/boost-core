@@ -29,7 +29,7 @@ use Throwable;
  */
 final readonly class UserScopeDriftReporter
 {
-    public const string FIX_COMMAND = 'composer global exec -- boost sync --scope=user --all';
+    private const string FIX_COMMAND = 'composer global exec -- boost sync --scope=user --all';
 
     private const string CORE_PACKAGE = 'sandermuller/boost-core';
 
@@ -45,6 +45,10 @@ final readonly class UserScopeDriftReporter
             return;
         }
 
+        $runningCore = $this->runningCoreVersion();
+        $engine = SyncEngine::default();
+        $coreByInstall = [];
+
         $drifted = [];
         $unchecked = [];
         $skipped = [];
@@ -56,8 +60,8 @@ final readonly class UserScopeDriftReporter
 
             $label = $manifest->package !== '' ? $manifest->package : basename($file, '.json');
 
-            $globalCore = $this->installedCoreVersion($manifest->installPath);
-            $runningCore = $this->runningCoreVersion();
+            $installRoot = dirname($manifest->installPath, 2);
+            $globalCore = $coreByInstall[$installRoot] ??= $this->installedCoreVersion($installRoot);
             if ($globalCore !== null && $runningCore !== null && $globalCore !== $runningCore) {
                 $skipped[] = sprintf('%s (installed beside boost-core %s; this is %s)', $label, $globalCore, $runningCore);
 
@@ -65,7 +69,7 @@ final readonly class UserScopeDriftReporter
             }
 
             try {
-                $result = SyncEngine::default()->syncUser($manifest->installPath, checkOnly: true, homeRoot: $home);
+                $result = $engine->syncUser($manifest->installPath, checkOnly: true, homeRoot: $home);
             } catch (Throwable $throwable) {
                 $unchecked[] = sprintf('%s: %s', $label, $throwable->getMessage());
 
@@ -129,14 +133,14 @@ final readonly class UserScopeDriftReporter
     }
 
     /**
-     * The boost-core version in the Composer install that holds the package —
-     * the one `composer global exec -- boost` runs. Null when it cannot be read
-     * (no `vendor/composer/installed.json` two levels up, say), in which case
+     * The boost-core version in the Composer install whose vendor dir holds the
+     * package — the one `composer global exec -- boost` runs. Null when it
+     * cannot be read (no `composer/installed.json` there, say), in which case
      * the check runs anyway.
      */
-    private function installedCoreVersion(string $installPath): ?string
+    private function installedCoreVersion(string $vendorDir): ?string
     {
-        $installed = dirname($installPath, 2) . '/composer/installed.json';
+        $installed = $vendorDir . '/composer/installed.json';
         $raw = is_file($installed) ? @file_get_contents($installed) : false;
         if ($raw === false) {
             return null;

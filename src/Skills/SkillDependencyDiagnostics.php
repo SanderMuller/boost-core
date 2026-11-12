@@ -115,7 +115,7 @@ final class SkillDependencyDiagnostics
                 $dep = $byName[$required] ?? null;
                 if ($dep instanceof Skill && array_diff($dep->tags, $skill->tags) !== []) {
                     $infos[] = Diagnostic::info(null, sprintf(
-                        'skill `%s` requires `%s`, whose tags (`%s`) exceed the dependent\'s (`%s`) — dependency rescue ships it into projects that did not opt into those tags. Confirm this is a hard dependency.',
+                        "skill `%s` requires `%s`, whose tags (`%s`) exceed the dependent's (`%s`) — dependency rescue ships it into projects that did not opt into those tags. Confirm this is a hard dependency.",
                         $skill->name,
                         $required,
                         implode(' ', $dep->tags),

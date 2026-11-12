@@ -2,7 +2,7 @@
 
 Breaking changes per major/minor bump.
 
-> **Standing note — a `composer update` can produce a guidance-file diff to commit.** Since 0.12 the agent-guidance files (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`/`.github/copilot-instructions.md`) are boost-owned but **tracked** (committed, not gitignored), and the post-install/update hook runs a sync. So when a dependency update changes synced content (a vendor ships a new skill/guideline, or boost-core's own output changes), the next `composer update` rewrites those tracked files → a dirty working tree you commit alongside the dependency bump. This is expected, not drift: the sync is a no-op when nothing changed (so the tree only goes dirty on a real content change), and the diff is reviewable. Commit it as part of the update.
+> **Standing note — a `composer update` can produce a guidance-file diff to commit.** Since 0.12 the agent-guidance files (today `AGENTS.md`/`GEMINI.md`) are boost-owned but **tracked** (committed, not gitignored), and the post-install/update hook runs a sync. So when a dependency update changes synced content (a vendor ships a new skill/guideline, or boost-core's own output changes), the next `composer update` rewrites those tracked files → a dirty working tree you commit alongside the dependency bump. This is expected, not drift: the sync is a no-op when nothing changed (so the tree only goes dirty on a real content change), and the diff is reviewable. Commit it as part of the update.
 
 ## 1.12 → 1.13
 

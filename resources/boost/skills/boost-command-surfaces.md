@@ -20,7 +20,7 @@ composer show laravel/boost sandermuller/boost-core sandermuller/project-boost-l
 | Entry point | Package | Owns |
 |---|---|---|
 | `php artisan boost:*` — `boost:install`, `boost:update`, `boost:mcp`, `boost:add-skill`, `boost:list-skills` | `laravel/boost` | Its MCP server, its bundled Laravel guidelines, and its own copies of its bundled skills |
-| `vendor/bin/boost <verb>` — `install`, `sync`, `doctor`, `where`, `tags`, `validate`, `slots`, `paths`, `new`, `scan` | `sandermuller/boost-core` | The wholesale guidance-file assembly (`CLAUDE.md` / `AGENTS.md` / …) and the skill fan-out to every configured agent |
+| `vendor/bin/boost <verb>` — `install`, `sync`, `doctor`, `where`, `tags`, `validate`, `slots`, `paths`, `new`, `scan` | `sandermuller/boost-core` | The wholesale guidance-file assembly (`AGENTS.md` / `GEMINI.md`) and the skill fan-out to every configured agent |
 | `php artisan project-boost:sync` | `sandermuller/project-boost-laravel` | The coexistence path: injects laravel/boost's skills + guidelines INTO the boost-core assembly |
 
 Note the shape difference: boost-core's commands are internally named `boost:install`, `boost:sync`, … but the standalone binary strips the prefix. `vendor/bin/boost sync` — never `vendor/bin/boost boost:sync`, and never `php artisan boost:sync` (that command does not exist).
@@ -33,11 +33,11 @@ Note the shape difference: boost-core's commands are internally named `boost:ins
 
 ## Editing rules
 
-- Never hand-edit `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or anything under `.claude/skills/`, `.claude/commands/`. boost-core regenerates them wholesale from `.ai/` and `boost.php`.
+- Never hand-edit `AGENTS.md`, `GEMINI.md`, or anything under `.claude/skills/`, `.claude/commands/`. boost-core regenerates them wholesale from `.ai/` and `boost.php`. boost-core writes Claude Code guidance to `AGENTS.md`, not `CLAUDE.md`. By default Claude Code skips `AGENTS.md` while a `CLAUDE.md` exists, so add an `@AGENTS.md` line to that `CLAUDE.md`.
 - Author skills and guidelines under `.ai/skills/` and `.ai/guidelines/`, then sync.
 - `.ai/skills/<name>` is contested: laravel/boost treats that path as its own canonical copy for any skill listed in `boost.json`, and overwrites the directory with vendor content. Do not give a host-authored skill a name that appears in `boost.json`'s `skills` array.
 - `.ai/rules/` belongs to laravel/boost — its own guideline tells agents to read `.ai/rules/index.md` before editing, and its `record-rule` MCP tool writes there. boost-core never reads or composes those rule files; on a wrapper project the *instruction* to read them does reach every agent (it rides laravel/boost's core guideline through `project-boost:sync`, on laravel/boost 2.5+), so follow it when the directory exists. Rules stay path-scoped and read on demand; guidance that every agent must always follow goes in `.ai/guidelines/` instead.
-- Three similarly named config files, all different: `boost.json` (laravel/boost's install state), `config/boost.php` (laravel/boost's Laravel config — MCP toggles, browser logs), and root `boost.php` / `.config/boost/boost.php` (boost-core's config). Editing one never affects another.
+- Three similarly named config files, all different: `boost.json` (laravel/boost's install state), `config/boost.php` (laravel/boost's Laravel config — MCP toggles, browser logs), and root `boost.php` / `.config/boost.php` (boost-core's config). Editing one never affects another.
 - `boost.json` is read by `boost:install` and `boost:update` only. The MCP server does not read it, and neither does boost-core or the wrapper. On a wrapper project it is optional: deleting it makes `boost:update` — and therefore the `herd link` trigger — refuse to run, without affecting MCP or the injected laravel/boost content. From project-boost-laravel 1.3, a successful `php artisan project-boost:sync` retires it for you — archived to `.boost/boost.json.retired`, and only once every agent it lists is declared in `boost.php` (`vendor/bin/boost install` pre-selects them). `--keep-boost-json` opts out; `php artisan boost:install` brings it back. Do not delete it on a project with no wrapper: nothing would then deliver laravel/boost's bundled guidelines and skills.
 
 ## Why files appear, disappear, or revert

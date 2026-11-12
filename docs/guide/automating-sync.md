@@ -63,9 +63,13 @@ even if its sync fails.
 ## User-scope sync
 
 After `composer global require`-ing skill-bearing packages, run
-`vendor/bin/boost sync --scope=user --all` once to user-scope-sync every globally
-installed package that ships `resources/boost/skills/`. Each skill lands flat, in
-its own folder with a `-user` suffix:
+`composer global exec -- boost sync --scope=user --all` once to user-scope-sync
+every globally installed package that ships `resources/boost/skills/`. A
+`composer global update` does not re-run it. `boost doctor` checks the
+user-scope copies against their installed packages, writes nothing, and prints
+that command when they are out of date.
+
+Each skill lands flat, in its own folder with a `-user` suffix:
 
 ```text
 ~/.claude/skills/write-spec-user/SKILL.md
@@ -83,8 +87,9 @@ its own folder with a `-user` suffix:
 References between one package's published skills follow the rename: the
 published `interview-user` tells the agent to hand off to `write-spec-user`.
 Boost rewrites a whole backticked name (`` `write-spec` ``), a slash command
-(`/clarify`), and a relative skill link (`../codex-review/`) in `.md` files. It
-leaves plain text, the `description`, and a name the run does not publish alone.
+(`/clarify`), and a relative skill link (`../codex-review/`) in `.md` files, and
+each published name in `metadata.boost-requires`. It leaves plain text, the
+`description`, and a name the run does not publish alone.
 
 There's no `boost.php` at user scope, so tag filters and the vendor allowlist
 (both project-scope controls) don't apply. Removed packages are reaped on the
@@ -182,6 +187,9 @@ activate it, add one import line to your own `~/.claude/CLAUDE.md`:
 ```markdown
 @boost/sandermuller__boost-skills.md
 ```
+
+Until that line is there, each user-scope sync that publishes the file prints the
+exact line to add. Any import that ends in `boost/<vendor>__<package>.md` counts.
 
 Four rules govern the mechanism:
 

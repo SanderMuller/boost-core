@@ -15,7 +15,7 @@ vendor/bin/boost sync      # fan the skills + guideline out to the selected agen
 
 The skills land in your selected agent skill directories (`.claude/skills/`,
 `.cursor/skills/`, and so on). The `foundation` guideline merges into each
-agent's guidance file (`CLAUDE.md`, `AGENTS.md`, and the rest). Generated
+agent's guidance file (`AGENTS.md`, `GEMINI.md`). Generated
 directories are added to `.gitignore` automatically.
 
 Edit `.ai/` only. The fan-out regenerates on every sync.

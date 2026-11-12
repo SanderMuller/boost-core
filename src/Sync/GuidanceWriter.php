@@ -329,7 +329,7 @@ final readonly class GuidanceWriter
             '`%s` was authored outside boost-core (boost does not own it yet) and is being taken over by the '
             . "wholesale guidance assembly. Content that reaches boost via `.ai/guidelines/` (or a wrapper's "
             . 'injected guidelines) is preserved; any OTHER content in the file is replaced. If another tool '
-            . 'seeded this file, run that tool\'s reconcile/sync so its content is captured first — '
+            . "seeded this file, run that tool's reconcile/sync so its content is captured first — "
             . '`boost doctor` reports the specifics.',
             $file,
         );

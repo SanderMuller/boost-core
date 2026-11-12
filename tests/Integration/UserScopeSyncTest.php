@@ -1120,3 +1120,90 @@ it('publishes eligible guidelines through the real CLI, not only the engine', fu
         rmTreeUserScope($home);
     }
 });
+
+it('prints the import line when the user-level CLAUDE.md does not import the guidance file, and never writes CLAUDE.md', function (?string $claudeMd): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+        if ($claudeMd !== null) {
+            mkdir($home . '/.claude', 0o755, recursive: true);
+            file_put_contents($home . '/.claude/CLAUDE.md', $claudeMd);
+        }
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+        $first = $engine->syncUser($pkg, homeRoot: $home);
+        // An unchanged second run still says it, until the operator acts.
+        $second = $engine->syncUser($pkg, homeRoot: $home);
+
+        foreach ([$first, $second] as $result) {
+            expect(implode("\n", $result->warnings))
+                ->toContain('@boost/acme__kit.md')
+                ->toContain('~/.claude/CLAUDE.md');
+        }
+
+        if ($claudeMd === null) {
+            expect($home . '/.claude/CLAUDE.md')->not->toBeFile();
+        } else {
+            expect((string) file_get_contents($home . '/.claude/CLAUDE.md'))->toBe($claudeMd);
+        }
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+})->with([
+    'no CLAUDE.md' => [null],
+    'CLAUDE.md without the import' => ["# Mine\n\n@RTK.md\n"],
+]);
+
+it('stays silent about the import when CLAUDE.md already imports the guidance file', function (string $claudeMd): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+        mkdir($home . '/.claude', 0o755, recursive: true);
+        file_put_contents($home . '/.claude/CLAUDE.md', $claudeMd);
+
+        $result = (new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([])))
+            ->syncUser($pkg, homeRoot: $home);
+
+        expect(implode("\n", $result->warnings))->not->toContain('acme__kit.md');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+})->with([
+    'relative import' => ["# Mine\n@boost/acme__kit.md\n"],
+    'home import' => ["See @~/.claude/boost/acme__kit.md for rules.\n"],
+]);
+
+it('says nothing about the import in check mode or when no guidance is published', function (): void {
+    $dirs = makeUserScopeTempDirs();
+    $pkg = $dirs['package'];
+    $home = $dirs['home'];
+
+    try {
+        $guidelines = seedUserScopeGuidelinePackage($pkg, 'acme/kit');
+        file_put_contents($guidelines . '/voice.md', "Voice rules.\n");
+
+        $engine = new SyncEngine([new ClaudeCodeTarget()], installedPackages: new InstalledPackages([]));
+        $nothingEligible = $engine->syncUser($pkg, homeRoot: $home);
+
+        file_put_contents($guidelines . '/.boost-user-scope.yaml', "- voice.md\n");
+        $check = $engine->syncUser($pkg, checkOnly: true, homeRoot: $home);
+
+        expect(implode("\n", $nothingEligible->warnings))->not->toContain('CLAUDE.md')
+            ->and(implode("\n", $check->warnings))->not->toContain('CLAUDE.md');
+    } finally {
+        rmTreeUserScope($pkg);
+        rmTreeUserScope($home);
+    }
+});

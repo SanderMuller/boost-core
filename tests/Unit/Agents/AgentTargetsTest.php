@@ -114,7 +114,7 @@ it('every target plans at least one skill file when given one skill', function (
         sourceVendor: null,
     );
 
-    foreach (allTargets() as [$target, $agent, $skillsDir]) {
+    foreach (allTargets() as [$target, , $skillsDir]) {
         $writes = $target->plan([$skill], []);
 
         expect($writes)->toHaveCount(1)
@@ -137,7 +137,7 @@ it('every target plans asset writes beside SKILL.md, riding the skill name (1.3.
         ],
     );
 
-    foreach (allTargets() as [$target, $agent, $skillsDir]) {
+    foreach (allTargets() as [$target, , $skillsDir]) {
         $writes = $target->plan([$skill], []);
         $paths = array_map(fn (PendingWrite $w): string => $w->relativePath, $writes);
 

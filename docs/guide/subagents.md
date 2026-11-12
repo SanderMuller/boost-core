@@ -52,7 +52,10 @@ Claude Code scans `.claude/agents/` recursively and takes a subagent's identity
   precedence.
 
 So `boost sync` warns when a name it emits is also declared by a file it does not
-own, and `boost doctor` lists every such overlap it finds on disk — including two
+own. boost owns a file it wrote in this sync or that its manifest records. A file
+under `.claude/agents/boost/` that neither covers, such as an old copy a branch
+switch put back, is not boost's: sync keeps it and warns about it. `boost doctor`
+lists every such overlap it finds on disk — including two
 of your own files that collide with each other, which is a bug boost can see
 before Claude Code silently picks a side.
 

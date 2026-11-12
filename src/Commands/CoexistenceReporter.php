@@ -81,7 +81,7 @@ final class CoexistenceReporter
         $io->note(
             'laravel/boost + project-boost-laravel detected. Division of labor: laravel/boost owns the MCP '
             . 'server + Laravel docs; boost-core assembles the guidance files (CLAUDE.md/AGENTS.md/…) and fans '
-            . 'skills out to every agent. Sync with `php artisan project-boost:sync` — it injects laravel/boost\'s '
+            . "skills out to every agent. Sync with `php artisan project-boost:sync` — it injects laravel/boost's "
             . 'skills + guidelines — NOT bare `vendor/bin/boost sync`, which composes a thinner set and would '
             . "overwrite laravel/boost's guidance.",
         );
@@ -131,7 +131,7 @@ final class CoexistenceReporter
         ];
 
         if ($hasWrapper) {
-            $lines[] = '  • `php artisan project-boost:*` → project-boost-laravel. `project-boost:sync` is THE sync to run here: it injects laravel/boost\'s skills + guidelines into the boost-core assembly. Bare `vendor/bin/boost sync` composes a thinner set.';
+            $lines[] = "  • `php artisan project-boost:*` → project-boost-laravel. `project-boost:sync` is THE sync to run here: it injects laravel/boost's skills + guidelines into the boost-core assembly. Bare `vendor/bin/boost sync` composes a thinner set.";
         }
 
         $lines[] = '';

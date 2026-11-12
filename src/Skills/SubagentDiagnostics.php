@@ -5,6 +5,9 @@ namespace SanderMuller\BoostCore\Skills;
 use SanderMuller\BoostCore\Conventions\Diagnostic;
 use SanderMuller\BoostCore\Sync\SubagentNameScanner;
 use SanderMuller\BoostCore\Sync\SyncEngine;
+use SanderMuller\BoostCore\Sync\SyncManifest;
+use SanderMuller\BoostCore\Sync\WriteAction;
+use SanderMuller\BoostCore\Sync\WrittenFile;
 
 /**
  * Turns the subagent pipeline's outcomes into `SyncResult` diagnostics.
@@ -27,13 +30,15 @@ final readonly class SubagentDiagnostics
      * Every diagnostic one resolution earns, in report order.
      *
      * @param  bool  $emitting  Whether any configured agent can receive subagents.
+     * @param  list<WrittenFile>  $writes  This sync's writes — what boost emitted this run.
+     * @param  SyncManifest  $priorManifest  What boost owned when the sync started.
      *
      * @return list<Diagnostic>
      */
-    public static function forResult(string $projectRoot, SubagentResolution $resolution, bool $emitting): array
+    public static function forResult(string $projectRoot, SubagentResolution $resolution, bool $emitting, array $writes, SyncManifest $priorManifest): array
     {
         return [
-            ...self::overlaps($projectRoot, $resolution->subagents, $emitting),
+            ...self::overlaps($projectRoot, $resolution->subagents, $emitting, self::ownedPaths($writes, $priorManifest)),
             ...self::loadWarnings($resolution->loadWarnings),
             ...self::rescues($resolution->pulls),
             ...self::unsatisfiedDemands($resolution->dependencyWarnings),
@@ -47,9 +52,10 @@ final readonly class SubagentDiagnostics
      *
      * @param  list<Subagent>  $resolved
      * @param  bool  $emitting  False when no configured agent has a subagent surface — nothing is about to be written, so there is no collision to warn about.
+     * @param  array<string, true>  $ownedPaths  see {@see ownedPaths()}
      * @return list<Diagnostic>
      */
-    public static function overlaps(string $projectRoot, array $resolved, bool $emitting): array
+    public static function overlaps(string $projectRoot, array $resolved, bool $emitting, array $ownedPaths): array
     {
         if (! $emitting) {
             return [];
@@ -58,7 +64,7 @@ final readonly class SubagentDiagnostics
         $names = array_map(static fn (Subagent $subagent): string => $subagent->name, $resolved);
 
         $diagnostics = [];
-        foreach ((new SubagentNameScanner())->unownedHolders($projectRoot, $names) as $name => $paths) {
+        foreach ((new SubagentNameScanner())->unownedHolders($projectRoot, $names, $ownedPaths) as $name => $paths) {
             $diagnostics[] = Diagnostic::warning(null, sprintf(
                 'subagent `%s` is also declared by a file boost does not own (%s). Claude Code loads only one of them, chosen by filesystem read order. Rename or remove one side — boost does not arbitrate.',
                 $name,
@@ -67,6 +73,35 @@ final readonly class SubagentDiagnostics
         }
 
         return $diagnostics;
+    }
+
+    /**
+     * The paths boost owns for the overlap check: every path this sync wrote or
+     * left unchanged, plus every path the prior manifest records.
+     *
+     * The same ownership rule the stale sweep applies. A recorded file that this
+     * sync no longer emits is deleted by the sweep (or previewed as a delete
+     * under `--check`), so it is owned and never reported. A file under the
+     * boost subtree that neither set covers is not boost's: the sweep keeps it,
+     * and so it must be reported.
+     *
+     * @param  list<WrittenFile>  $writes
+     * @return array<string, true>
+     */
+    private static function ownedPaths(array $writes, SyncManifest $priorManifest): array
+    {
+        $owned = [];
+        foreach ($writes as $write) {
+            if ($write->action !== WriteAction::DELETED && $write->action !== WriteAction::WOULD_DELETE) {
+                $owned[$write->relativePath] = true;
+            }
+        }
+
+        foreach (array_keys($priorManifest->entries) as $relativePath) {
+            $owned[$relativePath] = true;
+        }
+
+        return $owned;
     }
 
     /**

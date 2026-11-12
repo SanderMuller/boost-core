@@ -806,7 +806,7 @@ it('respects the allowlist: non-allowlisted vendor skills are skipped', function
             'forbidden/vendor' => new PackageInfo('forbidden/vendor', '1.0.0', $vendorPath),
         ]);
 
-        $result = SyncEngine::default($fakePackages)->sync($root);
+        SyncEngine::default($fakePackages)->sync($root);
 
         expect(file_exists($root . '/.claude/skills/should-not-appear/SKILL.md'))->toBeFalse();
     } finally {

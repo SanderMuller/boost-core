@@ -162,7 +162,7 @@ final readonly class SyncReporter
         // stays lenient (the diagnostic is rendered above, but exit stays 0 so a
         // composer install isn't broken) — the gate is the CI surface.
         if ($checkOnly && $this->hasErrorDiagnostic($result)) {
-            $io->error('Conventions error: a vendor\'s required schema-version is not satisfied by the host — its conventions were NOT applied (see the diagnostics above). Align the host schema-version or the vendor allowlist.');
+            $io->error("Conventions error: a vendor's required schema-version is not satisfied by the host — its conventions were NOT applied (see the diagnostics above). Align the host schema-version or the vendor allowlist.");
 
             return new SyncReportOutcome(false, true, false, false, Command::FAILURE);
         }

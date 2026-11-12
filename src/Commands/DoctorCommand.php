@@ -263,7 +263,7 @@ final class DoctorCommand extends BoostBaseCommand
         $io->warning(
             'Detected `sandermuller/project-boost-laravel` installed alongside boost-core. '
             . "Bare CLI bypasses the wrapper's skill-injection pipeline, producing cross-agent "
-            . 'capability asymmetry — Claude Code may mask the absence locally via laravel/boost\'s '
+            . "capability asymmetry — Claude Code may mask the absence locally via laravel/boost's "
             . 'MCP server, but Cursor / Copilot / Codex silently miss bundled skills (file-fanout '
             . 'is their only delivery mechanism). For full per-agent skill set, use '
             . '`php artisan project-boost:sync` instead. See project-boost-laravel install guide '

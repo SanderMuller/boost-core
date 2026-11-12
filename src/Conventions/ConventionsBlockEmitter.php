@@ -448,7 +448,7 @@ final readonly class ConventionsBlockEmitter
     private function buildScaffoldBody(array $sources, int $seed): string
     {
         $lines = [
-            '# Generated region — body editable. Add slot values per allowlisted vendors\' schemas.',
+            "# Generated region — body editable. Add slot values per allowlisted vendors' schemas.",
             "schema-version: {$seed}",
         ];
 

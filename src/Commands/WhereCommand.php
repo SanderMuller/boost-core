@@ -471,7 +471,7 @@ final class WhereCommand extends BoostBaseCommand implements TouchesResolutionPi
 
                 return;
             case 'dropped':
-                $io->writeln('<info>Project Conventions block: dropped (fully migrated — values inline into each agent\'s skills).</info>');
+                $io->writeln("<info>Project Conventions block: dropped (fully migrated — values inline into each agent's skills).</info>");
 
                 return;
             default:
